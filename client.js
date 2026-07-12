@@ -1,16 +1,17 @@
 import ww from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
-import fs from 'fs';
+import fsp from 'fs/promises';
 const { Client, LocalAuth } = ww;
+
+const MAX_RECONNECT_ATTEMPTS = 20;
+const BASE_DELAY = 5000;
+const MAX_DELAY = 300000;
 
 let client = null;
 let reconnectAttempt = 0;
+let reconnectTimer = null;
 
-export function getClient() {
-  return client;
-}
-
-function getPuppeteerConfig() {
+async function getPuppeteerConfig() {
   const baseArgs = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -21,9 +22,12 @@ function getPuppeteerConfig() {
   ];
 
   const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (envPath && fs.existsSync(envPath)) {
-    console.log(`[Puppeteer] Using browser (from env): ${envPath}`);
-    return { headless: true, executablePath: envPath, args: baseArgs };
+  if (envPath) {
+    try {
+      await fsp.access(envPath);
+      console.log(`[Puppeteer] Using browser (from env): ${envPath}`);
+      return { headless: true, executablePath: envPath, args: baseArgs };
+    } catch {}
   }
 
   const candidates = [
@@ -38,26 +42,20 @@ function getPuppeteerConfig() {
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
   ];
 
-  let executablePath = null;
-  for (const path of candidates) {
-    if (fs.existsSync(path)) {
-      executablePath = path;
-      break;
-    }
+  for (const candidate of candidates) {
+    try {
+      await fsp.access(candidate);
+      console.log(`[Puppeteer] Using browser: ${candidate}`);
+      return { headless: true, executablePath: candidate, args: baseArgs };
+    } catch {}
   }
 
-  const config = { headless: true, args: baseArgs };
-  if (executablePath) {
-    config.executablePath = executablePath;
-    console.log(`[Puppeteer] Using browser: ${executablePath}`);
-  } else {
-    console.log('[Puppeteer] No local browser found, using puppeteer default');
-  }
-  return config;
+  console.log('[Puppeteer] No local browser found, using puppeteer default');
+  return { headless: true, args: baseArgs };
 }
 
 export async function createClient() {
-  const puppeteerConfig = getPuppeteerConfig();
+  const puppeteerConfig = await getPuppeteerConfig();
 
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
@@ -75,17 +73,36 @@ export async function createClient() {
 
   client.on('ready', () => {
     reconnectAttempt = 0;
+    reconnectTimer = null;
   });
 
   client.on('auth_failure', (msg) => {
     console.error('[WA] Auth failure:', msg);
   });
 
-  client.on('disconnected', (reason) => {
-    const delay = Math.min(5000 * Math.pow(2, reconnectAttempt), 300000);
+  client.on('disconnected', async (reason) => {
+    if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      console.error(`[WA] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
+      process.exit(1);
+      return;
+    }
+
     reconnectAttempt++;
-    console.warn(`[WA] Disconnected: ${reason} — reconnecting in ${delay / 1000}s (attempt ${reconnectAttempt})`);
-    setTimeout(() => client.initialize(), delay);
+    const jitter = Math.random() * 1000;
+    const delay = Math.min(BASE_DELAY * Math.pow(2, reconnectAttempt - 1) + jitter, MAX_DELAY);
+    console.warn(`[WA] Disconnected: ${reason} — reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`);
+
+    try { await client.destroy(); } catch {}
+    client = null;
+
+    reconnectTimer = setTimeout(async () => {
+      try {
+        const newClient = await createClient();
+        newClient.initialize();
+      } catch (e) {
+        console.error('[WA] Reconnect init failed:', e.message);
+      }
+    }, delay);
   });
 
   return client;

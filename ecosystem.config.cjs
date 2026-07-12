@@ -4,7 +4,7 @@ module.exports = {
     script: './index.js',
     node_args: '--no-warnings',
     watch: false,
-    max_memory_restart: '200M',
+    max_memory_restart: '500M',
     restart_delay: 5000,
     max_restarts: 10,
     env: {

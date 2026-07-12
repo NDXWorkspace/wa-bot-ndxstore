@@ -1,20 +1,31 @@
-import fs from 'fs';
+import fsp from 'fs/promises';
 import { config } from '../config.js';
 import { getDb } from './supabase.js';
 
 const NOTIFIED_FILE = './.notified.json';
-const CATCHUP_WINDOW_MS = 5 * 60 * 1000; // catch-up 5 menit terakhir pas startup
+const CATCHUP_WINDOW_MS = 5 * 60 * 1000;
+const RECONNECT_BASE_MS = 5000;
 
 let notified = new Set();
-try {
-  const raw = fs.readFileSync(NOTIFIED_FILE, 'utf-8');
-  const arr = JSON.parse(raw);
-  if (Array.isArray(arr)) notified = new Set(arr);
-  console.log(`[OrderMonitor] Loaded ${notified.size} notified IDs`);
-} catch {}
+let channel = null;
+let channelReconnectAttempt = 0;
+let channelReconnectTimer = null;
 
-function persistNotified() {
-  try { fs.writeFileSync(NOTIFIED_FILE, JSON.stringify([...notified])); } catch {}
+async function loadNotified() {
+  try {
+    const raw = await fsp.readFile(NOTIFIED_FILE, 'utf-8');
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) notified = new Set(arr);
+    console.log(`[OrderMonitor] Loaded ${notified.size} notified IDs`);
+  } catch {}
+}
+
+async function persistNotified() {
+  try {
+    const tmp = NOTIFIED_FILE + '.tmp';
+    await fsp.writeFile(tmp, JSON.stringify([...notified]));
+    await fsp.rename(tmp, NOTIFIED_FILE);
+  } catch {}
 }
 
 function safeJson(val) {
@@ -59,7 +70,6 @@ function sendNotif(client, order, type) {
     .then(() => console.log(`[OrderMonitor] ${type} sent for ${order.id}`))
     .catch(err => console.error(`[OrderMonitor] Send failed: ${err.message}`));
 
-  // Also DM the customer
   const userJid = formatWaNumber(order.wa_number);
   if (userJid) {
     const userMsg = type === 'payment'
@@ -163,14 +173,8 @@ async function catchUpMissed(client, db) {
   }
 }
 
-export function startOrderMonitor(client) {
-  const db = getDb();
-  if (!db) {
-    console.warn('[OrderMonitor] Supabase not configured');
-    return null;
-  }
-
-  const channel = db
+function startSubscription(client, db) {
+  channel = db
     .channel('wa-bot-order-monitor')
     .on(
       'postgres_changes',
@@ -210,14 +214,53 @@ export function startOrderMonitor(client) {
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         console.log('[OrderMonitor] Realtime connected');
+        channelReconnectAttempt = 0;
         console.log('[OrderMonitor] Jalankan SQL jika notif tidak muncul:');
         console.log('[OrderMonitor]   ALTER PUBLICATION supabase_realtime ADD TABLE transactions;');
-      } else if (status === 'CHANNEL_ERROR') {
-        console.warn('[OrderMonitor] Realtime channel error — checking subscription status...');
+      } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
+        console.warn(`[OrderMonitor] Channel ${status} — reconnecting...`);
+        scheduleReconnect(client, db);
       }
     });
 
-  catchUpMissed(client, db);
+  return channel;
+}
 
-  return { channel };
+function scheduleReconnect(client, db) {
+  if (channelReconnectTimer) clearTimeout(channelReconnectTimer);
+
+  channelReconnectAttempt++;
+  const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, channelReconnectAttempt - 1), 120000);
+  console.log(`[OrderMonitor] Reconnect in ${Math.round(delay / 1000)}s (attempt ${channelReconnectAttempt})`);
+
+  channelReconnectTimer = setTimeout(() => {
+    if (channel) {
+      try { db.removeChannel(channel); } catch {}
+      channel = null;
+    }
+    startSubscription(client, db);
+  }, delay);
+}
+
+export async function startOrderMonitor(client) {
+  await loadNotified();
+
+  const db = getDb();
+  if (!db) {
+    console.warn('[OrderMonitor] Supabase not configured');
+    return null;
+  }
+
+  startSubscription(client, db);
+  await catchUpMissed(client, db);
+
+  return {
+    unsubscribe: () => {
+      if (channelReconnectTimer) clearTimeout(channelReconnectTimer);
+      if (channel) {
+        try { db.removeChannel(channel); } catch {}
+        channel = null;
+      }
+    },
+  };
 }
