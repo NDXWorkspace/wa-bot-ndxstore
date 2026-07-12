@@ -4,6 +4,7 @@ import fs from 'fs';
 const { Client, LocalAuth } = ww;
 
 let client = null;
+let reconnectAttempt = 0;
 
 export function getClient() {
   return client;
@@ -72,13 +73,19 @@ export async function createClient() {
     console.log('[WA] Authenticated');
   });
 
+  client.on('ready', () => {
+    reconnectAttempt = 0;
+  });
+
   client.on('auth_failure', (msg) => {
     console.error('[WA] Auth failure:', msg);
   });
 
   client.on('disconnected', (reason) => {
-    console.warn('[WA] Disconnected:', reason, '— reconnecting in 5s');
-    setTimeout(() => client.initialize(), 5000);
+    const delay = Math.min(5000 * Math.pow(2, reconnectAttempt), 300000);
+    reconnectAttempt++;
+    console.warn(`[WA] Disconnected: ${reason} — reconnecting in ${delay / 1000}s (attempt ${reconnectAttempt})`);
+    setTimeout(() => client.initialize(), delay);
   });
 
   return client;

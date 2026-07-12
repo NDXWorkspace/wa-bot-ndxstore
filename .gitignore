@@ -2,3 +2,4 @@ node_modules/
 wa-session/
 .env
 *.log
+.notified.json

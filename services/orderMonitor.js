@@ -1,8 +1,21 @@
+import fs from 'fs';
 import { config } from '../config.js';
 import { getDb } from './supabase.js';
 
-const notified = new Set();
+const NOTIFIED_FILE = './.notified.json';
 const POLL_INTERVAL = 15000;
+
+let notified = new Set();
+try {
+  const raw = fs.readFileSync(NOTIFIED_FILE, 'utf-8');
+  const arr = JSON.parse(raw);
+  if (Array.isArray(arr)) notified = new Set(arr);
+  console.log(`[OrderMonitor] Loaded ${notified.size} notified IDs`);
+} catch {}
+
+function persistNotified() {
+  try { fs.writeFileSync(NOTIFIED_FILE, JSON.stringify([...notified])); } catch {}
+}
 
 function safeJson(val) {
   if (!val) return null;
@@ -39,6 +52,7 @@ function sendNotif(client, order, type) {
   }
   if (notified.has(order.id)) return;
   notified.add(order.id);
+  persistNotified();
 
   const msg = formatOrderMessage(order, type);
   client.sendMessage(config.groupId, msg)
