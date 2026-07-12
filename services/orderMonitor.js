@@ -136,20 +136,32 @@ function isPaymentConfirmed(order) {
   return PAYMENT_OK.includes(os) || PAYMENT_OK.includes(ps);
 }
 
+let lastChecked = null;
+
 async function pollOrders(client, db) {
   try {
-    const { data, error } = await db
+    let query = db
       .from('transactions')
       .select('id, product_name, game_name, username, wa_number, roblox_id, ml_data, price_idr, payment_method, order_status, payment_status, contact_admin, created_at')
-      .order('created_at', { ascending: false })
-      .limit(10);
+      .order('created_at', { ascending: false });
+
+    if (lastChecked) {
+      query = query.gt('created_at', lastChecked).limit(10);
+    } else {
+      query = query.limit(5);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('[OrderMonitor] Poll error:', error.message);
       return;
     }
 
-    if (data) {
+    if (data && data.length > 0) {
+      const maxTime = data.reduce((max, o) => o.created_at > max ? o.created_at : max, data[0].created_at);
+      if (maxTime > (lastChecked || '')) lastChecked = maxTime;
+
       for (const order of data.reverse()) {
         if (notified.has(order.id)) continue;
         const type = isPaymentConfirmed(order) ? 'payment' : 'new';

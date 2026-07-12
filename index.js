@@ -5,6 +5,7 @@ import { getDb } from './services/supabase.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { MENU_TEXT, INFO_PRODUK, CARA_ORDER, INFO_PEMBAYARAN } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin } from './services/handoverService.js';
+import { isOnCooldown } from './services/queue.js';
 
 const healthApp = http.createServer((_req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -122,6 +123,9 @@ async function main() {
         await msg.reply('✅ Pesan diteruskan ke admin.');
         return;
       }
+
+      // === COOLDOWN ===
+      if (isOnCooldown(msg.from)) return;
 
       // === USER MENU ===
       const lowered = body.toLowerCase();
