@@ -150,8 +150,7 @@ async function main() {
       }
       if (lowered === '5') { await msg.reply(INFO_PEMBAYARAN); return; }
 
-      // Unknown
-      await msg.reply(`Ketik *menu* untuk melihat daftar perintah.`);
+      // Unknown — ignore
     } catch (e) {
       console.error('[Bot] Handler error:', e.message);
     }
