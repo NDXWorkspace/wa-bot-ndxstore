@@ -19,7 +19,15 @@ function getPuppeteerConfig() {
     '--disable-gpu',
   ];
 
+  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envPath && fs.existsSync(envPath)) {
+    console.log(`[Puppeteer] Using browser (from env): ${envPath}`);
+    return { headless: true, executablePath: envPath, args: baseArgs };
+  }
+
   const candidates = [
+    '/data/data/com.termux/files/usr/bin/chromium',
+    '/data/data/com.termux/files/usr/bin/chromium-browser',
     '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',
     '/usr/bin/chromium',
@@ -29,7 +37,7 @@ function getPuppeteerConfig() {
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
   ];
 
-  let executablePath = candidates[0];
+  let executablePath = null;
   for (const path of candidates) {
     if (fs.existsSync(path)) {
       executablePath = path;
@@ -37,13 +45,14 @@ function getPuppeteerConfig() {
     }
   }
 
-  console.log(`[Puppeteer] Using browser: ${executablePath}`);
-
-  return {
-    headless: true,
-    executablePath,
-    args: baseArgs,
-  };
+  const config = { headless: true, args: baseArgs };
+  if (executablePath) {
+    config.executablePath = executablePath;
+    console.log(`[Puppeteer] Using browser: ${executablePath}`);
+  } else {
+    console.log('[Puppeteer] No local browser found, using puppeteer default');
+  }
+  return config;
 }
 
 export async function createClient() {
