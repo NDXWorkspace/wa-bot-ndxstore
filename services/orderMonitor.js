@@ -1,15 +1,13 @@
 import fsp from 'fs/promises';
 import { config } from '../config.js';
-import { getDb } from './supabase.js';
 
 const NOTIFIED_FILE = './.notified.json';
-const CATCHUP_WINDOW_MS = 5 * 60 * 1000;
-const RECONNECT_BASE_MS = 5000;
+const API_BASE = 'https://ndxstoreid.vercel.app';
+const POLL_INTERVAL_MS = 10000;
 
 let notified = new Set();
-let channel = null;
-let channelReconnectAttempt = 0;
-let channelReconnectTimer = null;
+let pollTimer = null;
+let lastSince = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
 async function loadNotified() {
   try {
@@ -26,12 +24,6 @@ async function persistNotified() {
     await fsp.writeFile(tmp, JSON.stringify([...notified]));
     await fsp.rename(tmp, NOTIFIED_FILE);
   } catch {}
-}
-
-function safeJson(val) {
-  if (!val) return null;
-  if (typeof val === 'object') return val;
-  try { return JSON.parse(val); } catch { return null; }
 }
 
 function formatPrice(val) {
@@ -105,9 +97,9 @@ function formatOrderMessage(order, type) {
   const username = order.username || '-';
 
   let extra = '';
-  const ml = safeJson(order.ml_data);
-  if (ml) {
-    extra += `\n🆔 ID ML: ${ml.userId || '-'} (Zone ${ml.zoneId || '-'})`;
+  const ml = order.ml_data;
+  if (ml && typeof ml === 'object') {
+    extra += `\n🆔 ID ML: ${ml.userId || ml.user_id || '-'} (Zone ${ml.zoneId || ml.zone_id || '-'})`;
   }
   if (order.roblox_id) {
     extra += `\n🆔 Roblox ID: ${order.roblox_id}`;
@@ -128,7 +120,6 @@ function formatOrderMessage(order, type) {
   msg += `🎮 *Game:* ${game}\n`;
   msg += `📦 *Produk:* ${product}\n`;
   msg += `👤 *User:* ${username}${extra}\n`;
-
   msg += `💰 *Harga:* ${formatPrice(order.price_idr)}\n`;
   msg += `💳 *Bayar:* ${order.payment_method || '-'}\n`;
   msg += `📊 *Status:* ${order.order_status || '-'}\n`;
@@ -146,121 +137,71 @@ function isPaymentConfirmed(order) {
   return PAYMENT_OK.includes(os) || PAYMENT_OK.includes(ps);
 }
 
-async function catchUpMissed(client, db) {
-  try {
-    const since = new Date(Date.now() - CATCHUP_WINDOW_MS).toISOString();
-    const { data, error } = await db
-      .from('transactions')
-      .select('id, product_name, game_name, username, wa_number, roblox_id, ml_data, price_idr, payment_method, order_status, payment_status, contact_admin, created_at')
-      .gte('created_at', since)
-      .order('created_at', { ascending: true });
+// Track seen orders and their status for detecting changes
+const seenOrders = new Map();
 
-    if (error) {
-      console.error('[OrderMonitor] Catch-up error:', error.message);
+async function processOrders(client) {
+  try {
+    const url = `${API_BASE}/api/bot/orders?since=${encodeURIComponent(lastSince)}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) {
+      console.warn(`[OrderMonitor] API error: ${resp.status}`);
       return;
     }
+    const result = await resp.json();
+    if (!result?.orders?.length) return;
 
-    if (data && data.length > 0) {
-      console.log(`[OrderMonitor] Catch-up: ${data.length} missed order(s)`);
-      for (const order of data) {
-        if (notified.has(order.id)) continue;
+    for (const order of result.orders) {
+      if (!order.id) continue;
+
+      // Track latest timestamp
+      if (order.created_at > lastSince) lastSince = order.created_at;
+
+      // New order detection
+      if (!notified.has(order.id)) {
         const type = isPaymentConfirmed(order) ? 'payment' : 'new';
         sendNotif(client, order, type);
+        seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status });
+        continue;
       }
-    }
-  } catch (e) {
-    console.error('[OrderMonitor] Catch-up exception:', e.message);
-  }
-}
 
-function startSubscription(client, db) {
-  channel = db
-    .channel('wa-bot-order-monitor')
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'transactions' },
-      (payload) => {
-        const order = payload.new;
-        console.log(`[OrderMonitor] Realtime: ${order.id} — ${order.product_name || '-'}`);
-        const type = isPaymentConfirmed(order) ? 'payment' : 'new';
-        sendNotif(client, order, type);
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'transactions' },
-      (payload) => {
-        const order = payload.new;
-        const prev = payload.old;
-        const oldStatus = (prev.order_status || '').toUpperCase();
-        const newStatus = (order.order_status || '').toUpperCase();
-        const oldPay = (prev.payment_status || '').toUpperCase();
-        const newPay = (order.payment_status || '').toUpperCase();
-
-        const changed = oldStatus !== newStatus || oldPay !== newPay;
-        const confirmed = isPaymentConfirmed(order) && !isPaymentConfirmed(prev);
-
-        if (changed) {
+      // Status change detection
+      const prev = seenOrders.get(order.id);
+      if (prev) {
+        const osChanged = prev.status !== order.order_status;
+        const psChanged = prev.payment !== order.payment_status;
+        if (osChanged || psChanged) {
+          const confirmed = isPaymentConfirmed(order) && !PAYMENT_OK.includes(prev.status) && !PAYMENT_OK.includes(prev.payment);
           if (confirmed) {
-            console.log(`[OrderMonitor] Payment confirmed: ${order.id}`);
             sendNotif(client, order, 'payment');
-          } else {
-            console.log(`[OrderMonitor] Status update: ${order.id} → ${order.order_status || order.payment_status}`);
           }
           sendUpdateToUser(client, order);
         }
       }
-    )
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log('[OrderMonitor] Realtime connected');
-        channelReconnectAttempt = 0;
-        console.log('[OrderMonitor] Jalankan SQL jika notif tidak muncul:');
-        console.log('[OrderMonitor]   ALTER PUBLICATION supabase_realtime ADD TABLE transactions;');
-      } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
-        console.warn(`[OrderMonitor] Channel ${status} — reconnecting...`);
-        scheduleReconnect(client, db);
-      }
-    });
-
-  return channel;
-}
-
-function scheduleReconnect(client, db) {
-  if (channelReconnectTimer) clearTimeout(channelReconnectTimer);
-
-  channelReconnectAttempt++;
-  const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, channelReconnectAttempt - 1), 120000);
-  console.log(`[OrderMonitor] Reconnect in ${Math.round(delay / 1000)}s (attempt ${channelReconnectAttempt})`);
-
-  channelReconnectTimer = setTimeout(() => {
-    if (channel) {
-      try { db.removeChannel(channel); } catch {}
-      channel = null;
+      // Track current status (even if unchanged, for first poll after restart)
+      seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status });
     }
-    startSubscription(client, db);
-  }, delay);
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.warn(`[OrderMonitor] Poll error: ${e.message}`);
+    }
+  }
 }
 
 export async function startOrderMonitor(client) {
   await loadNotified();
 
-  const db = getDb();
-  if (!db) {
-    console.warn('[OrderMonitor] Supabase not configured');
-    return null;
-  }
+  // Initial catch-up
+  await processOrders(client);
 
-  startSubscription(client, db);
-  await catchUpMissed(client, db);
+  // Start polling
+  pollTimer = setInterval(() => processOrders(client), POLL_INTERVAL_MS);
+  console.log(`[OrderMonitor] Polling started (every ${POLL_INTERVAL_MS / 1000}s)`);
 
   return {
     unsubscribe: () => {
-      if (channelReconnectTimer) clearTimeout(channelReconnectTimer);
-      if (channel) {
-        try { db.removeChannel(channel); } catch {}
-        channel = null;
-      }
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
     },
   };
 }

@@ -1,7 +1,6 @@
 import http from 'http';
 import { config } from './config.js';
 import { createClient } from './client.js';
-import { getDb } from './services/supabase.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { MENU_TEXT, INFO_PRODUK, CARA_ORDER, INFO_PEMBAYARAN } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin } from './services/handoverService.js';
@@ -27,27 +26,23 @@ function formatTime(val) {
   catch { return String(val).slice(0, 19); }
 }
 
+const API_BASE = 'https://ndxstoreid.vercel.app';
+
 async function checkOrders(msg, username) {
   try {
-    const db = getDb();
-    if (!db) return await msg.reply('❌ Database tidak tersedia.');
+    const resp = await fetch(`${API_BASE}/api/transactions/user/${encodeURIComponent(username.trim())}`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) return await msg.reply('❌ Gagal cek order.');
 
-    const { data, error } = await db
-      .from('transactions')
-      .select('id, product_name, game_name, price_idr, payment_status, order_status, created_at')
-      .eq('username', username)
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    if (error) return await msg.reply(`❌ Gagal cek order: ${error.message}`);
-
-    if (!data || data.length === 0) {
+    const result = await resp.json();
+    if (!result?.success || !result?.transactions?.length) {
       return await msg.reply(`Tidak ada order untuk *${username}*.`);
     }
 
     let reply = `📋 *Order ${username}*\n━━━━━━━━━━━━━━\n`;
-    for (const o of data) {
-      reply += `\n🆔 ${o.id}\n📦 ${o.product_name || '-'}\n💰 ${formatPrice(o.price_idr)}\n📊 ${o.order_status || o.payment_status || '-'}\n⏰ ${formatTime(o.created_at)}\n━━━━━━━━━━━━━━`;
+    for (const o of result.transactions.slice(0, 5)) {
+      reply += `\n🆔 ${o.id}\n📦 ${o.productName || '-'}\n💰 ${formatPrice(o.priceIdr)}\n📊 ${o.orderStatus || o.paymentStatus || '-'}\n⏰ ${formatTime(o.createdAt)}\n━━━━━━━━━━━━━━`;
     }
     await msg.reply(reply);
   } catch (e) {
