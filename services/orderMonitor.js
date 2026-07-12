@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { getDb } from './supabase.js';
 
 const NOTIFIED_FILE = './.notified.json';
-const POLL_INTERVAL = 15000;
+const CATCHUP_WINDOW_MS = 5 * 60 * 1000; // catch-up 5 menit terakhir pas startup
 
 let notified = new Set();
 try {
@@ -136,41 +136,30 @@ function isPaymentConfirmed(order) {
   return PAYMENT_OK.includes(os) || PAYMENT_OK.includes(ps);
 }
 
-let lastChecked = null;
-
-async function pollOrders(client, db) {
+async function catchUpMissed(client, db) {
   try {
-    let query = db
+    const since = new Date(Date.now() - CATCHUP_WINDOW_MS).toISOString();
+    const { data, error } = await db
       .from('transactions')
       .select('id, product_name, game_name, username, wa_number, roblox_id, ml_data, price_idr, payment_method, order_status, payment_status, contact_admin, created_at')
-      .order('created_at', { ascending: false });
-
-    if (lastChecked) {
-      query = query.gt('created_at', lastChecked).limit(10);
-    } else {
-      query = query.limit(5);
-    }
-
-    const { data, error } = await query;
+      .gte('created_at', since)
+      .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('[OrderMonitor] Poll error:', error.message);
+      console.error('[OrderMonitor] Catch-up error:', error.message);
       return;
     }
 
     if (data && data.length > 0) {
-      const maxTime = data.reduce((max, o) => o.created_at > max ? o.created_at : max, data[0].created_at);
-      if (maxTime > (lastChecked || '')) lastChecked = maxTime;
-
-      for (const order of data.reverse()) {
+      console.log(`[OrderMonitor] Catch-up: ${data.length} missed order(s)`);
+      for (const order of data) {
         if (notified.has(order.id)) continue;
         const type = isPaymentConfirmed(order) ? 'payment' : 'new';
-        console.log(`[OrderMonitor] Poll: ${order.id} — ${order.product_name || '-'}`);
         sendNotif(client, order, type);
       }
     }
   } catch (e) {
-    console.error('[OrderMonitor] Poll exception:', e.message);
+    console.error('[OrderMonitor] Catch-up exception:', e.message);
   }
 }
 
@@ -224,14 +213,11 @@ export function startOrderMonitor(client) {
         console.log('[OrderMonitor] Jalankan SQL jika notif tidak muncul:');
         console.log('[OrderMonitor]   ALTER PUBLICATION supabase_realtime ADD TABLE transactions;');
       } else if (status === 'CHANNEL_ERROR') {
-        console.warn('[OrderMonitor] Realtime error — polling fallback aktif');
+        console.warn('[OrderMonitor] Realtime channel error — checking subscription status...');
       }
     });
 
-  const pollTimer = setInterval(() => pollOrders(client, db), POLL_INTERVAL);
-  console.log(`[OrderMonitor] Polling setiap ${POLL_INTERVAL / 1000}s (fallback)`);
+  catchUpMissed(client, db);
 
-  pollOrders(client, db);
-
-  return { channel, pollTimer };
+  return { channel };
 }
