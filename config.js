@@ -6,4 +6,5 @@ export const config = {
     key: process.env.SUPABASE_KEY || '',
   },
   groupId: process.env.GROUP_ID || '',
+  adminNumber: process.env.ADMIN_NUMBER || '',
 };
