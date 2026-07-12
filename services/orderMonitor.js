@@ -105,13 +105,6 @@ function formatOrderMessage(order, type) {
   msg += `📦 *Produk:* ${product}\n`;
   msg += `👤 *User:* ${username}${extra}\n`;
 
-  if (order.roblox_password) {
-    msg += `🔑 *Password:* ${order.roblox_password}\n`;
-  }
-  if (order.backup_code) {
-    msg += `🔐 *Backup/2FA:* ${order.backup_code}\n`;
-  }
-
   msg += `💰 *Harga:* ${formatPrice(order.price_idr)}\n`;
   msg += `💳 *Bayar:* ${order.payment_method || '-'}\n`;
   msg += `📊 *Status:* ${order.order_status || '-'}\n`;
@@ -133,7 +126,7 @@ async function pollOrders(client, db) {
   try {
     const { data, error } = await db
       .from('transactions')
-      .select('id, product_name, game_name, username, wa_number, roblox_id, roblox_password, backup_code, ml_data, price_idr, payment_method, order_status, payment_status, contact_admin, created_at')
+      .select('id, product_name, game_name, username, wa_number, roblox_id, ml_data, price_idr, payment_method, order_status, payment_status, contact_admin, created_at')
       .order('created_at', { ascending: false })
       .limit(10);
 
