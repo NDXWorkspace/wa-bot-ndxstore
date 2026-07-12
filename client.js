@@ -1,0 +1,80 @@
+import ww from 'whatsapp-web.js';
+import qrcode from 'qrcode-terminal';
+import fs from 'fs';
+const { Client, LocalAuth } = ww;
+
+let client = null;
+
+export function getClient() {
+  return client;
+}
+
+function getPuppeteerConfig() {
+  const baseArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-gpu',
+  ];
+
+  const candidates = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ];
+
+  let executablePath = candidates[0];
+  for (const path of candidates) {
+    if (fs.existsSync(path)) {
+      executablePath = path;
+      break;
+    }
+  }
+
+  console.log(`[Puppeteer] Using browser: ${executablePath}`);
+
+  return {
+    headless: true,
+    executablePath,
+    args: baseArgs,
+  };
+}
+
+export async function createClient() {
+  const puppeteerConfig = getPuppeteerConfig();
+
+  client = new Client({
+    authStrategy: new LocalAuth({ dataPath: './wa-session' }),
+    puppeteer: puppeteerConfig,
+  });
+
+  client.on('qr', (qr) => {
+    console.log('\n[WA] Scan QR code ini dengan WhatsApp Anda:');
+    qrcode.generate(qr, { small: true });
+  });
+
+  client.on('authenticated', () => {
+    console.log('[WA] Authenticated');
+  });
+
+  client.on('auth_failure', (msg) => {
+    console.error('[WA] Auth failure:', msg);
+  });
+
+  client.on('ready', () => {
+    console.log('[WA] Client ready — bot online!');
+  });
+
+  client.on('disconnected', (reason) => {
+    console.warn('[WA] Disconnected:', reason, '— reconnecting in 5s');
+    setTimeout(() => client.initialize(), 5000);
+  });
+
+  return client;
+}

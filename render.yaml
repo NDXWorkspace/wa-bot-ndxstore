@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: wa-bot-ndxstore
+    env: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SUPABASE_URL
+        value: https://jlfrtyyjxkmdetdbeakv.supabase.co
+      - key: SUPABASE_KEY
+        sync: false
+      - key: GROUP_ID
+        value: 120363411174055948@g.us
+    healthCheckPath: /health
+    autoDeploy: false
+    numInstances: 1
