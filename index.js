@@ -67,7 +67,8 @@ async function main() {
   client.on('message_create', async (msg) => {
     try {
       const body = msg.body.trim();
-      const isAdmin = msg.from === config.adminNumber;
+      const senderJid = msg.author || msg.from;
+      const isAdmin = senderJid.split('@')[0] === config.adminNumber;
 
       // === ADMIN COMMANDS ===
       if (msg.fromMe || isAdmin) {
@@ -102,11 +103,12 @@ async function main() {
           }
         }
 
-        if (msg.fromMe) return;
       }
 
-      // === IGNORE GROUP MESSAGES (not admin) ===
-      if (msg.from.includes('@g.us') && !isAdmin) return;
+      // === SKIP OWN GROUP NOTIFICATIONS ===
+      if (msg.fromMe && msg.from.includes('@g.us')) return;
+      // === IGNORE OTHER GROUP MESSAGES ===
+      if (msg.from.includes('@g.us')) return;
 
       // === ACTIVE HANDOVER — forward to admin ===
       if (isHandoverActive(msg.from) && config.adminNumber) {
