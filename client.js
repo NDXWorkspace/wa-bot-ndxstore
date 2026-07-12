@@ -76,10 +76,6 @@ export async function createClient() {
     console.error('[WA] Auth failure:', msg);
   });
 
-  client.on('ready', () => {
-    console.log('[WA] Client ready — bot online!');
-  });
-
   client.on('disconnected', (reason) => {
     console.warn('[WA] Disconnected:', reason, '— reconnecting in 5s');
     setTimeout(() => client.initialize(), 5000);

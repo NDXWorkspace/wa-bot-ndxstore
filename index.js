@@ -36,7 +36,10 @@ async function main() {
     }
   });
 
-  startOrderMonitor(client);
+  client.on('ready', () => {
+    console.log('[WA] Client ready — bot online!');
+    startOrderMonitor(client);
+  });
 
   client.initialize();
 
