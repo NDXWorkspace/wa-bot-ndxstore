@@ -6,6 +6,9 @@ import { MENU_TEXT, INFO_PRODUK, CARA_ORDER, INFO_PEMBAYARAN } from './services/
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin } from './services/handoverService.js';
 import { isOnCooldown } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
+import { askAI, clearHistory } from './services/ai.js';
+
+let aiMode = false;
 
 const healthApp = http.createServer((_req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -69,6 +72,19 @@ async function main() {
 
       // === ADMIN COMMANDS ===
       if (msg.fromMe || isAdmin) {
+        if (body === '!aimode') {
+          aiMode = !aiMode;
+          await msg.reply(aiMode ? '🤖 AI mode ON — semua chat bakal dijawab AI' : '🤖 AI mode OFF');
+          if (!aiMode) clearHistory('all');
+          return;
+        }
+
+        if (body === '!aireset') {
+          clearHistory('all');
+          await msg.reply('🧹 Riwayat chat AI direset');
+          return;
+        }
+
         if (body.startsWith('!')) {
           const handled = await handleAdminCommand(client, msg, body);
           if (handled) return;
@@ -96,10 +112,10 @@ async function main() {
         }
       }
 
-      // === SKIP OWN GROUP NOTIFICATIONS ===
+      // === SKIP OWN GROUP NOTIFICATIONS (bot sending order notif, etc) ===
       if (msg.fromMe && msg.from.includes('@g.us')) return;
-      // === IGNORE OTHER GROUP MESSAGES ===
-      if (msg.from.includes('@g.us')) return;
+      // === IGNORE OTHER GROUP MESSAGES (unless AI mode) ===
+      if (!aiMode && msg.from.includes('@g.us')) return;
 
       // === ACTIVE HANDOVER — forward to admin ===
       if (isHandoverActive(msg.from) && config.adminNumber) {
@@ -145,6 +161,14 @@ async function main() {
         return;
       }
       if (lowered === '5') { await msg.reply(INFO_PEMBAYARAN); return; }
+
+      // === AI MODE — reply to anything not handled ===
+      if (aiMode) {
+        if (msg.fromMe) return; // Skip bot's own replies (prevents loop)
+        const reply = await askAI(msg.from, body);
+        if (reply) await msg.reply(reply);
+        return;
+      }
 
       // Unknown — ignore
     } catch (e) {
