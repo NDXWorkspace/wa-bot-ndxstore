@@ -78,17 +78,29 @@ INGAT — lo CS NDXStore. Fokus bantu pelanggan.`;
 
 const PROMPTS = { 1: BIMA_PROMPT, 2: NDXSTORE_PROMPT };
 
-let conversationHistory = new Map();
-const MAX_HISTORY = 100;
+const conversationHistory = new Map();
+const MAX_HISTORY = 100;  // max messages kept per user
+const MAX_USERS = 500;    // max users kept in memory (LRU-evicted beyond this)
 const CONTEXT_SIZE = 12;
 
 function getHistory(jid) {
-  return conversationHistory.get(jid) || [];
+  const hist = conversationHistory.get(jid);
+  if (hist) {
+    // touch: move to newest position so it survives LRU eviction
+    conversationHistory.delete(jid);
+    conversationHistory.set(jid, hist);
+  }
+  return hist || [];
 }
 
 function setHistory(jid, hist) {
   if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
+  conversationHistory.delete(jid);
   conversationHistory.set(jid, hist);
+  while (conversationHistory.size > MAX_USERS) {
+    const oldest = conversationHistory.keys().next().value;
+    conversationHistory.delete(oldest);
+  }
 }
 
 export function clearHistory(jid) {
@@ -219,19 +231,23 @@ function buildProMessages(userHist, message, mode = 1) {
   return msgs;
 }
 
-async function tryModels(models) {
-  const results = await Promise.any(
-    models.map(async (m) => {
+// Race every endpoint within a tier; return the first success, or null if all fail.
+async function raceTier(tier) {
+  if (!tier.length) return null;
+  return Promise.any(
+    tier.map(async (m) => {
       const result = await tryFetch(m.url, m.body, m.headers || {});
       if (result) return result;
       throw new Error('failed');
     })
   ).catch(() => null);
+}
 
-  if (results) return results;
-
-  for (const m of models) {
-    const result = await tryFetch(m.url, m.body, m.headers || {});
+// Try tiers in quality order — only fall to the next tier when the current one fails,
+// so a strong model (Groq 70b) is preferred over merely the fastest to respond.
+async function tryTiers(tiers) {
+  for (const tier of tiers) {
+    const result = await raceTier(tier);
     if (result) return result;
   }
   return null;
@@ -243,19 +259,27 @@ export async function askAI(jid, message, mode = 1) {
   const userHist = await getOrLoadHistory(jid);
   const msgs = buildProMessages(userHist, sanitizeInput(message), mode);
 
-  const models = [
-    ...(config.groqKey?.startsWith('gsk_') ? [
-      { url: 'https://api.groq.com/openai/v1/chat/completions', body: { model: 'llama-3.3-70b-versatile', messages: msgs, max_tokens: 200, temperature: 0.7 }, headers: { Authorization: `Bearer ${config.groqKey}` } },
-      { url: 'https://api.groq.com/openai/v1/chat/completions', body: { model: 'llama-3.1-8b-instant', messages: msgs, max_tokens: 200, temperature: 0.7 }, headers: { Authorization: `Bearer ${config.groqKey}` } },
-    ] : []),
-    { url: `${config.aiApiBase.replace(/\/+$/, '')}/openai`, body: { model: config.aiModel || 'openai', messages: msgs, max_tokens: 200, temperature: 0.7 } },
-    { url: 'https://text.pollinations.ai/openai', body: { model: 'openai', messages: msgs, max_tokens: 200, temperature: 0.7 } },
-    { url: 'https://text.pollinations.ai/openai', body: { model: 'llama', messages: msgs, max_tokens: 200, temperature: 0.7 } },
-    { url: 'https://text.pollinations.ai/openai', body: { model: 'mistral', messages: msgs, max_tokens: 200, temperature: 0.7 } },
-    { url: 'https://text.pollinations.ai/openai', body: { model: 'openai-large', messages: msgs, max_tokens: 200, temperature: 0.7 } },
-  ];
+  const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  const groqHeaders = { Authorization: `Bearer ${config.groqKey}` };
+  const opts = { messages: msgs, max_tokens: 200, temperature: 0.7 };
+  const pollBase = config.aiApiBase.replace(/\/+$/, '');
 
-  const reply = await tryModels(models);
+  // Ordered by quality: strongest model first, weaker/free fallbacks after.
+  const tiers = [];
+  if (config.groqKey?.startsWith('gsk_')) {
+    tiers.push([{ url: groqUrl, body: { model: 'llama-3.3-70b-versatile', ...opts }, headers: groqHeaders }]);
+    tiers.push([{ url: groqUrl, body: { model: 'llama-3.1-8b-instant', ...opts }, headers: groqHeaders }]);
+  }
+  // Pollinations tier — race the free endpoints together for reliability.
+  tiers.push([
+    { url: `${pollBase}/openai`, body: { model: config.aiModel || 'openai', ...opts } },
+    { url: 'https://text.pollinations.ai/openai', body: { model: 'openai', ...opts } },
+    { url: 'https://text.pollinations.ai/openai', body: { model: 'llama', ...opts } },
+    { url: 'https://text.pollinations.ai/openai', body: { model: 'mistral', ...opts } },
+    { url: 'https://text.pollinations.ai/openai', body: { model: 'openai-large', ...opts } },
+  ]);
+
+  const reply = await tryTiers(tiers);
   if (reply) {
     saveExchange(jid, message, reply);
     return reply;

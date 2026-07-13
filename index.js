@@ -5,9 +5,10 @@ import { createClient, getCurrentClient } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin } from './services/handoverService.js';
-import { isOnCooldown, checkDailyLimit } from './services/queue.js';
+import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
 import { askAI, askAIWithImage, clearHistory, clearHistoryExcept } from './services/ai.js';
+import { bufferAiMessage } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 import { formatPrice, formatTime } from './utils/format.js';
@@ -157,6 +158,22 @@ async function main() {
 
   function setupMessageHandler(c) {
     c.removeAllListeners('message_create');
+
+    // Called after a user's message burst settles — answers once, with full context.
+    async function flushAiReply(jid, text, image, latestMsg) {
+      await c.sendPresenceUpdate('composing', jid).catch(() => {});
+      let reply;
+      if (image) {
+        reply = await askAIWithImage(jid, text, image.data, image.mime, settings.aiMode).catch(() => null);
+      }
+      if (!reply) reply = await askAI(jid, text, settings.aiMode).catch(() => null);
+      if (reply) {
+        const delay = Math.min(reply.length * 10, 2000);
+        await new Promise(r => setTimeout(r, delay));
+        latestMsg.reply(reply).catch(() => {});
+      }
+    }
+
     c.on('message_create', async (msg) => {
       try {
         const body = msg.body?.trim() || '';
@@ -348,19 +365,7 @@ async function main() {
           return;
         }
 
-        // ── Cooldown ──
-        if (isOnCooldown(msg.from, 'default')) return;
-
-        // ── Daily Limit ──
-        if (!msg.from.includes('@g.us') && !isAdmin) {
-          const limit = await checkDailyLimit(msg.from);
-          if (!limit.allowed) {
-            await msg.reply(`❌ Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`);
-            return;
-          }
-        }
-
-        // ── Group Filters ──
+        // ── Group / self filters ──
         if (msg.fromMe && msg.from.includes('@g.us')) return;
         if (msg.fromMe) return;
         if (msg.from.includes('@g.us') && !settings.aiMode) return;
@@ -380,27 +385,26 @@ async function main() {
           }
         }
 
-        // ── AI Mode ──
-        if (settings.aiMode > 0) {
-          await c.sendPresenceUpdate('composing', msg.from).catch(() => {});
-          const thinkTime = 1500 + Math.random() * 2500;
-          await new Promise(r => setTimeout(r, thinkTime));
-          let reply;
-          if (msg.hasMedia && msg.type === 'image') {
-            const media = await msg.downloadMedia().catch(() => null);
-            if (media) reply = await askAIWithImage(msg.from, body, media.data, media.mimetype, settings.aiMode).catch(() => null);
+        // Free-form chat only goes to the AI. If AI is off, there's nothing left to do.
+        if (settings.aiMode <= 0) return;
+
+        // ── Daily Limit (DM users only) ──
+        if (!msg.from.includes('@g.us') && !isAdmin) {
+          const limit = await checkDailyLimit(msg.from);
+          if (!limit.allowed) {
+            await msg.reply(`❌ Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`);
+            return;
           }
-          if (!reply) reply = await askAI(msg.from, body, settings.aiMode).catch(() => null);
-          if (reply) {
-            const delay = Math.min(reply.length * 10, 2000);
-            await new Promise(r => setTimeout(r, delay));
-            msg.reply(reply).catch(() => {});
-          }
-          return;
         }
 
-        // ── Ungrouped DM fallback ──
-        if (msg.from.includes('@g.us')) return;
+        // ── Buffer fragments, answer once the burst settles (see aiBuffer.js) ──
+        let image = null;
+        if (msg.hasMedia && msg.type === 'image') {
+          const media = await msg.downloadMedia().catch(() => null);
+          if (media) image = { data: media.data, mime: media.mimetype };
+        }
+        bufferAiMessage(msg.from, msg, body, image, flushAiReply);
+        return;
 
       } catch (e) {
         logger.error('Bot', 'Handler error:', e.message);
