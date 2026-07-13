@@ -256,19 +256,12 @@ async function main() {
         // === AI MODE — jawab SEMUA pesan ===
         if (settings.aiMode > 0) {
           console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
-          try {
-            try { c.sendPresenceUpdate('composing', msg.from); } catch {}
-            const reply = await askAI(msg.from, body, settings.aiMode);
-            if (reply) {
-              const delay = Math.min(reply.length * 10, 3000);
-              await new Promise(r => setTimeout(r, delay));
-              try { await msg.reply(reply); } catch { try { await c.sendMessage(msg.from, reply); } catch {} }
-            } else {
-              try { await msg.reply('Maaf, lagi error. Coba lagi ya.'); } catch {}
-            }
-          } catch (e) {
-            console.error('[AiMode] Error:', e.message);
-            try { await msg.reply('Error, coba lagi ya.'); } catch {}
+          try { c.sendPresenceUpdate('composing', msg.from); } catch {}
+          const reply = await askAI(msg.from, body, settings.aiMode).catch(() => null);
+          if (reply) {
+            const delay = Math.min(reply.length * 10, 3000);
+            await new Promise(r => setTimeout(r, delay));
+            msg.reply(reply).catch(() => {});
           }
           return;
         }
@@ -305,7 +298,6 @@ async function main() {
 
       } catch (e) {
         console.error('[Bot] Handler error:', e.message);
-        try { if (msg && msg.from) c.sendMessage(msg.from, 'Error: ' + e.message.slice(0, 100)); } catch {}
       }
     });
   }
