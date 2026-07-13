@@ -104,6 +104,12 @@ function formatOrderMessage(order, type) {
   if (order.roblox_id) {
     extra += `\n🆔 Roblox ID: ${order.roblox_id}`;
   }
+  if (order.roblox_password) {
+    extra += `\n🔑 *Password:* ${order.roblox_password}`;
+  }
+  if (order.backup_code) {
+    extra += `\n🔐 *Backup Code:* ${order.backup_code}`;
+  }
   if (order.contact_admin) {
     extra += '\n🔐 *Butuh bantuan 2FA*';
   }
