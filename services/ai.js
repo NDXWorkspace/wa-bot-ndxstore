@@ -1,41 +1,88 @@
 import { config } from '../config.js';
 import { getDb } from './supabase.js';
 
-const MODEL = config.aiModel || 'openai';
-const API_BASE = config.aiApiBase.replace(/\/+$/, '');
+// ─── Persona & Knowledge Base ──────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Kamu temen ngobrol casual, santai.
+const PERSONA = {
+  name: 'Raka',
+  store: 'NDXStore',
+  style: 'anak muda Jakarta, santai, casual, pake "sih", "deh", "kok", "yah", "bang"',
+};
 
-ATURAN:
-- Jawab singkat, ga usah panjang lebar
-- Pake bahasa Indonesia santai anak muda: pake "sih", "deh", "kok", "yah"
-- JANGAN ngarumus, jangan nambah-nambahin informasi
-- Kalo gak tau jawabannya, bilang "gatau" atau "gak tau deh"
-- Kalo chat cuma "halo", jawab "halo" doang
-- JANGAN ngomong pake bahasa Inggris kalo gak ditanya
-- JANGAN ngejelasin panjang lebar, cukup respon natural kayak chat WA
-- Fokus jawab apa yang ditanya doang, jangan ngelantur
-- Kalo ditanya opini, bilang seadanya
-- JANGAN berpura-pura jadi bot CS atau toko`;
+const KNOWLEDGE = `
+NDXStore — jual top up game & Roblox:
+- Game: Mobile Legends (ML), Roblox, Free Fire, Valorant, dll
+- Pembayaran: DANA (6285159898005), GoPay, transfer bank
+- Cara order: 1) Pilih produk di ndxstoreid.vercel.app, 2) Transfer, 3) Konfirmasi
+- Cek status: ketik "cek [username]"
+- CS: ketik "cs" atau "4"
+- Admin WA: 6285159898005
+- Harga tergantung produk, cek di website
+- Proses biasanya 5-30 menit setelah bayar
+`.trim();
+
+const SYSTEM_PROMPT = `Lu Raka, anak NDXStore. Gue ga pake "aku", pake "gue". Yang ngobrol dipanggil "lo".
+
+IDENTITAS:
+- Nama: ${PERSONA.name}
+- Kerja: ${PERSONA.store} (top up game & Roblox)
+- Gaya: ${PERSONA.style}
+
+KARAKTER:
+- Santai banget, kayak temen lo sendiri
+- Kalo lagi santai, bisa becanda ringan
+- Tapi kalo ditanya serius, jawab serius
+- Ngerti soal game, top up, Roblox, ML
+- Jaim dikit kalo lagi ngomong sama orang baru, tapi makin akrab makin santai
+
+ATURAN NGOMONG:
+- Jawab SINGKAT, ga usah panjang lebar (max 3-4 kalimat)
+- Bahasa Indonesia santai, pake slang wajar
+- JANGAN pake "Halo! Ada yang bisa saya bantu?" atau "Selamat datang di..."
+- Kalo chat cuma "halo", jawab "halo" atau "halo, mau order?"
+- Kalo lo ditanya sesuatu yang lo gak tau, bilang aja "gatau" atau "gw tanyain admin aja"
+- JANGAN ngarang-ngarang info (harga, stok, produk, dll)
+- JANGAN pake bahasa Inggris kalo gak diminta
+- JANGAN ngelantur, fokus apa yang ditanya
+
+PENGETAHUAN PRODUK:
+${KNOWLEDGE}
+
+KALO USER NANYA PRODUK:
+- Kalo tanya harga produk tertentu: "Cek aja di ndxstoreid.vercel.app, soalnya harga bisa beda-beda"
+- Kalo tanya cara order: "1) Buka ndxstoreid.vercel.app, 2) Pilih produk, 3) Transfer ke DANA 6285159898005, 4) Konfirmasi"
+- Kalo tanya status order: "Ketik 'cek [username]' nanti gw cekin"
+- Kalo mau CS: "Ketik 'cs' aja nanti gw sambungin ke admin"
+
+KALO USER CHAT RANDOM:
+- Kalo curhat atau ngobrol santai: respon wajar kayak temen
+- Kalo nanya opini: jawab seadanya, jangan sok tau
+- Kalo bercanda: balas becanda
+- Kalo marah/kesel: sabarin, jangan ikut-ikutan marah
+
+INGAT: lo Raka, anak NDXStore, casual, santai, jaim dikit kalo baru kenal.`;
+
+// ─── Conversation History ─────────────────────────────────────────────
 
 let conversationHistory = new Map();
-const MAX_HISTORY = 20;
-const CONTEXT_SIZE = 6;
+const MAX_HISTORY = 30;
+const CONTEXT_SIZE = 12;
 
 function getHistory(jid) {
   return conversationHistory.get(jid) || [];
 }
 
-function addHistory(jid, role, content) {
-  const hist = getHistory(jid);
-  hist.push({ role, content });
-  if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - CONTEXT_SIZE);
+function setHistory(jid, hist) {
+  if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
   conversationHistory.set(jid, hist);
 }
 
 export function clearHistory(jid) {
-  conversationHistory.delete(jid);
+  if (jid === 'all') conversationHistory.clear();
+  else conversationHistory.delete(jid);
 }
+
+// ─── Supabase Persistence ────────────────────────────────────────────
 
 async function persistToDb(jid, role, content) {
   try {
@@ -47,7 +94,6 @@ async function persistToDb(jid, role, content) {
       content: content.slice(0, 2000),
     });
   } catch (e) {
-    // Table might not exist yet — ignore
     if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
       console.error('[AI] DB persist error:', e.message?.slice(0, 100));
     }
@@ -66,7 +112,7 @@ async function loadHistoryFromDb(jid) {
       .limit(MAX_HISTORY);
     if (!data?.length) return [];
     const hist = data.reverse().map(m => ({ role: m.role, content: m.content }));
-    conversationHistory.set(jid, hist);
+    setHistory(jid, hist);
     return hist;
   } catch {
     return [];
@@ -75,16 +121,20 @@ async function loadHistoryFromDb(jid) {
 
 async function getOrLoadHistory(jid) {
   let hist = getHistory(jid);
-  if (hist.length === 0) {
-    hist = await loadHistoryFromDb(jid);
-  }
+  if (hist.length === 0) hist = await loadHistoryFromDb(jid);
   return hist;
 }
 
-function maskKey(str) {
-  if (!str || str.length < 8) return str;
-  return str.slice(0, 4) + '****' + str.slice(-4);
+function saveExchange(jid, userMsg, reply) {
+  const hist = getHistory(jid);
+  hist.push({ role: 'user', content: userMsg });
+  hist.push({ role: 'assistant', content: reply });
+  setHistory(jid, hist);
+  persistToDb(jid, 'user', userMsg);
+  persistToDb(jid, 'assistant', reply);
 }
+
+// ─── API Fetch ───────────────────────────────────────────────────────
 
 async function tryFetch(url, body, headers = {}) {
   try {
@@ -92,62 +142,77 @@ async function tryFetch(url, body, headers = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(30000),
     });
     if (!resp.ok) {
       const err = await resp.text();
-      const short = url.length > 50 ? url.split('//')[1]?.slice(0, 40) : url;
-      console.error(`[AI] ${short} error ${resp.status}:`, err.slice(0, 100));
+      console.error(`[AI] ${url.includes('api.groq') ? 'Groq' : url.includes('pollinations') ? 'Pollinations' : url.slice(0, 40)} error ${resp.status}`, err.slice(0, 120));
       return null;
     }
     const data = await resp.json();
     return data?.choices?.[0]?.message?.content?.trim() || null;
   } catch (e) {
-    const short = url.length > 50 ? url.split('//')[1]?.slice(0, 40) : url;
-    console.error(`[AI] ${short} fetch error:`, e.message);
+    console.error(`[AI] ${url.includes('api.groq') ? 'Groq' : 'API'} fetch error:`, e.message);
     return null;
   }
 }
 
-function saveExchange(jid, userMsg, reply) {
-  addHistory(jid, 'user', userMsg);
-  addHistory(jid, 'assistant', reply);
-  persistToDb(jid, 'user', userMsg);
-  persistToDb(jid, 'assistant', reply);
+function buildProMessages(userHist, message) {
+  const msgs = [{ role: 'system', content: SYSTEM_PROMPT }];
+  const recent = userHist.slice(-CONTEXT_SIZE);
+  for (const m of recent) msgs.push(m);
+  msgs.push({ role: 'user', content: message });
+  return msgs;
 }
+
+// ─── Ask AI — Main Entry Point ──────────────────────────────────────
 
 export async function askAI(jid, message) {
   if (!message?.trim()) return '...';
 
   const userHist = await getOrLoadHistory(jid);
-  const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
+  const msgs = buildProMessages(userHist, message);
 
-  const recent = userHist.slice(-CONTEXT_SIZE);
-  for (const m of recent) messages.push(m);
-  messages.push({ role: 'user', content: message });
+  // Attempt chain: best model → good model → fallback
+  const attempts = [];
 
-  const baseBody = { messages, max_tokens: 150, temperature: 0.5 };
-
-  // 1) Pollinations with configured model
-  const reply1 = await tryFetch(`${API_BASE}/openai`, { ...baseBody, model: MODEL || 'openai' });
-  if (reply1) { saveExchange(jid, message, reply1); return reply1; }
-
-  // 2) Pollinations fallback model llama
-  const reply2 = await tryFetch(`${API_BASE}/openai`, { ...baseBody, model: 'llama' });
-  if (reply2) { saveExchange(jid, message, reply2); return reply2; }
-
-  // 3) Pollinations direct (bypass configured base)
-  const reply3 = await tryFetch('https://text.pollinations.ai/openai', { ...baseBody, model: 'openai' });
-  if (reply3) { saveExchange(jid, message, reply3); return reply3; }
-
-  // 4) Groq (if API key configured) — fast & free
+  // 1) Groq — Llama 3 70B (best quality, fast)
   if (config.groqKey) {
-    const reply4 = await tryFetch(
-      'https://api.groq.com/openai/v1/chat/completions',
-      { ...baseBody, model: 'llama3-70b-8192' },
-      { Authorization: `Bearer ${config.groqKey}` }
-    );
-    if (reply4) { saveExchange(jid, message, reply4); return reply4; }
+    attempts.push({
+      name: 'Groq Llama 70B',
+      url: 'https://api.groq.com/openai/v1/chat/completions',
+      body: { model: 'llama3-70b-8192', messages: msgs, max_tokens: 200, temperature: 0.7 },
+      headers: { Authorization: `Bearer ${config.groqKey}` },
+    });
+  }
+
+  // 2) Pollinations — primary
+  attempts.push({
+    name: 'Pollinations',
+    url: `${config.aiApiBase.replace(/\/+$/, '')}/openai`,
+    body: { model: config.aiModel || 'openai', messages: msgs, max_tokens: 200, temperature: 0.7 },
+  });
+
+  // 3) Pollinations — llama fallback
+  attempts.push({
+    name: 'Pollinations Llama',
+    url: 'https://text.pollinations.ai/openai',
+    body: { model: 'llama', messages: msgs, max_tokens: 200, temperature: 0.7 },
+  });
+
+  // 4) Pollinations — direct primary
+  attempts.push({
+    name: 'Pollinations Direct',
+    url: 'https://text.pollinations.ai/openai',
+    body: { model: 'openai', messages: msgs, max_tokens: 200, temperature: 0.7 },
+  });
+
+  for (const attempt of attempts) {
+    const reply = await tryFetch(attempt.url, attempt.body, attempt.headers || {});
+    if (reply) {
+      saveExchange(jid, message, reply);
+      return reply;
+    }
   }
 
   console.error('[AI] All endpoints failed');
