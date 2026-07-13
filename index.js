@@ -166,6 +166,28 @@ async function main() {
             return;
           }
 
+          const clearMatch = body.match(/^!clear\s+(\d+)(?:\s+(.+))?$/i);
+          if (clearMatch) {
+            const num = parseInt(clearMatch[1]);
+            const alsoClearLocal = clearMatch[2]?.toLowerCase() === 'true' || clearMatch[2] === '1';
+            if (num < 1 || num > 50) { await msg.reply('❌ Jumlah: 1-50'); return; }
+            try {
+              const chat = await c.getChatById(msg.from);
+              const msgs = await chat.fetchMessages({ limit: Math.min(num * 3, 100) });
+              const botMsgs = msgs.filter(m => m.fromMe).slice(0, num);
+              if (!botMsgs.length) { await msg.reply('❌ Gak ada pesan bot buat dihapus.'); return; }
+              let ok = 0, fail = 0;
+              for (const m of botMsgs) {
+                try { await m.delete(true); ok++; } catch { fail++; }
+              }
+              if (alsoClearLocal) clearHistory('all');
+              await msg.reply(`🧹 ${ok} pesan dihapus${fail ? `, ${fail} gagal` : ''}${alsoClearLocal ? ' + riwayat dibersihkan' : ''}`);
+            } catch (e) {
+              await msg.reply('❌ Gagal: ' + e.message.slice(0, 80));
+            }
+            return;
+          }
+
           if (body === '!aimodesetting') {
             await msg.reply(`Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'}\nGunakan: !aimodesetting jd (toggle ON/OFF)`);
             return;
