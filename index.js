@@ -7,7 +7,7 @@ import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran } from './s
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin } from './services/handoverService.js';
 import { isOnCooldown } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
-import { askAI, clearHistory } from './services/ai.js';
+import { askAI, askAIWithImage, clearHistory } from './services/ai.js';
 import { settings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 
@@ -263,11 +263,16 @@ async function main() {
         if (msg.fromMe) return;
         if (msg.from.includes('@g.us') && !settings.aiMode) return;
 
-        // === AI MODE — jawab SEMUA pesan ===
+        // === AI MODE — jawab SEMUA pesan (termasuk gambar) ===
         if (settings.aiMode > 0) {
           console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
           try { c.sendPresenceUpdate('composing', msg.from); } catch {}
-          const reply = await askAI(msg.from, body, settings.aiMode).catch(() => null);
+          let reply;
+          if (msg.hasMedia && msg.type === 'image') {
+            const media = await msg.downloadMedia().catch(() => null);
+            if (media) reply = await askAIWithImage(msg.from, body, media.data, media.mimetype, settings.aiMode).catch(() => null);
+          }
+          if (!reply) reply = await askAI(msg.from, body, settings.aiMode).catch(() => null);
           if (reply) {
             const delay = Math.min(reply.length * 10, 3000);
             await new Promise(r => setTimeout(r, delay));

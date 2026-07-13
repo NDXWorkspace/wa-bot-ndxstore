@@ -192,6 +192,18 @@ function saveExchange(jid, userMsg, reply) {
 
 const FAILED_ENDPOINTS = new Set();
 
+// ─── Language Detection ──────────────────────────────────────────
+
+const ID_WORDS = 'yg,udh,blm,dah,gpp,bang,kak,sih,deh,dong,kok,lah,wkwk,njir,anjir,gila,mantap,asik,cape,gue,lo,lu,gw,gua,elu,nggak,gak,kaga,ga,ngg,enggak,tapi,kalo,kalau,aja,doang,sama,dengan,bisa,gitu,gtw,gatau,gaada,emang,banget,soalnya,krn,dr,aja,dong,yaudah,udah,bapak,ibu,kak,mas,mba,bro,sob'.split(',');
+
+function detectLang(text) {
+  const t = text.toLowerCase().replace(/[^a-z0-9]/g, ' ');
+  const words = t.split(/\s+/).filter(Boolean);
+  if (!words.length) return 'id';
+  const idCount = words.filter(w => ID_WORDS.includes(w)).length;
+  return idCount / words.length > 0.15 ? 'id' : 'en';
+}
+
 async function tryFetch(url, body, headers = {}) {
   if (FAILED_ENDPOINTS.has(url)) return null;
   try {
@@ -219,8 +231,12 @@ async function tryFetch(url, body, headers = {}) {
 setInterval(() => { FAILED_ENDPOINTS.clear(); }, 300000);
 
 function buildProMessages(userHist, message, mode = 1) {
+  const lang = detectLang(message);
   const prompt = PROMPTS[mode] || PROMPTS[1];
-  const msgs = [{ role: 'system', content: prompt }];
+  const langHint = lang === 'en'
+    ? '\n\nCRITICAL: The user is speaking ENGLISH. Reply in ENGLISH. DO NOT reply in Indonesian.'
+    : '';
+  const msgs = [{ role: 'system', content: prompt + langHint }];
   const recent = userHist.slice(-CONTEXT_SIZE);
   for (const m of recent) msgs.push(m);
   msgs.push({ role: 'user', content: message });
@@ -260,6 +276,34 @@ export async function askAI(jid, message, mode = 1) {
 
   console.error('[AI] All endpoints failed');
   return null;
+}
+
+// ─── Image Vision ────────────────────────────────────────────────
+
+export async function askAIWithImage(jid, text, base64img, mime, mode = 1) {
+  const lang = detectLang(text);
+  const prompt = PROMPTS[mode] || PROMPTS[1];
+  const langHint = lang === 'en' ? '\n\nCRITICAL: Reply in ENGLISH.' : '';
+  const content = [
+    { type: 'text', text: text || 'Apa ini?' },
+    { type: 'image_url', image_url: { url: `data:${mime};base64,${base64img}` } },
+  ];
+  const msgs = [
+    { role: 'system', content: prompt + langHint },
+    { role: 'user', content },
+  ];
+
+  // Groq vision (best)
+  if (config.groqKey?.startsWith('gsk_')) {
+    const r = await tryFetch('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.2-11b-vision-preview', messages: msgs, max_tokens: 300, temperature: 0.5,
+    }, { Authorization: `Bearer ${config.groqKey}` });
+    if (r) return r;
+  }
+
+  // Fallback: text-only tanpa gambar
+  const textOnly = await askAI(jid, text || '[gambar]', mode);
+  return textOnly || 'Maaf, gak bisa baca gambar.';
 }
 
 // ─── Proactive Message (jawab duluan, no history) ─────────────────
