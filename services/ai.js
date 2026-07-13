@@ -177,7 +177,7 @@ export async function askAI(jid, message) {
   const attempts = [];
 
   // 1) Groq — Llama 3 70B (best quality, fast)
-  if (config.groqKey) {
+  if (config.groqKey?.startsWith('gsk_')) {
     attempts.push({
       name: 'Groq Llama 70B',
       url: 'https://api.groq.com/openai/v1/chat/completions',

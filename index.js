@@ -175,6 +175,24 @@ async function main() {
           }
         }
 
+        // === CORE MENU — jalan SELALU, di grup/DM, bypass AI mode ===
+        const lowered = body.toLowerCase();
+        if (lowered === 'menu' || lowered === '0' || lowered === 'halo' || lowered === 'hi' || lowered === 'p') {
+          await msg.reply(getMenuText());
+          return;
+        }
+        if (body.startsWith('cek ') || lowered === '1') {
+          if (body.startsWith('cek ')) {
+            const username = body.slice(4).trim();
+            if (username) return await checkOrders(msg, username);
+          }
+          await msg.reply('Ketik *cek [username]* untuk cek status order.\nContoh: *cek ROWSOWS*');
+          return;
+        }
+        if (lowered === '2') { await msg.reply(getInfoProduk()); return; }
+        if (lowered === '3') { await msg.reply(getCaraOrder()); return; }
+        if (lowered === '5') { await msg.reply(getInfoPembayaran()); return; }
+
         // === SKIP OWN GROUP NOTIFICATIONS ===
         if (msg.fromMe && msg.from.includes('@g.us')) return;
         if (msg.fromMe) return;
@@ -214,25 +232,7 @@ async function main() {
         // === COOLDOWN (general: 2s, AI: handled above) ===
         if (isOnCooldown(msg.from, 'default')) return;
 
-        // === USER MENU ===
-        const lowered = body.toLowerCase();
-
-        if (lowered === 'menu' || lowered === '0' || lowered === 'halo' || lowered === 'hi' || lowered === 'p') {
-          await msg.reply(getMenuText());
-          return;
-        }
-
-        if (body.startsWith('cek ') || lowered === '1') {
-          if (body.startsWith('cek ')) {
-            const username = body.slice(4).trim();
-            if (username) return await checkOrders(msg, username);
-          }
-          await msg.reply('Ketik *cek [username]* untuk cek status order.\nContoh: *cek ROWSOWS*');
-          return;
-        }
-
-        if (lowered === '2') { await msg.reply(getInfoProduk()); return; }
-        if (lowered === '3') { await msg.reply(getCaraOrder()); return; }
+        // === CS HANDOVER (DM only) ===
         if (lowered === '4' || lowered === 'cs') {
           if (config.adminNumber) {
             await startHandover(c, msg, config.adminNumber);
@@ -241,7 +241,6 @@ async function main() {
           }
           return;
         }
-        if (lowered === '5') { await msg.reply(getInfoPembayaran()); return; }
 
       } catch (e) {
         console.error('[Bot] Handler error:', e.message);
