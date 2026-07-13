@@ -206,12 +206,17 @@ async function main() {
           }
 
           if (body === '!aimodesetting') {
-            await msg.reply(`Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'}\nGunakan: !aimodesetting jd (toggle ON/OFF)`);
+            await msg.reply(`Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'} | Ungroup: ${settings.ungroup ? 'ON' : 'OFF'}\nGunakan: !aimodesetting jd (jawab duluan), !aimodesetting uningroup (skip grup)`);
             return;
           }
           if (body === '!aimodesetting jd') {
             settings.jawabDuluan = !settings.jawabDuluan;
             await msg.reply(`Jawab duluan ${settings.jawabDuluan ? 'ON' : 'OFF'} — AI bakal ${settings.jawabDuluan ? 'proaktif chat pelanggan' : 'diem aja'}`);
+            return;
+          }
+          if (body === '!aimodesetting unigroup' || body === '!aimodesetting uningroup') {
+            settings.ungroup = !settings.ungroup;
+            await msg.reply(`Ungroup ${settings.ungroup ? 'ON' : 'OFF'} — bot ${settings.ungroup ? 'gak bakal bales di grup' : 'bales di grup kaya biasa'}`);
             return;
           }
 
@@ -261,12 +266,15 @@ async function main() {
         // === SKIP OWN GROUP NOTIFICATIONS ===
         if (msg.fromMe && msg.from.includes('@g.us')) return;
         if (msg.fromMe) return;
-        if (msg.from.includes('@g.us') && !settings.aiMode) return;
+        if (msg.from.includes('@g.us') && (!settings.aiMode || settings.ungroup)) return;
+
 
         // === AI MODE — jawab SEMUA pesan (termasuk gambar) ===
         if (settings.aiMode > 0) {
           console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
           try { c.sendPresenceUpdate('composing', msg.from); } catch {}
+          const thinkTime = 1500 + Math.random() * 2500;
+          await new Promise(r => setTimeout(r, thinkTime));
           let reply;
           if (msg.hasMedia && msg.type === 'image') {
             const media = await msg.downloadMedia().catch(() => null);
@@ -274,7 +282,7 @@ async function main() {
           }
           if (!reply) reply = await askAI(msg.from, body, settings.aiMode).catch(() => null);
           if (reply) {
-            const delay = Math.min(reply.length * 10, 3000);
+            const delay = Math.min(reply.length * 10, 2000);
             await new Promise(r => setTimeout(r, delay));
             msg.reply(reply).catch(() => {});
           }

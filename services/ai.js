@@ -252,7 +252,10 @@ export async function askAI(jid, message, mode = 1) {
   const msgs = buildProMessages(userHist, message, mode);
 
   const models = [
-    ...(config.groqKey?.startsWith('gsk_') ? [{ url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama3-70b-8192', headers: { Authorization: `Bearer ${config.groqKey}` } }] : []),
+    ...(config.groqKey?.startsWith('gsk_') ? [
+      { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', headers: { Authorization: `Bearer ${config.groqKey}` } },
+      { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.1-8b-instant', headers: { Authorization: `Bearer ${config.groqKey}` } },
+    ] : []),
     { url: `${config.aiApiBase.replace(/\/+$/, '')}/openai`, model: config.aiModel || 'openai' },
     { url: 'https://text.pollinations.ai/openai', model: config.aiModel || 'openai' },
     { url: 'https://text.pollinations.ai/openai', model: 'llama' },
@@ -316,7 +319,10 @@ export async function askAIProactive(order, mode = 1) {
     { role: 'user', content: userMsg },
   ];
   const proactiveModels = [
-    ...(config.groqKey?.startsWith('gsk_') ? [{ url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama3-70b-8192', headers: { Authorization: `Bearer ${config.groqKey}` } }] : []),
+    ...(config.groqKey?.startsWith('gsk_') ? [
+      { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', headers: { Authorization: `Bearer ${config.groqKey}` } },
+      { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.1-8b-instant', headers: { Authorization: `Bearer ${config.groqKey}` } },
+    ] : []),
     { url: `${config.aiApiBase.replace(/\/+$/, '')}/openai`, model: config.aiModel || 'openai' },
     { url: 'https://text.pollinations.ai/openai', model: 'openai' },
     { url: 'https://text.pollinations.ai/openai', model: 'llama' },
