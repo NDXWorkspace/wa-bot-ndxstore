@@ -1,4 +1,5 @@
 import { getDb } from './supabase.js';
+import { logger } from '../utils/logger.js';
 
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -20,10 +21,10 @@ async function loadSessionsFromDb() {
     for (const s of data) {
       handoverSessions.set(s.user_number, {
         adminNumber: s.admin_number,
-        lastActivity: new Date(s.created_at).getTime(),
+        lastActivity: new Date(s.last_activity || s.created_at).getTime(),
       });
     }
-    console.log(`[Handover] Loaded ${data.length} active sessions`);
+    logger.info('Handover', `Loaded ${data.length} active sessions`);
   } catch {}
 }
 
@@ -35,13 +36,24 @@ async function persistSession(userNumber, adminNumber) {
       user_number: userNumber,
       admin_number: adminNumber,
       active: true,
+      last_activity: new Date().toISOString(),
       created_at: new Date().toISOString(),
     }, { onConflict: 'user_number' });
   } catch (e) {
     if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
-      console.error('[Handover] DB persist error:', e.message?.slice(0, 100));
+      logger.error('Handover', 'DB persist error:', e.message?.slice(0, 100));
     }
   }
+}
+
+async function touchSessionDb(userNumber) {
+  try {
+    const db = getDb();
+    if (!db) return;
+    await db.from('wa_handover_sessions')
+      .update({ last_activity: new Date().toISOString() })
+      .eq('user_number', userNumber);
+  } catch {}
 }
 
 async function removeSessionFromDb(userNumber) {
@@ -56,18 +68,15 @@ async function removeSessionFromDb(userNumber) {
 
 loadSessionsFromDb();
 
-// Periodic cleanup for stale sessions + messages
 setInterval(() => {
   const now = Date.now();
-
   for (const [userNumber, session] of handoverSessions) {
     if (now - session.lastActivity > SESSION_TIMEOUT_MS) {
-      console.log(`[Handover] Auto-ending stale session: ${userNumber}`);
       handoverSessions.delete(userNumber);
       sessionTimers.delete(userNumber);
+      removeSessionFromDb(userNumber);
     }
   }
-
   for (const [msgId, data] of forwardedMessages) {
     if (now - data.timestamp > MSG_CLEANUP_AGE_MS) {
       forwardedMessages.delete(msgId);
@@ -89,6 +98,7 @@ function touchSession(userNumber) {
   const session = handoverSessions.get(userNumber);
   if (session) {
     session.lastActivity = Date.now();
+    touchSessionDb(userNumber);
   }
 }
 

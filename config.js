@@ -1,9 +1,16 @@
 import 'dotenv/config';
 
+const REQUIRED = ['SUPABASE_URL', 'SUPABASE_KEY', 'ADMIN_NUMBER'];
+const missing = REQUIRED.filter(k => !process.env[k]);
+if (missing.length > 0) {
+  console.error(`[Config] Missing required env vars: ${missing.join(', ')}`);
+  process.exit(1);
+}
+
 export const config = {
   supabase: {
-    url: process.env.SUPABASE_URL || 'https://jlfrtyyjxkmdetdbeakv.supabase.co',
-    key: process.env.SUPABASE_KEY || '',
+    url: process.env.SUPABASE_URL,
+    key: process.env.SUPABASE_KEY,
   },
   groupId: process.env.GROUP_ID || '',
   adminNumber: process.env.ADMIN_NUMBER || '',
@@ -13,3 +20,5 @@ export const config = {
   aiModel: process.env.AI_MODEL || 'openai',
   groqKey: process.env.GROQ_API_KEY || '',
 };
+
+console.log('[Config] Validated. Admin:', config.adminNumber);

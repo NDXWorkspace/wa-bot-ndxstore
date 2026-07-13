@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS wa_handover_sessions (
   user_number TEXT PRIMARY KEY,
   admin_number TEXT NOT NULL,
   active BOOLEAN DEFAULT true,
+  last_activity TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -53,4 +54,31 @@ INSERT INTO wa_bot_config (key, value) VALUES
   ('bot_paused', to_jsonb(false))
 ON CONFLICT (key) DO NOTHING;
 
-SELECT 'WA Bot NDXStore tables created successfully!' as result;
+-- Default bot_settings
+INSERT INTO wa_bot_config (key, value) VALUES
+  ('bot_settings', to_jsonb('{"jawabDuluan": false, "ungroup": true, "aiMode": 0}'::jsonb))
+ON CONFLICT (key) DO NOTHING;
+
+-- ============================================
+-- Row Level Security (RLS)
+-- Enable RLS on all tables
+-- ============================================
+
+ALTER TABLE wa_chat_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wa_user_limits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wa_handover_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wa_bot_config ENABLE ROW LEVEL SECURITY;
+
+-- Allow service_role full access (used by the bot)
+CREATE POLICY "service_role all" ON wa_chat_history FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role all" ON wa_user_limits FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role all" ON wa_handover_sessions FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role all" ON wa_bot_config FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- Block anon key access
+CREATE POLICY "no anon access" ON wa_chat_history FOR ALL TO anon USING (false);
+CREATE POLICY "no anon access" ON wa_user_limits FOR ALL TO anon USING (false);
+CREATE POLICY "no anon access" ON wa_handover_sessions FOR ALL TO anon USING (false);
+CREATE POLICY "no anon access" ON wa_bot_config FOR ALL TO anon USING (false);
+
+SELECT 'WA Bot NDXStore tables + RLS created successfully!' as result;

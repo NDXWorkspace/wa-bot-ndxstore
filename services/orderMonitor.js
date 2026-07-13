@@ -3,9 +3,12 @@ import { config } from '../config.js';
 import { getDbWithRealtime } from './supabase.js';
 import { enqueueSend } from './rateLimiter.js';
 import { askAIProactive } from './ai.js';
+import { formatPrice, formatTime, formatWaNumber } from '../utils/format.js';
+import { logger } from '../utils/logger.js';
 
 const NOTIFIED_FILE = './.notified.json';
 const PERSIST_DEBOUNCE_MS = 2000;
+const RECONNECT_INTERVAL_MS = 30000;
 
 let notified = new Set();
 let seenOrders = new Map();
@@ -13,13 +16,15 @@ let supabase = null;
 let channel = null;
 let persistTimer = null;
 let persistLock = false;
+let reconnectTimer = null;
+let _settings = { jawabDuluan: false, aiMode: 0 };
 
 async function loadNotified() {
   try {
     const raw = await fsp.readFile(NOTIFIED_FILE, 'utf-8');
     const arr = JSON.parse(raw);
     if (Array.isArray(arr)) notified = new Set(arr);
-    console.log(`[OrderMonitor] Loaded ${notified.size} notified IDs`);
+    logger.info('OrderMonitor', `Loaded ${notified.size} notified IDs`);
   } catch {}
 }
 
@@ -31,7 +36,7 @@ async function persistNotified() {
     await fsp.writeFile(tmp, JSON.stringify([...notified]));
     await fsp.rename(tmp, NOTIFIED_FILE);
   } catch (e) {
-    console.error('[OrderMonitor] Persist error:', e.message);
+    logger.error('OrderMonitor', 'Persist error:', e.message);
   } finally {
     persistLock = false;
   }
@@ -45,33 +50,9 @@ function schedulePersist() {
   }, PERSIST_DEBOUNCE_MS);
 }
 
-function formatPrice(val) {
-  const n = Number(val);
-  return isNaN(n) ? '-' : `Rp${n.toLocaleString('id-ID')}`;
-}
-
-function formatTime(val) {
-  if (!val) return '-';
-  try {
-    return new Date(val).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
-  } catch {
-    return String(val).slice(0, 19);
-  }
-}
-
-function formatWaNumber(raw) {
-  if (!raw) return null;
-  let n = String(raw).replace(/[^0-9]/g, '');
-  if (n.startsWith('0')) n = '62' + n.slice(1);
-  if (n.startsWith('62') && n.length >= 10) return n + '@c.us';
-  return null;
-}
-
-let _settings = { jawabDuluan: false, aiMode: 0 };
-
 function sendNotif(client, order, type) {
   if (!config.groupId) {
-    console.warn('[OrderMonitor] GROUP_ID not set');
+    logger.warn('OrderMonitor', 'GROUP_ID not set');
     return;
   }
   if (notified.has(order.id)) return;
@@ -80,7 +61,6 @@ function sendNotif(client, order, type) {
 
   const msg = formatOrderMessage(order, type);
   enqueueSend(() => client.sendMessage(config.groupId, msg));
-  console.log(`[OrderMonitor] ${type} queued for ${order.id}`);
 
   const userJid = formatWaNumber(order.wa_number);
   if (userJid) {
@@ -97,7 +77,6 @@ function sendNotif(client, order, type) {
         ? `💰 *Pembayaran Diterima!*\n\nHalo *${order.username || 'Kak'}*, pembayaran untuk pesanan *${order.id}* sudah kami terima. Pesanan akan segera diproses.${creds}\n\nTerima kasih telah berbelanja di NDXStore! 🎉`
         : `📩 *Pesanan Baru Diterima*\n\nHalo *${order.username || 'Kak'}*, pesanan kamu *${order.id}* sudah tercatat.\n\nKami akan proses setelah pembayaran dikonfirmasi.${creds}\n\nGunakan *cek ${order.username}* untuk cek status terbaru.`;
       enqueueSend(() => client.sendMessage(userJid, userMsg));
-      console.log(`[OrderMonitor] DM queued for ${userJid}`);
     }
   }
 }
@@ -107,10 +86,9 @@ async function sendAIProactive(client, order, type, userJid) {
     const aiMsg = await askAIProactive(order, _settings.aiMode || 1);
     if (aiMsg) {
       enqueueSend(() => client.sendMessage(userJid, aiMsg));
-      console.log(`[OrderMonitor] AI proactive DM sent to ${userJid}`);
     }
   } catch (e) {
-    console.error('[OrderMonitor] AI proactive error:', e.message);
+    logger.error('OrderMonitor', 'AI proactive error:', e.message);
   }
 }
 
@@ -128,7 +106,6 @@ function sendUpdateToUser(client, order) {
 
   const msg = `📋 *Update Pesanan*\n\nHalo *${order.username || 'Kak'}*,\nPesanan *${order.id}* saat ini: *${label}*.\n\nTerima kasih! 🙏`;
   enqueueSend(() => client.sendMessage(userJid, msg));
-  console.log(`[OrderMonitor] Update DM queued for ${userJid}`);
 }
 
 function formatOrderMessage(order, type) {
@@ -155,12 +132,9 @@ function formatOrderMessage(order, type) {
     extra += '\n🔐 *Butuh bantuan 2FA*';
   }
 
-  let msg = '';
-  if (type === 'payment') {
-    msg = `💰 *PEMBAYARAN DIKONFIRMASI*\n`;
-  } else {
-    msg = `🆕 *PESANAN BARU NDXSTORE*\n`;
-  }
+  let msg = type === 'payment'
+    ? `💰 *PEMBAYARAN DIKONFIRMASI*\n`
+    : `🆕 *PESANAN BARU NDXSTORE*\n`;
 
   msg += `━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📋 *ID:* ${order.id}\n`;
@@ -199,7 +173,9 @@ function handleOrder(client, order) {
     const osChanged = prev.status !== order.order_status;
     const psChanged = prev.payment !== order.payment_status;
     if (osChanged || psChanged) {
-      const confirmed = isPaymentConfirmed(order) && !PAYMENT_OK.includes(prev.status) && !PAYMENT_OK.includes(prev.payment);
+      const confirmed = isPaymentConfirmed(order) &&
+        !PAYMENT_OK.includes(prev.status) &&
+        !PAYMENT_OK.includes(prev.payment);
       if (confirmed) {
         sendNotif(client, order, 'payment');
       }
@@ -220,18 +196,61 @@ async function catchUp(client) {
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.warn(`[OrderMonitor] Catch-up query failed: ${error.message}`);
+      logger.warn('OrderMonitor', `Catch-up failed: ${error.message}`);
       return;
     }
     if (!data?.length) return;
 
-    console.log(`[OrderMonitor] Catch-up: ${data.length} order(s)`);
+    logger.info('OrderMonitor', `Catch-up: ${data.length} order(s)`);
     for (const order of data) {
       handleOrder(client, order);
     }
   } catch (e) {
-    console.warn(`[OrderMonitor] Catch-up error: ${e.message}`);
+    logger.warn('OrderMonitor', `Catch-up error: ${e.message}`);
   }
+}
+
+function setupRealtime(client) {
+  if (channel) {
+    supabase.removeChannel(channel).catch(() => {});
+    channel = null;
+  }
+
+  channel = supabase
+    .channel('wa-bot-orders')
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'transactions' },
+      (payload) => {
+        handleOrder(client, payload.new);
+      }
+    )
+    .on('postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'transactions' },
+      (payload) => {
+        handleOrder(client, payload.new);
+      }
+    )
+    .subscribe((status) => {
+      logger.info('OrderMonitor', `Realtime: ${status}`);
+      if (status === 'SUBSCRIBED') {
+        if (reconnectTimer) {
+          clearInterval(reconnectTimer);
+          reconnectTimer = null;
+        }
+      }
+      if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        startReconnectLoop(client);
+      }
+    });
+}
+
+function startReconnectLoop(client) {
+  if (reconnectTimer) return;
+  logger.warn('OrderMonitor', 'Starting Realtime reconnect loop');
+  reconnectTimer = setInterval(() => {
+    logger.info('OrderMonitor', 'Attempting Realtime reconnect...');
+    setupRealtime(client);
+  }, RECONNECT_INTERVAL_MS);
 }
 
 export async function startOrderMonitor(client, settings) {
@@ -240,37 +259,21 @@ export async function startOrderMonitor(client, settings) {
 
   supabase = getDbWithRealtime();
   if (!supabase) {
-    console.warn('[OrderMonitor] No Supabase key — skipping');
+    logger.warn('OrderMonitor', 'No Supabase — skipping');
     return;
   }
 
   await catchUp(client);
+  setupRealtime(client);
 
-  // Supabase Realtime for live notifications
-  channel = supabase
-    .channel('wa-bot-orders')
-    .on('postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'transactions' },
-      (payload) => {
-        console.log(`[OrderMonitor] INSERT: ${payload.new?.id}`);
-        handleOrder(client, payload.new);
-      }
-    )
-    .on('postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'transactions' },
-      (payload) => {
-        console.log(`[OrderMonitor] UPDATE: ${payload.new?.id}`);
-        handleOrder(client, payload.new);
-      }
-    )
-    .subscribe((status) => {
-      console.log(`[OrderMonitor] Realtime: ${status}`);
-    });
-
-  console.log('[OrderMonitor] Supabase Realtime — no polling');
+  logger.info('OrderMonitor', 'Supabase Realtime active');
 
   return {
     unsubscribe: () => {
+      if (reconnectTimer) {
+        clearInterval(reconnectTimer);
+        reconnectTimer = null;
+      }
       if (channel && supabase) supabase.removeChannel(channel);
       channel = null;
     },

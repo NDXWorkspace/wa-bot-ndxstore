@@ -1,15 +1,111 @@
 import http from 'http';
 import os from 'os';
 import { config } from './config.js';
-import { createClient } from './client.js';
+import { createClient, getCurrentClient } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
-import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran } from './services/menu.js';
+import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin } from './services/handoverService.js';
-import { isOnCooldown } from './services/queue.js';
+import { isOnCooldown, checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
-import { askAI, askAIWithImage, clearHistory } from './services/ai.js';
-import { settings } from './services/settings.js';
+import { askAI, askAIWithImage, clearHistory, clearHistoryExcept } from './services/ai.js';
+import { settings, loadSettings, saveSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
+import { formatPrice, formatTime } from './utils/format.js';
+import { logger } from './utils/logger.js';
+import { API_BASE } from './utils/constants.js';
+
+const WELCOMED_USERS = new Set();
+const blockedUsers = new Set();
+let waClient = null;
+
+async function loadBlockedUsers() {
+  try {
+    const db = getDb();
+    if (!db) return;
+    const { data } = await db.from('wa_bot_config').select('value').eq('key', 'blocked_users').single();
+    if (data?.value && Array.isArray(data.value)) {
+      data.value.forEach(jid => blockedUsers.add(jid));
+      logger.info('Blocklist', `Loaded ${blockedUsers.size} blocked users`);
+    }
+  } catch (e) {
+    if (!e.message?.includes('relation') && !e.message?.includes('does not exist') && !e.message?.includes('PGRST116')) {
+      logger.error('Blocklist', 'Load error:', e.message);
+    }
+  }
+}
+
+async function saveBlockedUsers() {
+  const db = getDb();
+  if (!db) return;
+  try {
+    await db.from('wa_bot_config').upsert({
+      key: 'blocked_users',
+      value: [...blockedUsers],
+    }, { onConflict: 'key' });
+  } catch (e) {
+    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+      logger.error('Blocklist', 'Save error:', e.message);
+    }
+  }
+}
+let botStartedAt = Date.now();
+
+// ─── Health Check ──────────────────────────────────────────────────────
+
+const healthApp = http.createServer(async (_req, res) => {
+  const waConnected = getCurrentClient()?.info?.wid?.user ? true : false;
+  let dbConnected = false;
+  try {
+    const db = getDb();
+    if (db) {
+      const { error } = await db.from('transactions').select('id').limit(1);
+      dbConnected = !error;
+    }
+  } catch {}
+
+  const isOk = waConnected && dbConnected;
+  res.writeHead(isOk ? 200 : 503, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    status: isOk ? 'ok' : 'degraded',
+    wa: waConnected ? 'connected' : 'disconnected',
+    db: dbConnected ? 'connected' : 'error',
+    uptime: os.uptime(),
+    botUptime: Math.floor((Date.now() - botStartedAt) / 1000),
+    aiMode: settings.aiMode,
+    jawabDuluan: settings.jawabDuluan,
+    blockedUsers: blockedUsers.size,
+  }));
+});
+
+const PORT = Number(process.env.PORT) || 3000;
+healthApp.listen(PORT, () => {
+  logger.info('Health', `HTTP server on port ${PORT}`);
+});
+
+// ─── Check Orders ─────────────────────────────────────────────────────
+
+async function checkOrders(msg, username) {
+  try {
+    const resp = await fetch(`${API_BASE}/api/transactions/user/${encodeURIComponent(username.trim())}`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) return await msg.reply('❌ Gagal cek order.');
+    const result = await resp.json();
+    if (!result?.success || !result?.transactions?.length) {
+      return await msg.reply(`Tidak ada order untuk *${username}*.`);
+    }
+    let reply = `📋 *Order ${username}*\n━━━━━━━━━━━━━━\n`;
+    for (const o of result.transactions.slice(0, 5)) {
+      reply += `\n🆔 ${o.id}\n📦 ${o.productName || '-'}\n💰 ${formatPrice(o.priceIdr)}\n📊 ${o.orderStatus || o.paymentStatus || '-'}\n⏰ ${formatTime(o.createdAt)}\n━━━━━━━━━━━━━━`;
+    }
+    await msg.reply(reply);
+  } catch (e) {
+    await msg.reply('❌ Error cek order.');
+    logger.error('CekOrder', e.message);
+  }
+}
+
+// ─── Chat History ──────────────────────────────────────────────────────
 
 async function getChatHistory(limit = 20) {
   try {
@@ -24,79 +120,40 @@ async function getChatHistory(limit = 20) {
   } catch { return []; }
 }
 
-const blockedUsers = new Set();
-let waClient = null;
-let botStartedAt = Date.now();
+// ─── Welcome Message ──────────────────────────────────────────────────
 
-const healthApp = http.createServer(async (_req, res) => {
-  const waConnected = waClient?.info?.wid?.user ? true : false;
-  let dbConnected = false;
-  try {
-    const db = getDb();
-    if (db) {
-      const { error } = await db.from('transactions').select('id').limit(1);
-      dbConnected = !error;
-    }
-  } catch {}
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
-    status: waConnected ? 'ok' : 'degraded',
-    wa: waConnected ? 'connected' : 'disconnected',
-    db: dbConnected ? 'connected' : 'error',
-    uptime: os.uptime(),
-    botUptime: Math.floor((Date.now() - botStartedAt) / 1000),
-    aiMode: settings.aiMode,
-    jawabDuluan: settings.jawabDuluan,
-    blockedUsers: blockedUsers.size,
-  }));
-});
-const PORT = Number(process.env.PORT) || 3000;
-healthApp.listen(PORT, () => {
-  console.log(`[Health] HTTP server on port ${PORT}`);
-});
-
-function formatPrice(val) {
-  const n = Number(val);
-  return isNaN(n) ? '-' : `Rp${n.toLocaleString('id-ID')}`;
+async function sendWelcomeIfNew(client, msg) {
+  const jid = msg.from;
+  if (jid.includes('@g.us')) return;
+  if (WELCOMED_USERS.has(jid)) return;
+  WELCOMED_USERS.add(jid);
+  await msg.reply(
+    `Halo! 👋\n\nSelamat datang di *NDXStore* — tempat top up game & Roblox!\n\nKetik *Menu* untuk lihat pilihan.`
+  );
 }
 
-function formatTime(val) {
-  if (!val) return '-';
-  try { return new Date(val).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }); }
-  catch { return String(val).slice(0, 19); }
+// ─── AI Mode Parsing ──────────────────────────────────────────────────
+
+function parseAiMode(body) {
+  const lower = body.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (lower === '!aimode 0' || lower === '!aimode off' || lower === '!aimode0' || lower === '!aimodeoff') return 0;
+  if (lower === '!aimode 1' || lower === '!aimode1' || lower === '!aimode on') return 1;
+  if (lower === '!aimode 2' || lower === '!aimode2') return 2;
+  return null;
 }
 
-const API_BASE = 'https://ndxstoreid.vercel.app';
-
-async function checkOrders(msg, username) {
-  try {
-    const resp = await fetch(`${API_BASE}/api/transactions/user/${encodeURIComponent(username.trim())}`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!resp.ok) return await msg.reply('❌ Gagal cek order.');
-
-    const result = await resp.json();
-    if (!result?.success || !result?.transactions?.length) {
-      return await msg.reply(`Tidak ada order untuk *${username}*.`);
-    }
-
-    let reply = `📋 *Order ${username}*\n━━━━━━━━━━━━━━\n`;
-    for (const o of result.transactions.slice(0, 5)) {
-      reply += `\n🆔 ${o.id}\n📦 ${o.productName || '-'}\n💰 ${formatPrice(o.priceIdr)}\n📊 ${o.orderStatus || o.paymentStatus || '-'}\n⏰ ${formatTime(o.createdAt)}\n━━━━━━━━━━━━━━`;
-    }
-    await msg.reply(reply);
-  } catch (e) {
-    await msg.reply('❌ Error cek order.');
-    console.error('[CekOrder] Error:', e.message);
-  }
-}
+// ─── Main ─────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('=== WA Bot NDXStore ===');
-  console.log(`Supabase: ${config.supabase.key ? '✓' : '✗'}`);
-  console.log(`Group ID: ${config.groupId || '(not set)'}`);
-  console.log(`Admin: ${config.adminNumber || '(not set)'}`);
-  console.log('');
+  logger.info('Bot', '=== WA Bot NDXStore ===');
+  logger.info('Bot', `Supabase: ${config.supabase.key ? '✓' : '✗'}`);
+  logger.info('Bot', `Group ID: ${config.groupId || '(not set)'}`);
+  logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
+  logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
+
+  await loadSettings();
+  await loadBlockedUsers();
+  startMenuRefresh();
 
   function setupMessageHandler(c) {
     c.removeAllListeners('message_create');
@@ -105,71 +162,80 @@ async function main() {
         const body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from;
         const isAdmin = senderJid.split('@')[0].replace(/^\+/, '') === config.adminNumber.replace(/^\+/, '');
-        console.log('[Msg] from:', senderJid.replace(/@.*/, ''), 'body:', body.slice(0, 40), '| fromMe:', msg.fromMe, '| isAdmin:', isAdmin, '| aiMode:', settings.aiMode);
+        logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}" | fromMe:${msg.fromMe} | admin:${isAdmin} | aiMode:${settings.aiMode}`);
 
+        // ── Block / Unblock ──
         if (body === '!block' && isAdmin) {
           const target = msg.to.includes('@g.us') ? msg.author || msg.from : msg.from;
           blockedUsers.add(target);
+          saveBlockedUsers();
           await msg.reply(`⛔ User diblokir: ${target}`);
           return;
         }
         if (body === '!unblock' && isAdmin) {
           const target = msg.to.includes('@g.us') ? msg.author || msg.from : msg.from;
           blockedUsers.delete(target);
+          saveBlockedUsers();
           await msg.reply(`✅ User di-unblock: ${target}`);
           return;
         }
 
-        // === BLOCKED USERS ===
+        // ── Blocked Users ──
         if (!isAdmin && blockedUsers.has(senderJid)) return;
 
+        // ── Welcome new users (DM only) ──
+        if (!msg.fromMe && !msg.from.includes('@g.us') && !WELCOMED_USERS.has(senderJid)) {
+          await sendWelcomeIfNew(c, msg);
+        }
+
+        // ── History ──
         if (body === '!history' && isAdmin) {
           const limit = parseInt(body.slice(9).trim()) || 20;
           const history = await getChatHistory(limit);
           if (!history?.length) return await msg.reply('📋 Riwayat chat kosong.');
           let reply = `📋 *RIWAYAT CHAT (${history.length})*\n━━━━━━━━━━━━━━\n`;
           for (const h of history.slice(0, 10)) {
-            reply += `\n👤 ${h.jid?.replace(/@.*/, '')}\n💬 ${(h.message || '').slice(0, 50)}${h.message?.length > 50 ? '...' : ''}\n⏰ ${formatTime(h.created_at)}\n━━━━━━━━━━━━━━`;
+            reply += `\n👤 ${h.user_number?.replace(/@.*/, '')}\n💬 ${(h.content || '').slice(0, 50)}${h.content?.length > 50 ? '...' : ''}\n⏰ ${formatTime(h.created_at)}\n━━━━━━━━━━━━━━`;
           }
           await msg.reply(reply);
           return;
         }
 
-        // === ADMIN COMMANDS ===
+        // ── Admin Commands ──
         if (msg.fromMe || isAdmin) {
+          // Aimode with flexible parsing
+          const aimodeVal = parseAiMode(body);
+          if (aimodeVal !== null) {
+            settings.aiMode = aimodeVal;
+            if (aimodeVal === 0) {
+              clearHistoryExcept(senderJid);
+              await msg.reply('Nonaktif');
+            } else {
+              clearHistoryExcept(senderJid);
+              await msg.reply(aimodeVal === 1 ? 'Bima aktif' : 'NDXStore AI aktif');
+            }
+            saveSettings();
+            return;
+          }
+
           if (body === '!aimode') {
-            await msg.reply(`Mode skrg: ${settings.aiMode === 0 ? 'Nonaktif' : settings.aiMode === 1 ? 'Bima (1)' : 'NDXStore (2)'}\nGunakan: !aimode 1 (Bima), !aimode 2 (NDXStore), !aimode 0 (nonaktif)`);
-            return;
-          }
-          if (body === '!aimode 0' || body === '!aimode off') {
-            settings.aiMode = 0;
-            clearHistory('all');
-            await msg.reply('Nonaktif');
-            return;
-          }
-          if (body === '!aimode 1') {
-            settings.aiMode = 1;
-            clearHistory('all');
-            await msg.reply('Bima aktif — semua chat bakal dijawab Bima');
-            return;
-          }
-          if (body === '!aimode 2') {
-            settings.aiMode = 2;
-            clearHistory('all');
-            await msg.reply('NDXStore AI aktif — semua chat dilayani CS NDXStore');
+            await msg.reply(
+              `Mode skrg: ${settings.aiMode === 0 ? 'Nonaktif' : settings.aiMode === 1 ? 'Bima (1)' : 'NDXStore (2)'}\n` +
+              `Gunakan: !aimode 1 (Bima), !aimode 2 (NDXStore), !aimode 0 (nonaktif)`
+            );
             return;
           }
 
           if (body === '!aireset') {
-            clearHistory('all');
-            await msg.reply('🧹 Riwayat chat AI direset');
+            clearHistory(senderJid);
+            await msg.reply('🧹 Riwayat chat direset');
             return;
           }
 
-          const clearMatch = body.match(/^!clear\s+(\d+)(?:\s+(.+))?$/i);
+          // !clear — simplified (removed dead WWebJS page eval)
+          const clearMatch = body.match(/^!clear\s+(\d+)/i);
           if (clearMatch) {
             const num = parseInt(clearMatch[1]);
-            const alsoClearLocal = clearMatch[2]?.toLowerCase() === 'true' || clearMatch[2] === '1';
             if (num < 1 || num > 50) { await msg.reply('❌ Jumlah: 1-50'); return; }
             try {
               const chat = await c.getChatById(msg.from);
@@ -179,44 +245,36 @@ async function main() {
               let ok = 0, fail = 0;
               for (const m of botMsgs) {
                 try {
-                  if (c.pupPage) {
-                    try {
-                      await c.pupPage.evaluate((chatId, msgId) => WWebJS.deleteMessageForEveryone(chatId, msgId), m.from || msg.from, m.id._serialized);
-                      ok++; continue;
-                    } catch {
-                      try {
-                        await c.pupPage.evaluate((chatId, msgId) => WWebJS.deleteMessageForMe(chatId, msgId), m.from || msg.from, m.id._serialized);
-                        ok++; continue;
-                      } catch {}
-                    }
-                  }
-                  if (typeof m.delete === 'function') { await m.delete(true); ok++; continue; }
-                  fail++;
+                  if (typeof m.delete === 'function') { await m.delete(true); ok++; }
+                  else fail++;
                 } catch { fail++; }
               }
-              const parts = [];
-              if (ok) parts.push(`${ok} terhapus`);
-              if (fail) parts.push(`${fail} gagal`);
-              if (alsoClearLocal) parts.push('riwayat dibersihkan');
-              await msg.reply('🧹 ' + parts.join(', '));
+              await msg.reply(`🧹 ${ok} terhapus${fail ? `, ${fail} gagal` : ''}`);
             } catch (e) {
-              await msg.reply('❌ Gagal: ' + e.message.slice(0, 80));
+              await msg.reply(`❌ Gagal: ${e.message.slice(0, 80)}`);
             }
             return;
           }
 
+          // Settings
           if (body === '!aimodesetting') {
-            await msg.reply(`Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'} | Ungroup: ${settings.ungroup ? 'ON (mention/reply)' : 'OFF'}\nGunakan: !aimodesetting jd (jawab duluan), !aimodesetting uningroup (skip grup)`);
+            await msg.reply(
+              `Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'} | ` +
+              `Ungroup: ${settings.ungroup ? 'ON (mention/reply)' : 'OFF'}\n` +
+              `Gunakan: !aimodesetting jd, !aimodesetting uningroup`
+            );
             return;
           }
           if (body === '!aimodesetting jd') {
             settings.jawabDuluan = !settings.jawabDuluan;
-            await msg.reply(`Jawab duluan ${settings.jawabDuluan ? 'ON' : 'OFF'} — AI bakal ${settings.jawabDuluan ? 'proaktif chat pelanggan' : 'diem aja'}`);
+            saveSettings();
+            await msg.reply(`Jawab duluan ${settings.jawabDuluan ? 'ON' : 'OFF'}`);
             return;
           }
           if (body === '!aimodesetting unigroup' || body === '!aimodesetting uningroup') {
             settings.ungroup = !settings.ungroup;
-            await msg.reply(`Ungroup ${settings.ungroup ? 'ON' : 'OFF'} — bot ${settings.ungroup ? 'cuma bales di grup kalo di mention/di-reply' : 'bales di grup kaya biasa'}`);
+            saveSettings();
+            await msg.reply(`Ungroup ${settings.ungroup ? 'ON — cuma bales di grup kalo di mention/di-reply' : 'OFF'}`);
             return;
           }
 
@@ -225,6 +283,7 @@ async function main() {
             if (handled) return;
           }
 
+          // !reply
           if (body.startsWith('!reply ') && config.adminNumber) {
             const rest = body.slice(7).trim();
             const spaceIdx = rest.indexOf(' ');
@@ -237,6 +296,7 @@ async function main() {
             return;
           }
 
+          // Admin reply via quoted message
           if (isAdmin && msg.hasQuotedMsg) {
             const forwarded = await handleAdminReply(c, msg);
             if (forwarded) {
@@ -246,25 +306,28 @@ async function main() {
           }
         }
 
-        // === CORE MENU — case-sensitive (huruf besar di awal) ===
-        if (body === 'Menu' || body === '0') {
+        // ── Core Menu (case-insensitive) ──
+        const lower = body.toLowerCase();
+        if (lower === 'menu' || lower === '0' || body === 'Menu') {
           await msg.reply(getMenuText());
           return;
         }
-        if (body.startsWith('Cek ') || body === '1') {
-          if (body.startsWith('Cek ')) {
+
+        if (lower.startsWith('cek ') || body === '1') {
+          if (lower.startsWith('cek ')) {
             const username = body.slice(4).trim();
             if (username) return await checkOrders(msg, username);
           }
-          await msg.reply('Ketik *Cek [username]* untuk cek status order.\nContoh: *Cek ROWSOWS*');
+          await msg.reply('Ketik *Cek [username]* buat cek status order.\nContoh: *Cek ROWSOWS*');
           return;
         }
+
         if (body === '2') { await msg.reply(getInfoProduk()); return; }
         if (body === '3') { await msg.reply(getCaraOrder()); return; }
         if (body === '5') { await msg.reply(getInfoPembayaran()); return; }
 
-        // === CS HANDOVER (DM only) ===
-        if (body === '4' || body === 'Cs' || body === 'CS') {
+        // ── CS Handover ──
+        if (body === '4' || lower === 'cs') {
           if (config.adminNumber) {
             await startHandover(c, msg, config.adminNumber);
           } else {
@@ -273,9 +336,8 @@ async function main() {
           return;
         }
 
-        // === ACTIVE HANDOVER — forward to admin ===
         if (isHandoverActive(msg.from) && config.adminNumber) {
-          if (body === 'Selesai' || body === 'Stop') {
+          if (lower === 'selesai' || lower === 'stop') {
             endHandover(msg.from);
             await msg.reply('🔚 Sesi CS selesai. Ketik *Menu* untuk kembali.');
             await c.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai\nUser: ${msg.from}`);
@@ -286,15 +348,23 @@ async function main() {
           return;
         }
 
-        // === COOLDOWN (general: 2s, AI: handled above) ===
+        // ── Cooldown ──
         if (isOnCooldown(msg.from, 'default')) return;
 
-        // === SKIP OWN GROUP NOTIFICATIONS ===
+        // ── Daily Limit ──
+        if (!msg.from.includes('@g.us') && !isAdmin) {
+          const limit = await checkDailyLimit(msg.from);
+          if (!limit.allowed) {
+            await msg.reply(`❌ Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`);
+            return;
+          }
+        }
+
+        // ── Group Filters ──
         if (msg.fromMe && msg.from.includes('@g.us')) return;
         if (msg.fromMe) return;
         if (msg.from.includes('@g.us') && !settings.aiMode) return;
 
-        // === UNGROUP: ONLY REPLY WHEN MENTIONED/REPLIED ===
         if (msg.from.includes('@g.us') && settings.ungroup) {
           const botUser = c.info?.wid?.user;
           if (botUser) {
@@ -310,9 +380,8 @@ async function main() {
           }
         }
 
-        // === AI MODE — jawab SEMUA pesan (termasuk gambar) ===
+        // ── AI Mode ──
         if (settings.aiMode > 0) {
-          console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
           try { c.sendPresenceUpdate('composing', msg.from); } catch {}
           const thinkTime = 1500 + Math.random() * 2500;
           await new Promise(r => setTimeout(r, thinkTime));
@@ -330,12 +399,11 @@ async function main() {
           return;
         }
 
-        // === AKHIR AI MODE — sisanya flow normal ===
-
+        // ── Ungrouped DM fallback ──
         if (msg.from.includes('@g.us')) return;
 
       } catch (e) {
-        console.error('[Bot] Handler error:', e.message);
+        logger.error('Bot', 'Handler error:', e.message);
       }
     });
   }
@@ -344,27 +412,28 @@ async function main() {
   setupMessageHandler(waClient);
 
   waClient.on('ready', () => {
-    console.log('[WA] Client ready — bot online!');
+    logger.info('Bot', 'Client ready — bot online!');
     startOrderMonitor(waClient, settings);
   });
 
   waClient.initialize();
 
   function shutdown(signal) {
-    console.log(`\n[Bot] Received ${signal}, shutting down...`);
-    if (waClient) waClient.destroy().then(() => process.exit(0)).catch(() => process.exit(1));
+    logger.info('Bot', `Received ${signal}, shutting down...`);
+    const client = getCurrentClient();
+    if (client) client.destroy().then(() => process.exit(0)).catch(() => process.exit(1));
     else process.exit(0);
   }
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('uncaughtException', (err) => console.error('[FATAL]', err));
-  process.on('unhandledRejection', (reason) => console.error('[FATAL]', reason));
+  process.on('uncaughtException', (err) => logger.error('FATAL', err));
+  process.on('unhandledRejection', (reason) => logger.error('FATAL', reason));
 
-  console.log('[Bot] Starting WhatsApp client...');
+  logger.info('Bot', 'Starting WhatsApp client...');
 }
 
 main().catch((err) => {
-  console.error('[FATAL] Bot failed to start:', err);
+  logger.error('FATAL', 'Bot failed to start:', err.message);
   process.exit(1);
 });

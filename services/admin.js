@@ -1,48 +1,35 @@
 import { config } from '../config.js';
+import { formatPrice, formatTime } from '../utils/format.js';
+import { VALID_ORDER_STATUSES } from '../utils/constants.js';
+import { logger } from '../utils/logger.js';
 
-const API_BASE = 'https://ndxstoreid.vercel.app';
-
-function formatPrice(val) {
-  const n = Number(val);
-  return isNaN(n) ? '-' : `Rp${n.toLocaleString('id-ID')}`;
-}
-
-function formatTime(val) {
-  if (!val) return '-';
-  try {
-    return new Date(val).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
-  } catch {
-    return String(val).slice(0, 19);
-  }
-}
+const API_BASE = process.env.API_BASE || 'https://ndxstoreid.vercel.app';
 
 async function apiCall(method, path, body = null) {
-  const headers = {
-    'Content-Type': 'application/json',
-  };
+  const headers = { 'Content-Type': 'application/json' };
   if (config.apiPassword) {
     headers['x-admin-password'] = config.apiPassword;
   }
   const opts = { method, headers, signal: AbortSignal.timeout(15000) };
   if (body) opts.body = JSON.stringify(body);
   const resp = await fetch(`${API_BASE}${path}`, opts);
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`API ${resp.status}: ${text.slice(0, 100)}`);
+  }
   return await resp.json();
 }
 
 function formatStats(data) {
   if (!data?.success || !data?.stats) return '❌ Gagal ambil statistik.';
   const s = data.stats;
-  let msg = `📊 *STATISTIK NDXSTORE*\n`;
-  msg += `━━━━━━━━━━━━━━━━━━━\n`;
+  let msg = `📊 *STATISTIK NDXSTORE*\n━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📦 *Total Transaksi:* ${s.totalTransactions || 0}\n`;
   msg += `💰 *Total Revenue:* ${formatPrice(s.totalRevenue)}\n`;
   msg += `⏳ *Pending Payment:* ${s.pendingPayments || 0} (${formatPrice(s.pendingAmount)})\n`;
-  msg += `📋 *Pending Orders:* ${s.pendingOrders || 0}\n`;
-  msg += `━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `📋 *Pending Orders:* ${s.pendingOrders || 0}\n━━━━━━━━━━━━━━━━━━━\n`;
   if (s.successToday !== undefined) {
-    msg += `📅 *Hari Ini*\n`;
-    msg += `✅ Sukses: ${s.successToday}\n`;
-    msg += `💰 Revenue: ${formatPrice(s.revenueToday)}\n`;
+    msg += `📅 *Hari Ini*\n✅ Sukses: ${s.successToday}\n💰 Revenue: ${formatPrice(s.revenueToday)}\n`;
   }
   return msg;
 }
@@ -60,56 +47,41 @@ function formatOrderList(orders, title) {
 function formatOrderDetail(tx) {
   if (!tx) return '❌ Transaksi tidak ditemukan.';
   const t = tx.transaction || tx;
-  let msg = `📋 *DETAIL ORDER*\n`;
-  msg += `━━━━━━━━━━━━━━━━━━━\n`;
-  msg += `🆔 *ID:* ${t.id || '-'}\n`;
-  msg += `👤 *User:* ${t.username || '-'}\n`;
+  let msg = `📋 *DETAIL ORDER*\n━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `🆔 *ID:* ${t.id || '-'}\n👤 *User:* ${t.username || '-'}\n`;
   msg += `🎮 *Game:* ${t.gameName || t.game_name || '-'}\n`;
   msg += `📦 *Produk:* ${t.productName || t.product_name || '-'}\n`;
   msg += `💰 *Harga:* ${formatPrice(t.priceIdr ?? t.price_idr)}\n`;
   msg += `💳 *Bayar:* ${t.paymentMethod || t.payment_method || '-'}\n`;
   msg += `📊 *Status:* ${t.orderStatus || t.order_status || '-'}\n`;
   msg += `💳 *Payment:* ${t.paymentStatus || t.payment_status || '-'}\n`;
-  msg += `📞 *WA:* ${t.waNumber || t.wa_number || '-'}\n`;
-  msg += `📧 *Email:* ${t.email || '-'}\n`;
+  msg += `📞 *WA:* ${t.waNumber || t.wa_number || '-'}\n📧 *Email:* ${t.email || '-'}\n`;
   msg += `📦 *Qty:* ${t.quantity || 1}\n`;
 
-  if (t.robloxId || t.roblox_id) {
-    msg += `🆔 *Roblox ID:* ${t.robloxId || t.roblox_id}\n`;
-  }
-  if (t.robloxPassword || t.roblox_password) {
-    msg += `🔑 *Password:* ${t.robloxPassword || t.roblox_password}\n`;
-  }
-  if (t.backupCode || t.backup_code) {
-    msg += `🔐 *Backup Code:* ${t.backupCode || t.backup_code}\n`;
-  }
-  if (t.contactAdmin || t.contact_admin) {
-    msg += `🔐 *Butuh 2FA*\n`;
-  }
+  if (t.robloxId || t.roblox_id) msg += `🆔 *Roblox ID:* ${t.robloxId || t.roblox_id}\n`;
+  if (t.robloxPassword || t.roblox_password) msg += `🔑 *Password:* ${t.robloxPassword || t.roblox_password}\n`;
+  if (t.backupCode || t.backup_code) msg += `🔐 *Backup Code:* ${t.backupCode || t.backup_code}\n`;
+  if (t.contactAdmin || t.contact_admin) msg += `🔐 *Butuh 2FA*\n`;
 
   const ml = t.mlData || t.ml_data;
   if (ml && typeof ml === 'object') {
-    msg += `🆔 *ML ID:* ${ml.userId || ml.user_id || '-'}\n`;
-    msg += `🌍 *Zone:* ${ml.zoneId || ml.zone_id || '-'}\n`;
+    msg += `🆔 *ML ID:* ${ml.userId || ml.user_id || '-'}\n🌍 *Zone:* ${ml.zoneId || ml.zone_id || '-'}\n`;
   }
 
   msg += `⏰ *Dibuat:* ${formatTime(t.createdAt || t.created_at)}\n`;
-  if (t.updatedAt || t.updated_at) {
-    msg += `🔄 *Update:* ${formatTime(t.updatedAt || t.updated_at)}\n`;
-  }
+  if (t.updatedAt || t.updated_at) msg += `🔄 *Update:* ${formatTime(t.updatedAt || t.updated_at)}\n`;
   msg += `━━━━━━━━━━━━━━━━━━━`;
   return msg;
 }
 
 const HELPTEXT = `📋 *ADMIN COMMANDS*\n━━━━━━━━━━━━━━━━━━━
-!help — List command ini
-!stats — Statistik hari ini
+!help — List command
+!stats — Statistik
 !orders — 5 order terbaru
 !pending — Order pending
-!detail NDX-XXXX — Detail lengkap
-!status NDX-XXXX SUCCESS — Set SUCCESS
-!status NDX-XXXX PROCESSING — Set Processing
-!status NDX-XXXX REJECTED — Tolak order
+!pending [game] — Filter by game
+!detail NDX-XXXX — Detail order
+!status NDX-XXXX STATUS — Update status
 ━━━━━━━━━━━━━━━━━━━`;
 
 export async function handleAdminCommand(client, msg, body) {
@@ -119,7 +91,7 @@ export async function handleAdminCommand(client, msg, body) {
     await msg.reply(isGroup
       ? `Group ID: ${jid}@g.us\n\nSimpan di .env:\nGROUP_ID=${jid}@g.us`
       : 'Ini bukan grup.');
-    if (isGroup) console.log('[Bot] Group ID:', jid);
+    if (isGroup) logger.info('Bot', 'Group ID:', jid);
     return true;
   }
 
@@ -178,7 +150,6 @@ export async function handleAdminCommand(client, msg, body) {
     return true;
   }
 
-  // !status NDX-XXXX <STATUS>
   if (body.startsWith('!status ')) {
     const rest = body.slice(8).trim();
     const spaceIdx = rest.indexOf(' ');
@@ -187,11 +158,9 @@ export async function handleAdminCommand(client, msg, body) {
     const txId = rest.slice(0, spaceIdx).toUpperCase();
     const statusArg = rest.slice(spaceIdx + 1).toUpperCase();
 
-    if (!txId.startsWith('NDX-')) return await msg.reply('❌ Format ID salah. Contoh: !status NDX-XXXX SUCCESS');
-
-    const validStatuses = ['SUCCESS', 'PROCESSING', 'REJECTED', 'PENDING', 'WAITING_PAYMENT'];
-    if (!validStatuses.includes(statusArg)) {
-      return await msg.reply(`❌ Status tidak valid. Pilih: ${validStatuses.join(', ')}`);
+    if (!txId.startsWith('NDX-')) return await msg.reply('❌ Format ID salah.');
+    if (!VALID_ORDER_STATUSES.includes(statusArg)) {
+      return await msg.reply(`❌ Status tidak valid. Pilih: ${VALID_ORDER_STATUSES.join(', ')}`);
     }
 
     try {

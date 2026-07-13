@@ -1,4 +1,5 @@
 import { getDb } from './supabase.js';
+import { logger } from '../utils/logger.js';
 
 const DEFAULTS = {
   menu_text: `━━━ *NDXSTORE* ━━━
@@ -27,14 +28,20 @@ async function loadFromDb() {
       .in('key', Object.keys(DEFAULTS));
     if (!data?.length) return;
     for (const row of data) {
-      if (row.value && typeof row.value === 'string') {
-        cache[row.key] = row.value;
+      if (row.value) {
+        const val = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
+        cache[row.key] = val;
       }
     }
+    logger.info('Menu', 'Loaded from DB');
   } catch {}
 }
 
-loadFromDb();
+let refreshTimer = null;
+export function startMenuRefresh() {
+  loadFromDb();
+  refreshTimer = setInterval(loadFromDb, 5 * 60 * 1000);
+}
 
 export function getMenuText() { return cache.menu_text; }
 export function getInfoProduk() { return cache.info_produk; }
