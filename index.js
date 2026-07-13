@@ -103,7 +103,7 @@ async function main() {
       try {
         const body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from;
-        const isAdmin = senderJid.split('@')[0] === config.adminNumber;
+        const isAdmin = senderJid.split('@')[0].replace(/^\+/, '') === config.adminNumber.replace(/^\+/, '');
         console.log('[Msg] from:', senderJid.replace(/@.*/, ''), 'body:', body.slice(0, 40), '| fromMe:', msg.fromMe, '| isAdmin:', isAdmin, '| aiMode:', aiMode);
 
         if (body === '!block' && isAdmin) {
