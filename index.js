@@ -266,7 +266,12 @@ async function main() {
         // === SKIP OWN GROUP NOTIFICATIONS ===
         if (msg.fromMe && msg.from.includes('@g.us')) return;
         if (msg.fromMe) return;
-        if (msg.from.includes('@g.us') && (!settings.aiMode || settings.ungroup)) return;
+        if (msg.from.includes('@g.us') && !settings.aiMode) return;
+        if (msg.from.includes('@g.us') && settings.ungroup) {
+          const isMentioned = msg.mentionedIds?.some(id => id.includes(c.info.wid.user));
+          const isReplyToBot = msg.hasQuotedMsg ? (await msg.getQuotedMessage()).fromMe : false;
+          if (!isMentioned && !isReplyToBot) return;
+        }
 
 
         // === AI MODE — jawab SEMUA pesan (termasuk gambar) ===

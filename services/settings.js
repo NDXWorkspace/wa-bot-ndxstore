@@ -1,5 +1,5 @@
 export const settings = {
   jawabDuluan: false,
-  ungroup: false,
+  ungroup: true,
   aiMode: 0,
 };
