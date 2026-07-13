@@ -112,17 +112,28 @@ async function main() {
         }
       }
 
-      // === SKIP OWN GROUP NOTIFICATIONS (bot sending order notif, etc) ===
+      // === SKIP OWN GROUP NOTIFICATIONS ===
       if (msg.fromMe && msg.from.includes('@g.us')) return;
-      // === IGNORE OTHER GROUP MESSAGES (unless AI mode) ===
-      if (!aiMode && msg.from.includes('@g.us')) return;
+
+      // === AI MODE — jawab SEMUA pesan ===
+      if (aiMode) {
+        if (msg.fromMe) return;
+        const reply = await askAI(msg.from, body);
+        if (reply) await msg.reply(reply);
+        return;
+      }
+
+      // === AKHIR AI MODE — sisanya flow normal ===
+
+      // Skip group messages if not AI mode
+      if (msg.from.includes('@g.us')) return;
 
       // === ACTIVE HANDOVER — forward to admin ===
       if (isHandoverActive(msg.from) && config.adminNumber) {
         if (body.toLowerCase() === 'selesai' || body.toLowerCase() === 'stop') {
           endHandover(msg.from);
           await msg.reply('🔚 Sesi CS selesai. Ketik *menu* untuk kembali.');
-          await client.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai*\nUser: ${msg.from}`);
+          await client.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai\nUser: ${msg.from}`);
           return;
         }
         await forwardToAdmin(client, msg.from, body, config.adminNumber);
@@ -161,14 +172,6 @@ async function main() {
         return;
       }
       if (lowered === '5') { await msg.reply(INFO_PEMBAYARAN); return; }
-
-      // === AI MODE — reply to anything not handled ===
-      if (aiMode) {
-        if (msg.fromMe) return; // Skip bot's own replies (prevents loop)
-        const reply = await askAI(msg.from, body);
-        if (reply) await msg.reply(reply);
-        return;
-      }
 
       // Unknown — ignore
     } catch (e) {
