@@ -23,7 +23,7 @@ async function getChatHistory(limit = 20) {
   } catch { return []; }
 }
 
-let aiMode = false;
+let aiMode = 0;
 const blockedUsers = new Set();
 let waClient = null;
 let botStartedAt = Date.now();
@@ -137,9 +137,25 @@ async function main() {
         // === ADMIN COMMANDS ===
         if (msg.fromMe || isAdmin) {
           if (body === '!aimode') {
-            aiMode = !aiMode;
-            await msg.reply(aiMode ? 'Aktif — semua chat bakal dijawab' : 'Nonaktif');
-            if (!aiMode) clearHistory('all');
+            await msg.reply(`Mode skrg: ${aiMode === 0 ? 'Nonaktif' : aiMode === 1 ? 'Bima (1)' : 'NDXStore (2)'}\nGunakan: !aimode 1 (Bima), !aimode 2 (NDXStore), !aimode 0 (nonaktif)`);
+            return;
+          }
+          if (body === '!aimode 0' || body === '!aimode off') {
+            aiMode = 0;
+            clearHistory('all');
+            await msg.reply('Nonaktif');
+            return;
+          }
+          if (body === '!aimode 1') {
+            aiMode = 1;
+            clearHistory('all');
+            await msg.reply('Bima aktif — semua chat bakal dijawab Bima');
+            return;
+          }
+          if (body === '!aimode 2') {
+            aiMode = 2;
+            clearHistory('all');
+            await msg.reply('NDXStore AI aktif — semua chat dilayani CS NDXStore');
             return;
           }
 
@@ -199,10 +215,10 @@ async function main() {
         if (msg.from.includes('@g.us') && !aiMode) return;
 
         // === AI MODE — jawab SEMUA pesan ===
-        if (aiMode) {
+        if (aiMode > 0) {
           console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
           try {
-            const reply = await askAI(msg.from, body);
+            const reply = await askAI(msg.from, body, aiMode);
             if (reply) await msg.reply(reply);
             else await msg.reply('Maaf, lagi error. Coba lagi ya.');
           } catch (e) {
