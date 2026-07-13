@@ -6,4 +6,3 @@ wwebjs_cache/
 *.log
 .notified.json
 
-.env
