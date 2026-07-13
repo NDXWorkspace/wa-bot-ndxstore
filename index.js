@@ -138,7 +138,7 @@ async function main() {
         if (msg.fromMe || isAdmin) {
           if (body === '!aimode') {
             aiMode = !aiMode;
-            await msg.reply(aiMode ? '🤖 AI mode ON — semua chat bakal dijawab AI' : '🤖 AI mode OFF');
+            await msg.reply(aiMode ? 'Raka aktif — semua chat bakal dijawab Raka' : 'Raka nonaktif');
             if (!aiMode) clearHistory('all');
             return;
           }
@@ -204,10 +204,10 @@ async function main() {
           try {
             const reply = await askAI(msg.from, body);
             if (reply) await msg.reply(reply);
-            else await msg.reply('🤖 Maaf, lagi error. Coba lagi ya.');
+            else await msg.reply('Maaf, lagi error. Coba lagi ya.');
           } catch (e) {
             console.error('[AiMode] Error:', e.message);
-            await msg.reply('🤖 Error, coba lagi ya.');
+            await msg.reply('Error, coba lagi ya.');
           }
           return;
         }
