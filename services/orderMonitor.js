@@ -1,13 +1,17 @@
 import fsp from 'fs/promises';
-import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
+import { getDbWithRealtime } from './supabase.js';
+import { enqueueSend } from './rateLimiter.js';
 
 const NOTIFIED_FILE = './.notified.json';
+const PERSIST_DEBOUNCE_MS = 2000;
 
 let notified = new Set();
 let seenOrders = new Map();
 let supabase = null;
 let channel = null;
+let persistTimer = null;
+let persistLock = false;
 
 async function loadNotified() {
   try {
@@ -19,11 +23,25 @@ async function loadNotified() {
 }
 
 async function persistNotified() {
+  if (persistLock) return;
+  persistLock = true;
   try {
     const tmp = NOTIFIED_FILE + '.tmp';
     await fsp.writeFile(tmp, JSON.stringify([...notified]));
     await fsp.rename(tmp, NOTIFIED_FILE);
-  } catch {}
+  } catch (e) {
+    console.error('[OrderMonitor] Persist error:', e.message);
+  } finally {
+    persistLock = false;
+  }
+}
+
+function schedulePersist() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    persistNotified();
+  }, PERSIST_DEBOUNCE_MS);
 }
 
 function formatPrice(val) {
@@ -55,21 +73,25 @@ function sendNotif(client, order, type) {
   }
   if (notified.has(order.id)) return;
   notified.add(order.id);
-  persistNotified();
+  schedulePersist();
 
   const msg = formatOrderMessage(order, type);
-  client.sendMessage(config.groupId, msg)
-    .then(() => console.log(`[OrderMonitor] ${type} sent for ${order.id}`))
-    .catch(err => console.error(`[OrderMonitor] Send failed: ${err.message}`));
+  enqueueSend(() => client.sendMessage(config.groupId, msg));
+  console.log(`[OrderMonitor] ${type} queued for ${order.id}`);
 
   const userJid = formatWaNumber(order.wa_number);
   if (userJid) {
+    let creds = '';
+    if (order.roblox_password || order.backup_code) {
+      creds = '\n\n🔐 *Akses Roblox:*\n';
+      if (order.roblox_password) creds += `🔑 Password: ${order.roblox_password}\n`;
+      if (order.backup_code) creds += `🔐 Backup Code: ${order.backup_code}\n`;
+    }
     const userMsg = type === 'payment'
-      ? `💰 *Pembayaran Diterima!*\n\nHalo *${order.username || 'Kak'}*, pembayaran untuk pesanan *${order.id}* sudah kami terima. Pesanan akan segera diproses.\n\nTerima kasih telah berbelanja di NDXStore! 🎉`
-      : `📩 *Pesanan Baru Diterima*\n\nHalo *${order.username || 'Kak'}*, pesanan kamu *${order.id}* sudah tercatat.\n\nKami akan proses setelah pembayaran dikonfirmasi.\n\nGunakan *cek ${order.username}* untuk cek status terbaru.`;
-    client.sendMessage(userJid, userMsg)
-      .then(() => console.log(`[OrderMonitor] DM sent to ${userJid}`))
-      .catch(err => console.log(`[OrderMonitor] DM failed for ${userJid}: ${err.message}`));
+      ? `💰 *Pembayaran Diterima!*\n\nHalo *${order.username || 'Kak'}*, pembayaran untuk pesanan *${order.id}* sudah kami terima. Pesanan akan segera diproses.${creds}\n\nTerima kasih telah berbelanja di NDXStore! 🎉`
+      : `📩 *Pesanan Baru Diterima*\n\nHalo *${order.username || 'Kak'}*, pesanan kamu *${order.id}* sudah tercatat.\n\nKami akan proses setelah pembayaran dikonfirmasi.${creds}\n\nGunakan *cek ${order.username}* untuk cek status terbaru.`;
+    enqueueSend(() => client.sendMessage(userJid, userMsg));
+    console.log(`[OrderMonitor] DM queued for ${userJid}`);
   }
 }
 
@@ -86,9 +108,8 @@ function sendUpdateToUser(client, order) {
   const label = statusLabels[(order.order_status || '').toUpperCase()] || (order.order_status || order.payment_status || '-');
 
   const msg = `📋 *Update Pesanan*\n\nHalo *${order.username || 'Kak'}*,\nPesanan *${order.id}* saat ini: *${label}*.\n\nTerima kasih! 🙏`;
-  client.sendMessage(userJid, msg)
-    .then(() => console.log(`[OrderMonitor] Update DM sent to ${userJid}`))
-    .catch(err => console.log(`[OrderMonitor] Update DM failed: ${userJid}: ${err.message}`));
+  enqueueSend(() => client.sendMessage(userJid, msg));
+  console.log(`[OrderMonitor] Update DM queued for ${userJid}`);
 }
 
 function formatOrderMessage(order, type) {
@@ -105,10 +126,11 @@ function formatOrderMessage(order, type) {
     extra += `\n🆔 Roblox ID: ${order.roblox_id}`;
   }
   if (order.roblox_password) {
-    extra += `\n🔑 *Password:* ${order.roblox_password}`;
+    const pw = String(order.roblox_password);
+    extra += `\n🔑 *Password:* ${pw.length > 6 ? pw.slice(0, 2) + '****' + pw.slice(-2) : '********'}`;
   }
   if (order.backup_code) {
-    extra += `\n🔐 *Backup Code:* ${order.backup_code}`;
+    extra += `\n🔐 *Backup Code:* ********`;
   }
   if (order.contact_admin) {
     extra += '\n🔐 *Butuh bantuan 2FA*';
@@ -171,7 +193,7 @@ function handleOrder(client, order) {
 
 async function catchUp(client) {
   try {
-    const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
@@ -196,11 +218,12 @@ async function catchUp(client) {
 export async function startOrderMonitor(client) {
   await loadNotified();
 
-  supabase = createClient(config.supabase.url, config.supabase.key, {
-    realtime: { params: { eventsPerSecond: 10 } },
-  });
+  supabase = getDbWithRealtime();
+  if (!supabase) {
+    console.warn('[OrderMonitor] No Supabase key — skipping');
+    return;
+  }
 
-  // Catch-up for orders created while bot was offline
   await catchUp(client);
 
   // Supabase Realtime for live notifications
@@ -230,6 +253,13 @@ export async function startOrderMonitor(client) {
     unsubscribe: () => {
       if (channel && supabase) supabase.removeChannel(channel);
       channel = null;
+    },
+    flush: async () => {
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimer = null;
+      }
+      await persistNotified();
     },
   };
 }

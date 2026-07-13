@@ -10,6 +10,8 @@ const MAX_DELAY = 300000;
 let client = null;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
+let isReconnecting = false;
+let onNewClient = null;
 
 async function getPuppeteerConfig() {
   const baseArgs = [
@@ -54,56 +56,78 @@ async function getPuppeteerConfig() {
   return { headless: true, args: baseArgs };
 }
 
-export async function createClient() {
-  const puppeteerConfig = await getPuppeteerConfig();
+function calcDelay(attempt) {
+  const jitter = Math.random() * 1000;
+  return Math.min(BASE_DELAY * Math.pow(2, attempt - 1) + jitter, MAX_DELAY);
+}
 
-  client = new Client({
+async function createClientCore() {
+  const puppeteerConfig = await getPuppeteerConfig();
+  const c = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
     puppeteer: puppeteerConfig,
   });
 
-  client.on('qr', (qr) => {
+  c.on('qr', (qr) => {
     console.log('\n[WA] Scan QR code ini dengan WhatsApp Anda:');
     qrcode.generate(qr, { small: true });
   });
 
-  client.on('authenticated', () => {
+  c.on('authenticated', () => {
     console.log('[WA] Authenticated');
   });
 
-  client.on('ready', () => {
+  c.on('ready', () => {
     reconnectAttempt = 0;
-    reconnectTimer = null;
+    isReconnecting = false;
+    console.log('[WA] Client ready');
   });
 
-  client.on('auth_failure', (msg) => {
+  c.on('auth_failure', (msg) => {
     console.error('[WA] Auth failure:', msg);
   });
 
-  client.on('disconnected', async (reason) => {
-    if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
-      console.error(`[WA] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
-      process.exit(1);
-      return;
-    }
-
-    reconnectAttempt++;
-    const jitter = Math.random() * 1000;
-    const delay = Math.min(BASE_DELAY * Math.pow(2, reconnectAttempt - 1) + jitter, MAX_DELAY);
-    console.warn(`[WA] Disconnected: ${reason} — reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`);
-
-    try { await client.destroy(); } catch {}
-    client = null;
-
-    reconnectTimer = setTimeout(async () => {
-      try {
-        const newClient = await createClient();
-        newClient.initialize();
-      } catch (e) {
-        console.error('[WA] Reconnect init failed:', e.message);
-      }
-    }, delay);
+  c.on('disconnected', async (reason) => {
+    if (isReconnecting) return;
+    console.warn(`[WA] Disconnected: ${reason}`);
+    reconnect(c);
   });
 
+  return c;
+}
+
+async function reconnect(oldClient) {
+  if (isReconnecting) return;
+  isReconnecting = true;
+
+  try { try { await oldClient.destroy(); } catch {} } catch {}
+
+  while (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+    reconnectAttempt++;
+    const delay = calcDelay(reconnectAttempt);
+    console.warn(`[WA] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`);
+
+    await new Promise(resolve => { reconnectTimer = setTimeout(resolve, delay); });
+
+    try {
+      client = await createClientCore();
+      if (onNewClient) onNewClient(client);
+      client.initialize();
+      isReconnecting = false;
+      return;
+    } catch (e) {
+      console.error(`[WA] Reconnect attempt ${reconnectAttempt} failed:`, e.message);
+    }
+  }
+
+  console.error(`[WA] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
+  isReconnecting = false;
+  process.exit(1);
+}
+
+export async function createClient(setupHandler) {
+  if (client) return client;
+  onNewClient = setupHandler || null;
+  client = await createClientCore();
   return client;
 }

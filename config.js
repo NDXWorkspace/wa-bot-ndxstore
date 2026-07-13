@@ -11,4 +11,5 @@ export const config = {
   aiKey: process.env.AI_API_KEY || '',
   aiApiBase: process.env.AI_API_BASE || 'https://text.pollinations.ai',
   aiModel: process.env.AI_MODEL || 'openai',
+  groqKey: process.env.GROQ_API_KEY || '',
 };

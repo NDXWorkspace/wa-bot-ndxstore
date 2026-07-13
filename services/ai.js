@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { getDb } from './supabase.js';
 
 const MODEL = config.aiModel || 'openai';
 const API_BASE = config.aiApiBase.replace(/\/+$/, '');
@@ -36,52 +37,117 @@ export function clearHistory(jid) {
   conversationHistory.delete(jid);
 }
 
-async function tryFetch(url, body) {
+async function persistToDb(jid, role, content) {
+  try {
+    const db = getDb();
+    if (!db) return;
+    await db.from('wa_chat_history').insert({
+      user_number: jid,
+      role,
+      content: content.slice(0, 2000),
+    });
+  } catch (e) {
+    // Table might not exist yet — ignore
+    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+      console.error('[AI] DB persist error:', e.message?.slice(0, 100));
+    }
+  }
+}
+
+async function loadHistoryFromDb(jid) {
+  try {
+    const db = getDb();
+    if (!db) return [];
+    const { data } = await db
+      .from('wa_chat_history')
+      .select('role, content')
+      .eq('user_number', jid)
+      .order('created_at', { ascending: false })
+      .limit(MAX_HISTORY);
+    if (!data?.length) return [];
+    const hist = data.reverse().map(m => ({ role: m.role, content: m.content }));
+    conversationHistory.set(jid, hist);
+    return hist;
+  } catch {
+    return [];
+  }
+}
+
+async function getOrLoadHistory(jid) {
+  let hist = getHistory(jid);
+  if (hist.length === 0) {
+    hist = await loadHistoryFromDb(jid);
+  }
+  return hist;
+}
+
+function maskKey(str) {
+  if (!str || str.length < 8) return str;
+  return str.slice(0, 4) + '****' + str.slice(-4);
+}
+
+async function tryFetch(url, body, headers = {}) {
   try {
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(25000),
     });
     if (!resp.ok) {
       const err = await resp.text();
-      console.error(`[AI] ${url.split('//')[1]} error ${resp.status}:`, err.slice(0, 100));
+      const short = url.length > 50 ? url.split('//')[1]?.slice(0, 40) : url;
+      console.error(`[AI] ${short} error ${resp.status}:`, err.slice(0, 100));
       return null;
     }
     const data = await resp.json();
     return data?.choices?.[0]?.message?.content?.trim() || null;
   } catch (e) {
-    console.error(`[AI] ${url.split('//')[1]} fetch error:`, e.message);
+    const short = url.length > 50 ? url.split('//')[1]?.slice(0, 40) : url;
+    console.error(`[AI] ${short} fetch error:`, e.message);
     return null;
   }
+}
+
+function saveExchange(jid, userMsg, reply) {
+  addHistory(jid, 'user', userMsg);
+  addHistory(jid, 'assistant', reply);
+  persistToDb(jid, 'user', userMsg);
+  persistToDb(jid, 'assistant', reply);
 }
 
 export async function askAI(jid, message) {
   if (!message?.trim()) return '...';
 
-  const userHist = getHistory(jid);
+  const userHist = await getOrLoadHistory(jid);
   const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
 
   const recent = userHist.slice(-CONTEXT_SIZE);
   for (const m of recent) messages.push(m);
   messages.push({ role: 'user', content: message });
 
-  const baseBody = { model: MODEL, messages, max_tokens: 150, temperature: 0.5 };
+  const baseBody = { messages, max_tokens: 150, temperature: 0.5 };
 
-  const endpoints = [
-    { url: `${API_BASE}/openai`, body: baseBody },
-    { url: 'https://text.pollinations.ai/openai', body: { ...baseBody, model: MODEL || 'openai' } },
-    { url: 'https://text.pollinations.ai/openai', body: { ...baseBody, model: 'llama' } },
-  ];
+  // 1) Pollinations with configured model
+  const reply1 = await tryFetch(`${API_BASE}/openai`, { ...baseBody, model: MODEL || 'openai' });
+  if (reply1) { saveExchange(jid, message, reply1); return reply1; }
 
-  for (const { url, body } of endpoints) {
-    const reply = await tryFetch(url, body);
-    if (reply) {
-      addHistory(jid, 'user', message);
-      addHistory(jid, 'assistant', reply);
-      return reply;
-    }
+  // 2) Pollinations fallback model llama
+  const reply2 = await tryFetch(`${API_BASE}/openai`, { ...baseBody, model: 'llama' });
+  if (reply2) { saveExchange(jid, message, reply2); return reply2; }
+
+  // 3) Pollinations direct (bypass configured base)
+  const reply3 = await tryFetch('https://text.pollinations.ai/openai', { ...baseBody, model: 'openai' });
+  if (reply3) { saveExchange(jid, message, reply3); return reply3; }
+
+  // 4) Groq (if API key configured) — fast & free
+  if (config.groqKey) {
+    const reply4 = await tryFetch(
+      'https://api.groq.com/openai/v1/chat/completions',
+      { ...baseBody, model: 'llama3-70b-8192' },
+      { Authorization: `Bearer ${config.groqKey}` }
+    );
+    if (reply4) { saveExchange(jid, message, reply4); return reply4; }
   }
 
   console.error('[AI] All endpoints failed');

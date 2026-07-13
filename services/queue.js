@@ -1,18 +1,28 @@
 const cooldowns = new Map();
-const COOLDOWN_MS = 2000;
-const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const COOLDOWN_DEFAULT = 2500;
+const COOLDOWN_AI = 5000;
+const CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
 
 // Periodic cleanup of stale cooldown entries
 setInterval(() => {
-  const cutoff = Date.now() - COOLDOWN_MS;
-  for (const [jid, ts] of cooldowns) {
-    if (ts < cutoff) cooldowns.delete(jid);
+  const now = Date.now();
+  for (const [jid, entry] of cooldowns) {
+    if (now - entry.ts > 60000) cooldowns.delete(jid);
   }
 }, CLEANUP_INTERVAL_MS);
 
-export function isOnCooldown(userJid) {
-  const last = cooldowns.get(userJid);
-  if (last && Date.now() - last < COOLDOWN_MS) return true;
-  cooldowns.set(userJid, Date.now());
+export function isOnCooldown(userJid, type = 'default') {
+  const cooldown = type === 'ai' ? COOLDOWN_AI : COOLDOWN_DEFAULT;
+  const now = Date.now();
+  const entry = cooldowns.get(userJid);
+  if (entry && now - entry.ts < cooldown) {
+    if (entry.type === type) return true;
+    if (type === 'ai' && now - entry.ts < COOLDOWN_DEFAULT) return true;
+  }
+  cooldowns.set(userJid, { ts: now, type });
   return false;
+}
+
+export function clearCooldown(userJid) {
+  cooldowns.delete(userJid);
 }
