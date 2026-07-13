@@ -67,9 +67,10 @@ async function main() {
 
   client.on('message_create', async (msg) => {
     try {
-      const body = msg.body.trim();
+      const body = msg.body?.trim() || '';
       const senderJid = msg.author || msg.from;
       const isAdmin = senderJid.split('@')[0] === config.adminNumber;
+      console.log('[Msg] from:', senderJid.replace(/@.*/, ''), 'body:', body.slice(0, 40), '| fromMe:', msg.fromMe, '| isAdmin:', isAdmin, '| aiMode:', aiMode);
 
       // === ADMIN COMMANDS ===
       if (msg.fromMe || isAdmin) {
