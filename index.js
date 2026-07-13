@@ -174,12 +174,13 @@ async function main() {
             try {
               const chat = await c.getChatById(msg.from);
               const allMsgs = await chat.fetchMessages({ limit: Math.min(num * 5, 100) });
+              console.log('[Clear] fetched', allMsgs.length, 'msgs, fromMe:', allMsgs.filter(m => m.fromMe).length);
               const botMsgs = allMsgs.filter(m => m.fromMe).slice(0, num);
               if (!botMsgs.length) { await msg.reply('❌ Gak ada pesan bot.'); return; }
               let okForAll = 0, okForMe = 0, fail = 0;
               for (const m of botMsgs) {
-                try { await m.delete(true); okForAll++; } catch {
-                  try { await m.delete(false); okForMe++; } catch { fail++; }
+                try { if (typeof m.delete !== 'function') { fail++; continue; } await m.delete(true); okForAll++; } catch (e1) {
+                  try { await m.delete(false); okForMe++; } catch (e2) { console.log('[Clear] delete fail:', e1?.message, e2?.message); fail++; }
                 }
               }
               const parts = [];
