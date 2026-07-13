@@ -7,4 +7,5 @@ export const config = {
   },
   groupId: process.env.GROUP_ID || '',
   adminNumber: process.env.ADMIN_NUMBER || '',
+  apiPassword: process.env.API_PASSWORD || '',
 };

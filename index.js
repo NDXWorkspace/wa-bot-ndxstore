@@ -5,6 +5,7 @@ import { startOrderMonitor } from './services/orderMonitor.js';
 import { MENU_TEXT, INFO_PRODUK, CARA_ORDER, INFO_PEMBAYARAN } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin } from './services/handoverService.js';
 import { isOnCooldown } from './services/queue.js';
+import { handleAdminCommand } from './services/admin.js';
 
 const healthApp = http.createServer((_req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -68,14 +69,9 @@ async function main() {
 
       // === ADMIN COMMANDS ===
       if (msg.fromMe || isAdmin) {
-        if (body === '!groupid') {
-          const isGroup = msg.to.includes('@g.us');
-          const jid = msg.to.replace(/@(g\.us|s\.whatsapp\.net)/g, '');
-          await msg.reply(isGroup
-            ? `Group ID: ${jid}@g.us\n\nSimpan di .env:\nGROUP_ID=${jid}@g.us`
-            : 'Ini bukan grup.');
-          if (isGroup) console.log('[Bot] Group ID:', jid);
-          return;
+        if (body.startsWith('!')) {
+          const handled = await handleAdminCommand(client, msg, body);
+          if (handled) return;
         }
 
         if (body.startsWith('!reply ') && config.adminNumber) {
@@ -98,7 +94,6 @@ async function main() {
             return;
           }
         }
-
       }
 
       // === SKIP OWN GROUP NOTIFICATIONS ===
