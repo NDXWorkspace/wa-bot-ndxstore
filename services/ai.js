@@ -1,8 +1,6 @@
 import { config } from '../config.js';
 
-const API_BASE = config.aiApiBase.replace(/\/+$/, '');
-const MODEL = config.aiModel || '';
-const KEY = config.aiKey;
+const MODEL = config.aiModel || 'openai';
 
 const SYSTEM_PROMPT = `Kamu adalah teman ngobrol casual. Gaya bicara:
 - Jawab singkat, kayak temen ngobrol
@@ -34,24 +32,13 @@ export function clearHistory(jid) {
   conversationHistory.delete(jid);
 }
 
-function buildHeaders() {
-  const headers = { 'Content-Type': 'application/json' };
-  if (KEY) headers['Authorization'] = `Bearer ${KEY}`;
-  return headers;
-}
-
-function buildBody(messages) {
-  const body = { messages, max_tokens: 200, temperature: 0.8 };
-  if (MODEL) body.model = MODEL;
-  return body;
-}
-
-async function tryEndpoint(url, body) {
+async function callAI(body) {
+  const url = `${config.aiApiBase.replace(/\/+$/, '')}/openai`;
   const resp = await fetch(url, {
     method: 'POST',
-    headers: buildHeaders(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(30000),
   });
   if (!resp.ok) {
     const err = await resp.text();
@@ -59,12 +46,7 @@ async function tryEndpoint(url, body) {
     return null;
   }
   const data = await resp.json();
-  const reply = data?.choices?.[0]?.message?.content
-    || data?.choices?.[0]?.text
-    || data?.response
-    || data?.content
-    || data?.reply;
-  return reply?.trim();
+  return data?.choices?.[0]?.message?.content?.trim() || null;
 }
 
 export async function askAI(jid, message) {
@@ -77,24 +59,15 @@ export async function askAI(jid, message) {
   for (const m of recent) messages.push(m);
   messages.push({ role: 'user', content: message });
 
-  const body = buildBody(messages);
-  const endpoints = [
-    `${API_BASE}/v1/chat/completions`,
-    `${API_BASE}/chat/completions`,
-    `${API_BASE}/v1/responses`,
-    `${API_BASE}/api/chat/completions`,
-    `${API_BASE}/api/generate`,
-  ];
+  const body = { model: MODEL, messages, max_tokens: 200, temperature: 0.9 };
 
-  for (const url of endpoints) {
-    const reply = await tryEndpoint(url, body);
-    if (reply) {
-      addHistory(jid, 'user', message);
-      addHistory(jid, 'assistant', reply);
-      return reply;
-    }
+  const reply = await callAI(body);
+  if (reply) {
+    addHistory(jid, 'user', message);
+    addHistory(jid, 'assistant', reply);
+    return reply;
   }
 
-  console.error('[AI] All endpoints failed');
+  console.error('[AI] API failed');
   return 'Error, coba lagi ya.';
 }

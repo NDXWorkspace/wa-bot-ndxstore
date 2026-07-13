@@ -9,6 +9,6 @@ export const config = {
   adminNumber: process.env.ADMIN_NUMBER || '',
   apiPassword: process.env.API_PASSWORD || '',
   aiKey: process.env.AI_API_KEY || '',
-  aiApiBase: process.env.AI_API_BASE || 'https://cc.freemodel.dev',
-  aiModel: process.env.AI_MODEL || 'claude-haiku-4-5-20251001',
+  aiApiBase: process.env.AI_API_BASE || 'https://text.pollinations.ai',
+  aiModel: process.env.AI_MODEL || 'openai',
 };
