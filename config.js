@@ -10,5 +10,5 @@ export const config = {
   apiPassword: process.env.API_PASSWORD || '',
   aiKey: process.env.AI_API_KEY || '',
   aiApiBase: process.env.AI_API_BASE || 'https://cc.freemodel.dev',
-  aiModel: process.env.AI_MODEL || '',
+  aiModel: process.env.AI_MODEL || 'claude-haiku-4-5-20251001',
 };
