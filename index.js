@@ -217,9 +217,15 @@ async function main() {
         if (aiMode > 0) {
           console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
           try {
+            c.sendPresenceUpdate('composing', msg.from);
             const reply = await askAI(msg.from, body, aiMode);
-            if (reply) await msg.reply(reply);
-            else await msg.reply('Maaf, lagi error. Coba lagi ya.');
+            if (reply) {
+              const delay = Math.min(reply.length * 10, 3000);
+              await new Promise(r => setTimeout(r, delay));
+              await msg.reply(reply);
+            } else {
+              await msg.reply('Maaf, lagi error. Coba lagi ya.');
+            }
           } catch (e) {
             console.error('[AiMode] Error:', e.message);
             await msg.reply('Error, coba lagi ya.');
