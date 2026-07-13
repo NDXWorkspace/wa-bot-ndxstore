@@ -1,4 +1,5 @@
 import http from 'http';
+import os from 'os';
 import { config } from './config.js';
 import { createClient } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
@@ -12,7 +13,7 @@ let aiMode = false;
 
 const healthApp = http.createServer((_req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+  res.end(JSON.stringify({ status: 'ok', uptime: os.uptime() }));
 });
 const PORT = Number(process.env.PORT) || 3000;
 healthApp.listen(PORT, () => {
@@ -114,12 +115,21 @@ async function main() {
 
       // === SKIP OWN GROUP NOTIFICATIONS ===
       if (msg.fromMe && msg.from.includes('@g.us')) return;
+      // === SKIP OWN DM MESSAGES (bot sending notification etc) ===
+      if (msg.fromMe) return;
+      if (msg.from.includes('@g.us') && !aiMode) return;
 
       // === AI MODE — jawab SEMUA pesan ===
       if (aiMode) {
-        if (msg.fromMe) return;
-        const reply = await askAI(msg.from, body);
-        if (reply) await msg.reply(reply);
+        console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
+        try {
+          const reply = await askAI(msg.from, body);
+          if (reply) await msg.reply(reply);
+          else await msg.reply('🤖 Maaf, lagi error. Coba lagi ya.');
+        } catch (e) {
+          console.error('[AiMode] Error:', e.message);
+          await msg.reply('🤖 Error, coba lagi ya.');
+        }
         return;
       }
 
