@@ -138,7 +138,7 @@ async function main() {
         if (msg.fromMe || isAdmin) {
           if (body === '!aimode') {
             aiMode = !aiMode;
-            await msg.reply(aiMode ? 'Raka aktif — semua chat bakal dijawab Raka' : 'Raka nonaktif');
+            await msg.reply(aiMode ? 'Bima aktif — semua chat bakal dijawab Bima' : 'Bima nonaktif');
             if (!aiMode) clearHistory('all');
             return;
           }
