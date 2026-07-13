@@ -173,15 +173,21 @@ async function main() {
             if (num < 1 || num > 50) { await msg.reply('❌ Jumlah: 1-50'); return; }
             try {
               const chat = await c.getChatById(msg.from);
-              const msgs = await chat.fetchMessages({ limit: Math.min(num * 3, 100) });
-              const botMsgs = msgs.filter(m => m.fromMe).slice(0, num);
-              if (!botMsgs.length) { await msg.reply('❌ Gak ada pesan bot buat dihapus.'); return; }
-              let ok = 0, fail = 0;
+              const allMsgs = await chat.fetchMessages({ limit: Math.min(num * 5, 100) });
+              const botMsgs = allMsgs.filter(m => m.fromMe).slice(0, num);
+              if (!botMsgs.length) { await msg.reply('❌ Gak ada pesan bot.'); return; }
+              let okForAll = 0, okForMe = 0, fail = 0;
               for (const m of botMsgs) {
-                try { await m.delete(true); ok++; } catch { fail++; }
+                try { await m.delete(true); okForAll++; } catch {
+                  try { await m.delete(false); okForMe++; } catch { fail++; }
+                }
               }
-              if (alsoClearLocal) clearHistory('all');
-              await msg.reply(`🧹 ${ok} pesan dihapus${fail ? `, ${fail} gagal` : ''}${alsoClearLocal ? ' + riwayat dibersihkan' : ''}`);
+              const parts = [];
+              if (okForAll) parts.push(`${okForAll} untuk semua`);
+              if (okForMe) parts.push(`${okForMe} untuk diri sendiri`);
+              if (fail) parts.push(`${fail} gagal`);
+              if (alsoClearLocal) parts.push('riwayat dibersihkan');
+              await msg.reply('🧹 ' + parts.join(', '));
             } catch (e) {
               await msg.reply('❌ Gagal: ' + e.message.slice(0, 80));
             }
