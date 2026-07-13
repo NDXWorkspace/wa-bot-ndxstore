@@ -206,7 +206,7 @@ async function main() {
           }
 
           if (body === '!aimodesetting') {
-            await msg.reply(`Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'} | Ungroup: ${settings.ungroup ? 'ON' : 'OFF'}\nGunakan: !aimodesetting jd (jawab duluan), !aimodesetting uningroup (skip grup)`);
+            await msg.reply(`Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'} | Ungroup: ${settings.ungroup ? 'ON (mention/reply)' : 'OFF'}\nGunakan: !aimodesetting jd (jawab duluan), !aimodesetting uningroup (skip grup)`);
             return;
           }
           if (body === '!aimodesetting jd') {
@@ -216,7 +216,7 @@ async function main() {
           }
           if (body === '!aimodesetting unigroup' || body === '!aimodesetting uningroup') {
             settings.ungroup = !settings.ungroup;
-            await msg.reply(`Ungroup ${settings.ungroup ? 'ON' : 'OFF'} — bot ${settings.ungroup ? 'gak bakal bales di grup' : 'bales di grup kaya biasa'}`);
+            await msg.reply(`Ungroup ${settings.ungroup ? 'ON' : 'OFF'} — bot ${settings.ungroup ? 'cuma bales di grup kalo di mention/di-reply' : 'bales di grup kaya biasa'}`);
             return;
           }
 
@@ -263,16 +263,52 @@ async function main() {
         if (body === '3') { await msg.reply(getCaraOrder()); return; }
         if (body === '5') { await msg.reply(getInfoPembayaran()); return; }
 
+        // === CS HANDOVER (DM only) ===
+        if (body === '4' || body === 'Cs' || body === 'CS') {
+          if (config.adminNumber) {
+            await startHandover(c, msg, config.adminNumber);
+          } else {
+            await msg.reply('❌ Admin belum dikonfigurasi.');
+          }
+          return;
+        }
+
+        // === ACTIVE HANDOVER — forward to admin ===
+        if (isHandoverActive(msg.from) && config.adminNumber) {
+          if (body === 'Selesai' || body === 'Stop') {
+            endHandover(msg.from);
+            await msg.reply('🔚 Sesi CS selesai. Ketik *Menu* untuk kembali.');
+            await c.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai\nUser: ${msg.from}`);
+            return;
+          }
+          await forwardToAdmin(c, msg.from, body, config.adminNumber);
+          await msg.reply('✅ Pesan diteruskan ke admin.');
+          return;
+        }
+
+        // === COOLDOWN (general: 2s, AI: handled above) ===
+        if (isOnCooldown(msg.from, 'default')) return;
+
         // === SKIP OWN GROUP NOTIFICATIONS ===
         if (msg.fromMe && msg.from.includes('@g.us')) return;
         if (msg.fromMe) return;
         if (msg.from.includes('@g.us') && !settings.aiMode) return;
-        if (msg.from.includes('@g.us') && settings.ungroup) {
-          const isMentioned = msg.mentionedIds?.some(id => id.includes(c.info.wid.user));
-          const isReplyToBot = msg.hasQuotedMsg ? (await msg.getQuotedMessage()).fromMe : false;
-          if (!isMentioned && !isReplyToBot) return;
-        }
 
+        // === UNGROUP: ONLY REPLY WHEN MENTIONED/REPLIED ===
+        if (msg.from.includes('@g.us') && settings.ungroup) {
+          const botUser = c.info?.wid?.user;
+          if (botUser) {
+            const mentioned = msg.mentionedIds?.some(id => id.includes(botUser));
+            let repliedToBot = false;
+            if (msg.hasQuotedMsg) {
+              try {
+                const quoted = await msg.getQuotedMessage();
+                repliedToBot = quoted?.fromMe === true;
+              } catch {}
+            }
+            if (!mentioned && !repliedToBot) return;
+          }
+        }
 
         // === AI MODE — jawab SEMUA pesan (termasuk gambar) ===
         if (settings.aiMode > 0) {
@@ -297,32 +333,6 @@ async function main() {
         // === AKHIR AI MODE — sisanya flow normal ===
 
         if (msg.from.includes('@g.us')) return;
-
-        // === ACTIVE HANDOVER — forward to admin ===
-        if (isHandoverActive(msg.from) && config.adminNumber) {
-          if (body === 'Selesai' || body === 'Stop') {
-            endHandover(msg.from);
-            await msg.reply('🔚 Sesi CS selesai. Ketik *Menu* untuk kembali.');
-            await c.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai\nUser: ${msg.from}`);
-            return;
-          }
-          await forwardToAdmin(c, msg.from, body, config.adminNumber);
-          await msg.reply('✅ Pesan diteruskan ke admin.');
-          return;
-        }
-
-        // === COOLDOWN (general: 2s, AI: handled above) ===
-        if (isOnCooldown(msg.from, 'default')) return;
-
-        // === CS HANDOVER (DM only) ===
-        if (body === '4' || body === 'Cs' || body === 'CS') {
-          if (config.adminNumber) {
-            await startHandover(c, msg, config.adminNumber);
-          } else {
-            await msg.reply('❌ Admin belum dikonfigurasi.');
-          }
-          return;
-        }
 
       } catch (e) {
         console.error('[Bot] Handler error:', e.message);
