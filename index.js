@@ -173,19 +173,29 @@ async function main() {
             if (num < 1 || num > 50) { await msg.reply('❌ Jumlah: 1-50'); return; }
             try {
               const chat = await c.getChatById(msg.from);
-              const allMsgs = await chat.fetchMessages({ limit: Math.min(num * 5, 100) });
-              console.log('[Clear] fetched', allMsgs.length, 'msgs, fromMe:', allMsgs.filter(m => m.fromMe).length);
-              const botMsgs = allMsgs.filter(m => m.fromMe).slice(0, num);
+              const msgs = await chat.fetchMessages({ limit: Math.min(num * 3, 50) });
+              const botMsgs = msgs.filter(m => m.fromMe).slice(0, num);
               if (!botMsgs.length) { await msg.reply('❌ Gak ada pesan bot.'); return; }
-              let okForAll = 0, okForMe = 0, fail = 0;
+              let ok = 0, fail = 0;
               for (const m of botMsgs) {
-                try { if (typeof m.delete !== 'function') { fail++; continue; } await m.delete(true); okForAll++; } catch (e1) {
-                  try { await m.delete(false); okForMe++; } catch (e2) { console.log('[Clear] delete fail:', e1?.message, e2?.message); fail++; }
-                }
+                try {
+                  if (c.pupPage) {
+                    try {
+                      await c.pupPage.evaluate((chatId, msgId) => WWebJS.deleteMessageForEveryone(chatId, msgId), m.from || msg.from, m.id._serialized);
+                      ok++; continue;
+                    } catch {
+                      try {
+                        await c.pupPage.evaluate((chatId, msgId) => WWebJS.deleteMessageForMe(chatId, msgId), m.from || msg.from, m.id._serialized);
+                        ok++; continue;
+                      } catch {}
+                    }
+                  }
+                  if (typeof m.delete === 'function') { await m.delete(true); ok++; continue; }
+                  fail++;
+                } catch { fail++; }
               }
               const parts = [];
-              if (okForAll) parts.push(`${okForAll} untuk semua`);
-              if (okForMe) parts.push(`${okForMe} untuk diri sendiri`);
+              if (ok) parts.push(`${ok} terhapus`);
               if (fail) parts.push(`${fail} gagal`);
               if (alsoClearLocal) parts.push('riwayat dibersihkan');
               await msg.reply('🧹 ' + parts.join(', '));
