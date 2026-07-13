@@ -2,6 +2,7 @@ import fsp from 'fs/promises';
 import { config } from '../config.js';
 import { getDbWithRealtime } from './supabase.js';
 import { enqueueSend } from './rateLimiter.js';
+import { askAIProactive } from './ai.js';
 
 const NOTIFIED_FILE = './.notified.json';
 const PERSIST_DEBOUNCE_MS = 2000;
@@ -66,6 +67,8 @@ function formatWaNumber(raw) {
   return null;
 }
 
+let _settings = { jawabDuluan: false, aiMode: 0 };
+
 function sendNotif(client, order, type) {
   if (!config.groupId) {
     console.warn('[OrderMonitor] GROUP_ID not set');
@@ -81,17 +84,33 @@ function sendNotif(client, order, type) {
 
   const userJid = formatWaNumber(order.wa_number);
   if (userJid) {
-    let creds = '';
-    if (order.roblox_password || order.backup_code) {
-      creds = '\n\n🔐 *Akses Roblox:*\n';
-      if (order.roblox_password) creds += `🔑 Password: ${order.roblox_password}\n`;
-      if (order.backup_code) creds += `🔐 Backup Code: ${order.backup_code}\n`;
+    if (_settings.jawabDuluan) {
+      sendAIProactive(client, order, type, userJid);
+    } else {
+      let creds = '';
+      if (order.roblox_password || order.backup_code) {
+        creds = '\n\n🔐 *Akses Roblox:*\n';
+        if (order.roblox_password) creds += `🔑 Password: ${order.roblox_password}\n`;
+        if (order.backup_code) creds += `🔐 Backup Code: ${order.backup_code}\n`;
+      }
+      const userMsg = type === 'payment'
+        ? `💰 *Pembayaran Diterima!*\n\nHalo *${order.username || 'Kak'}*, pembayaran untuk pesanan *${order.id}* sudah kami terima. Pesanan akan segera diproses.${creds}\n\nTerima kasih telah berbelanja di NDXStore! 🎉`
+        : `📩 *Pesanan Baru Diterima*\n\nHalo *${order.username || 'Kak'}*, pesanan kamu *${order.id}* sudah tercatat.\n\nKami akan proses setelah pembayaran dikonfirmasi.${creds}\n\nGunakan *cek ${order.username}* untuk cek status terbaru.`;
+      enqueueSend(() => client.sendMessage(userJid, userMsg));
+      console.log(`[OrderMonitor] DM queued for ${userJid}`);
     }
-    const userMsg = type === 'payment'
-      ? `💰 *Pembayaran Diterima!*\n\nHalo *${order.username || 'Kak'}*, pembayaran untuk pesanan *${order.id}* sudah kami terima. Pesanan akan segera diproses.${creds}\n\nTerima kasih telah berbelanja di NDXStore! 🎉`
-      : `📩 *Pesanan Baru Diterima*\n\nHalo *${order.username || 'Kak'}*, pesanan kamu *${order.id}* sudah tercatat.\n\nKami akan proses setelah pembayaran dikonfirmasi.${creds}\n\nGunakan *cek ${order.username}* untuk cek status terbaru.`;
-    enqueueSend(() => client.sendMessage(userJid, userMsg));
-    console.log(`[OrderMonitor] DM queued for ${userJid}`);
+  }
+}
+
+async function sendAIProactive(client, order, type, userJid) {
+  try {
+    const aiMsg = await askAIProactive(order, _settings.aiMode || 1);
+    if (aiMsg) {
+      enqueueSend(() => client.sendMessage(userJid, aiMsg));
+      console.log(`[OrderMonitor] AI proactive DM sent to ${userJid}`);
+    }
+  } catch (e) {
+    console.error('[OrderMonitor] AI proactive error:', e.message);
   }
 }
 
@@ -215,7 +234,8 @@ async function catchUp(client) {
   }
 }
 
-export async function startOrderMonitor(client) {
+export async function startOrderMonitor(client, settings) {
+  if (settings) _settings = settings;
   await loadNotified();
 
   supabase = getDbWithRealtime();

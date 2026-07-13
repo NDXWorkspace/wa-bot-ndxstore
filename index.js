@@ -8,6 +8,7 @@ import { isHandoverActive, endHandover, startHandover, handleAdminReply, forward
 import { isOnCooldown } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
 import { askAI, clearHistory } from './services/ai.js';
+import { settings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 
 async function getChatHistory(limit = 20) {
@@ -23,7 +24,6 @@ async function getChatHistory(limit = 20) {
   } catch { return []; }
 }
 
-let aiMode = 0;
 const blockedUsers = new Set();
 let waClient = null;
 let botStartedAt = Date.now();
@@ -45,7 +45,8 @@ const healthApp = http.createServer(async (_req, res) => {
     db: dbConnected ? 'connected' : 'error',
     uptime: os.uptime(),
     botUptime: Math.floor((Date.now() - botStartedAt) / 1000),
-    aiMode,
+    aiMode: settings.aiMode,
+    jawabDuluan: settings.jawabDuluan,
     blockedUsers: blockedUsers.size,
   }));
 });
@@ -104,7 +105,7 @@ async function main() {
         const body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from;
         const isAdmin = senderJid.split('@')[0].replace(/^\+/, '') === config.adminNumber.replace(/^\+/, '');
-        console.log('[Msg] from:', senderJid.replace(/@.*/, ''), 'body:', body.slice(0, 40), '| fromMe:', msg.fromMe, '| isAdmin:', isAdmin, '| aiMode:', aiMode);
+        console.log('[Msg] from:', senderJid.replace(/@.*/, ''), 'body:', body.slice(0, 40), '| fromMe:', msg.fromMe, '| isAdmin:', isAdmin, '| aiMode:', settings.aiMode);
 
         if (body === '!block' && isAdmin) {
           const target = msg.to.includes('@g.us') ? msg.author || msg.from : msg.from;
@@ -137,23 +138,23 @@ async function main() {
         // === ADMIN COMMANDS ===
         if (msg.fromMe || isAdmin) {
           if (body === '!aimode') {
-            await msg.reply(`Mode skrg: ${aiMode === 0 ? 'Nonaktif' : aiMode === 1 ? 'Bima (1)' : 'NDXStore (2)'}\nGunakan: !aimode 1 (Bima), !aimode 2 (NDXStore), !aimode 0 (nonaktif)`);
+            await msg.reply(`Mode skrg: ${settings.aiMode === 0 ? 'Nonaktif' : settings.aiMode === 1 ? 'Bima (1)' : 'NDXStore (2)'}\nGunakan: !aimode 1 (Bima), !aimode 2 (NDXStore), !aimode 0 (nonaktif)`);
             return;
           }
           if (body === '!aimode 0' || body === '!aimode off') {
-            aiMode = 0;
+            settings.aiMode = 0;
             clearHistory('all');
             await msg.reply('Nonaktif');
             return;
           }
           if (body === '!aimode 1') {
-            aiMode = 1;
+            settings.aiMode = 1;
             clearHistory('all');
             await msg.reply('Bima aktif — semua chat bakal dijawab Bima');
             return;
           }
           if (body === '!aimode 2') {
-            aiMode = 2;
+            settings.aiMode = 2;
             clearHistory('all');
             await msg.reply('NDXStore AI aktif — semua chat dilayani CS NDXStore');
             return;
@@ -162,6 +163,16 @@ async function main() {
           if (body === '!aireset') {
             clearHistory('all');
             await msg.reply('🧹 Riwayat chat AI direset');
+            return;
+          }
+
+          if (body === '!aimodesetting') {
+            await msg.reply(`Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'}\nGunakan: !aimodesetting jd (toggle ON/OFF)`);
+            return;
+          }
+          if (body === '!aimodesetting jd') {
+            settings.jawabDuluan = !settings.jawabDuluan;
+            await msg.reply(`Jawab duluan ${settings.jawabDuluan ? 'ON' : 'OFF'} — AI bakal ${settings.jawabDuluan ? 'proaktif chat pelanggan' : 'diem aja'}`);
             return;
           }
 
@@ -211,14 +222,14 @@ async function main() {
         // === SKIP OWN GROUP NOTIFICATIONS ===
         if (msg.fromMe && msg.from.includes('@g.us')) return;
         if (msg.fromMe) return;
-        if (msg.from.includes('@g.us') && !aiMode) return;
+        if (msg.from.includes('@g.us') && !settings.aiMode) return;
 
         // === AI MODE — jawab SEMUA pesan ===
-        if (aiMode > 0) {
+        if (settings.aiMode > 0) {
           console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
           try {
             c.sendPresenceUpdate('composing', msg.from);
-            const reply = await askAI(msg.from, body, aiMode);
+            const reply = await askAI(msg.from, body, settings.aiMode);
             if (reply) {
               const delay = Math.min(reply.length * 10, 3000);
               await new Promise(r => setTimeout(r, delay));
@@ -274,7 +285,7 @@ async function main() {
 
   waClient.on('ready', () => {
     console.log('[WA] Client ready — bot online!');
-    startOrderMonitor(waClient);
+    startOrderMonitor(waClient, settings);
   });
 
   waClient.initialize();

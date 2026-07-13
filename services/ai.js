@@ -273,3 +273,24 @@ export async function askAI(jid, message, mode = 1) {
   console.error('[AI] All endpoints failed');
   return null;
 }
+
+// ─── Proactive Message (jawab duluan, no history) ─────────────────
+
+export async function askAIProactive(order, mode = 1) {
+  const prompt = mode === 2 ? NDXSTORE_PROMPT : BIMA_PROMPT;
+  const userMsg = `(Ada pelanggan baru order: ${order.product_name || 'produk'}, username: ${order.username || '-'}, harga: ${order.price_idr ? 'Rp' + Number(order.price_idr).toLocaleString('id-ID') : '-'}). Kirim pesan sapaan singkat ke pelanggan ini, ga usah panjang.`;
+  const msgs = [
+    { role: 'system', content: `${prompt}\n\nSekarang kirim pesan LANGSUNG ke pelanggan yang baru order. JANGAN pake tanda kutip, JANGAN pake kurung siku, JANGAN ngenalin diri. 1-2 kalimat doang.` },
+    { role: 'user', content: userMsg },
+  ];
+  const body = { messages: msgs, max_tokens: 100, temperature: 0.7 };
+
+  if (config.groqKey?.startsWith('gsk_')) {
+    const r = await tryFetch('https://api.groq.com/openai/v1/chat/completions', { ...body, model: 'llama3-70b-8192' }, { Authorization: `Bearer ${config.groqKey}` });
+    if (r) return r;
+  }
+  const r = await tryFetch(`${config.aiApiBase.replace(/\/+$/, '')}/openai`, { ...body, model: config.aiModel || 'openai' });
+  if (r) return r;
+  const r2 = await tryFetch('https://text.pollinations.ai/openai', { ...body, model: 'openai' });
+  return r2;
+}
