@@ -278,9 +278,11 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1) {
     { role: 'user', content },
   ];
 
-  if (config.groqKey?.startsWith('gsk_')) {
+  // Groq vision is opt-in — its multimodal model names change often (llama-3.2-vision
+  // was decommissioned, llama-4-scout deprecated after). Only try if explicitly configured.
+  if (config.groqKey?.startsWith('gsk_') && config.groqVisionModel) {
     const r = await tryFetch('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama-3.2-11b-vision-preview', messages: msgs, max_tokens: 300, temperature: 0.5,
+      model: config.groqVisionModel, messages: msgs, max_tokens: 300, temperature: 0.5,
     }, { Authorization: `Bearer ${config.groqKey}` });
     if (r) {
       saveExchange(jid, text || '[gambar]', r);
@@ -288,6 +290,24 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1) {
     }
   }
 
+  // Pollinations /openai is OpenAI-compatible and vision-capable — the stable default path.
+  const visionEndpoints = [
+    { url: `${config.aiApiBase.replace(/\/+$/, '')}/openai`, model: config.aiModel || 'openai' },
+    { url: 'https://text.pollinations.ai/openai', model: 'openai' },
+  ];
+  const seen = new Set();
+  for (const ep of visionEndpoints) {
+    const key = `${ep.url}|${ep.model}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const r = await tryFetch(ep.url, { model: ep.model, messages: msgs, max_tokens: 300, temperature: 0.5 });
+    if (r) {
+      saveExchange(jid, text || '[gambar]', r);
+      return r;
+    }
+  }
+
+  // Last resort: text-only reply so the user still gets an answer.
   const textOnly = await askAI(jid, text || '[gambar]', mode);
   return textOnly || 'Maaf, gak bisa baca gambar.';
 }

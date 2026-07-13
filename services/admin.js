@@ -1,9 +1,7 @@
 import { config } from '../config.js';
 import { formatPrice, formatTime } from '../utils/format.js';
-import { VALID_ORDER_STATUSES } from '../utils/constants.js';
+import { VALID_ORDER_STATUSES, API_BASE } from '../utils/constants.js';
 import { logger } from '../utils/logger.js';
-
-const API_BASE = process.env.API_BASE || 'https://ndxstoreid.vercel.app';
 
 async function apiCall(method, path, body = null) {
   const headers = { 'Content-Type': 'application/json' };
@@ -164,16 +162,16 @@ export async function handleAdminCommand(client, msg, body) {
     }
 
     try {
-      const body = {};
+      const payload = {};
       if (['SUCCESS', 'REJECTED', 'PENDING'].includes(statusArg)) {
-        body.paymentStatus = statusArg;
-        body.status = statusArg;
+        payload.paymentStatus = statusArg;
+        payload.status = statusArg;
       }
       if (['PROCESSING', 'SUCCESS', 'REJECTED', 'WAITING_PAYMENT'].includes(statusArg)) {
-        body.orderStatus = statusArg;
+        payload.orderStatus = statusArg;
       }
 
-      const data = await apiCall('POST', `/api/admin/transaction/${txId}/status`, body);
+      const data = await apiCall('POST', `/api/admin/transaction/${txId}/status`, payload);
       if (!data?.success) return await msg.reply(`❌ Gagal update: ${data?.message || 'unknown'}`);
 
       const updated = data.transaction || data;

@@ -4,6 +4,7 @@ import { getDbWithRealtime } from './supabase.js';
 import { enqueueSend } from './rateLimiter.js';
 import { askAIProactive } from './ai.js';
 import { formatPrice, formatTime, formatWaNumber } from '../utils/format.js';
+import { PAYMENT_OK_STATUSES as PAYMENT_OK } from '../utils/constants.js';
 import { logger } from '../utils/logger.js';
 
 const NOTIFIED_FILE = './.notified.json';
@@ -149,8 +150,6 @@ function formatOrderMessage(order, type) {
 
   return msg;
 }
-
-const PAYMENT_OK = ['SUCCESS', 'PROCESSING'];
 
 function isPaymentConfirmed(order) {
   const os = (order.order_status || '').toUpperCase();

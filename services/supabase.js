@@ -1,25 +1,28 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
+import { logger } from '../utils/logger.js';
 
 let supabase = null;
+let supabaseRt = null;
 
-function getClient(realtime = false) {
+export function getDb() {
   if (supabase) return supabase;
   if (!config.supabase.key) {
-    console.warn('[Supabase] No SUPABASE_KEY set');
+    logger.warn('Supabase', 'No SUPABASE_KEY set');
     return null;
   }
-  const opts = realtime
-    ? { realtime: { params: { eventsPerSecond: 10 } } }
-    : {};
-  supabase = createClient(config.supabase.url, config.supabase.key, opts);
+  supabase = createClient(config.supabase.url, config.supabase.key);
   return supabase;
 }
 
-export function getDb() {
-  return getClient(false);
-}
-
 export function getDbWithRealtime() {
-  return getClient(true);
+  if (supabaseRt) return supabaseRt;
+  if (!config.supabase.key) {
+    logger.warn('Supabase', 'No SUPABASE_KEY set');
+    return null;
+  }
+  supabaseRt = createClient(config.supabase.url, config.supabase.key, {
+    realtime: { params: { eventsPerSecond: 10 } },
+  });
+  return supabaseRt;
 }

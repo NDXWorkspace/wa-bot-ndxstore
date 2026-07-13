@@ -54,8 +54,3 @@ export function saveSettings() {
     }
   }, 1000);
 }
-
-export function resetSettings() {
-  Object.assign(settings, defaults);
-  saveSettings();
-}

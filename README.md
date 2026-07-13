@@ -1,8 +1,35 @@
 # WA Bot NDXStore
 
-WhatsApp bot untuk NDXStore — powered by whatsapp-web.js + Google Gemini AI.
+WhatsApp customer-service & order-notification bot untuk **NDXStore** (top up game & Roblox).
+Dibangun dengan **whatsapp-web.js** (Puppeteer) + AI via **Groq** dengan fallback **Pollinations**, dan **Supabase** untuk riwayat chat, limit, serta monitor order realtime.
 
-## Cara Pakai
+## Fitur
+
+| Fitur | Cara / Detail |
+|-------|---------------|
+| **Menu angka** | Ketik `menu` atau `0` |
+| **Cek status order** | Ketik `cek [username]` atau `1` (query ke API NDXStore) |
+| **Produk & harga** | Ketik `2` |
+| **Cara order** | Ketik `3` |
+| **Info pembayaran** | Ketik `5` |
+| **Hubungi CS (handover)** | Ketik `4` atau `cs` → pesan diteruskan ke admin, balasan admin (via reply) diteruskan balik ke user. Ketik `selesai`/`stop` untuk mengakhiri |
+| **AI chat** | Kalau AI mode aktif, pesan bebas dijawab AI dengan riwayat percakapan per-user |
+| **AI gambar** | Kirim gambar → dianalisa AI (via Pollinations; Groq vision opsional) |
+| **Notifikasi order** | Monitor tabel `transactions` Supabase secara realtime → kirim notif ke grup admin + ke customer |
+
+## AI Mode
+
+Bot punya 3 mode (diatur admin lewat `!aimode`):
+
+| Mode | Persona |
+|------|---------|
+| `0` | Nonaktif — bot hanya melayani menu & command, tidak auto-reply chat bebas |
+| `1` | **Bima** — teman santai gaya anak Jakarta (gue-lo) |
+| `2` | **NDXStore CS** — customer service profesional & ramah |
+
+Rantai model AI: **Groq** (`llama-3.3-70b-versatile` → `llama-3.1-8b-instant`) → **Pollinations** (`openai` → `llama` → `mistral` → `openai-large`). Endpoint yang gagal di-cooldown sementara supaya request berikutnya langsung lompat ke fallback.
+
+## Setup
 
 ### 1. Install
 
@@ -11,7 +38,7 @@ cd wa-bot
 npm install
 ```
 
-### 2. Setup Environment
+### 2. Environment
 
 ```bash
 cp .env.example .env
@@ -21,72 +48,89 @@ Isi `.env`:
 
 | Variable | Wajib? | Keterangan |
 |----------|--------|------------|
-| `GEMINI_API_KEY` | Wajib | Google Gemini API key (free tier, daftar di https://aistudio.google.com/apikey) |
-| `OPENROUTER_API_KEY` | Opsional | Fallback AI, daftar di https://openrouter.ai/keys |
-| `SUPABASE_KEY` | Opsional | Supabase `service_role` key (untuk simpan riwayat chat & limit) |
-| `ADMIN_NUMBER` | Wajib | Nomor WhatsApp admin (format: 628xxx) |
-| `NDXSTORE_API_URL` | Opsional | URL backend NDXStore (default: http://localhost:3000) |
+| `SUPABASE_URL` | **Wajib** | URL project Supabase |
+| `SUPABASE_KEY` | **Wajib** | Supabase `service_role` key (riwayat chat, limit, config, order monitor) |
+| `ADMIN_NUMBER` | **Wajib** | Nomor WhatsApp admin (format `628xxx` atau `+628xxx`) |
+| `GROUP_ID` | Opsional | ID grup notifikasi order (dapatkan dengan kirim `!groupid` di grup) |
+| `API_PASSWORD` | Opsional | Password admin API NDXStore (untuk command `!stats`/`!status` dll) |
+| `AI_API_KEY` | Opsional | API key untuk endpoint AI kustom (jika ada) |
+| `AI_API_BASE` | Opsional | Base URL AI kustom (default `https://text.pollinations.ai`) |
+| `AI_MODEL` | Opsional | Nama model di `AI_API_BASE` (default `openai`) |
+| `GROQ_API_KEY` | Opsional | Groq API key (prefix `gsk_`) untuk AI utama yang lebih cepat/pintar |
+| `GROQ_VISION_MODEL` | Opsional | Model multimodal Groq untuk gambar. Kosong = gambar diproses via Pollinations |
+| `LOG_LEVEL` | Opsional | `error` \| `warn` \| `info` \| `debug` (default `info`) |
+| `PORT` | Opsional | Port health-check HTTP (default `3000`) |
 
-### 3. Setup Database (Opsional — untuk riwayat chat & limit)
+> `config.js` akan `exit(1)` kalau salah satu variabel **Wajib** kosong.
 
-Jalankan `supabase-schema.sql` di Supabase Dashboard → SQL Editor.
+### 3. Database
 
-### 4. Jalankan Bot
+Jalankan `supabase-schema.sql` di Supabase Dashboard → SQL Editor (atau `node scripts/migrate-schema.mjs`). Tabel yang dipakai: `transactions`, `wa_chat_history`, `wa_user_limits`, `wa_bot_config`, `wa_handover_sessions`.
+
+### 4. Jalankan
 
 ```bash
-npm start
+npm start          # produksi
+npm run dev        # dev, auto-reload (node --watch)
 ```
 
-Scan QR code yang muncul di terminal dengan WhatsApp Anda (WhatsApp Web).
+Scan QR code yang muncul di terminal dengan WhatsApp (Linked Devices). Sesi disimpan di `./wa-session` jadi tidak perlu scan ulang tiap restart.
 
-### 5. Production dengan PM2
+### 5. Produksi (PM2 / Docker / Render)
 
 ```bash
+# PM2
 npm install -g pm2
-pm2 start index.js --name wa-bot
-pm2 save
-pm2 startup
+pm2 start ecosystem.config.cjs
+pm2 save && pm2 startup
 ```
 
-## Aturan Bot
-
-| Aturan | Detail |
-|--------|--------|
-| ✅ **Balas hanya pesan masuk** | Bot tidak pernah kirim pesan duluan |
-| ✅ **Skip grup/broadcast/status** | Pesan dari grup, channel, broadcast, status diabaikan |
-| ✅ **Delay 3 detik** | Antar balasan ada jeda 3 detik untuk hindari ban |
-| ✅ **Limit harian** | Maks 50 pesan per user per hari (bisa diubah via `/limit`) |
-| ✅ **Auto-restart** | Pakai PM2, restart otomatis kalau crash |
-
-## Fitur
-
-| Fitur | Cara |
-|-------|------|
-| **Menu angka** | Ketik `menu` atau `0` |
-| **Cek status order** | Ketik `cek [username]` atau `1` |
-| **Produk & harga** | Ketik `2` |
-| **Cara order** | Ketik `3` |
-| **Hubungi CS** | Ketik `4` atau `cs` |
-| **Info pembayaran** | Ketik `5` |
-| **Tanya AI** | Tanya bebas, dijawab AI dengan riwayat chat |
-| **Handover ke admin** | User kirim `cs` → bot forward ke admin |
-| **Kontrol bot** | Admin kirim command dari WA |
+Tersedia juga `Dockerfile` (node 22 + Chrome, dijalankan via `pm2-runtime`) dan `render.yaml` untuk deploy ke Render.
 
 ## Command Admin
 
+Semua command admin pakai prefix `!` dan hanya jalan untuk `ADMIN_NUMBER` (atau pesan dari akun bot sendiri).
+
+### Kontrol bot & AI
+
 | Command | Fungsi |
 |---------|--------|
-| `/status` | Lihat status bot |
-| `/pause` | Pause bot (skip semua non-admin) |
-| `/resume` | Resume bot |
-| `/limit 628xxx 100` | Set limit harian user |
-| `/clear 628xxx` | Hapus riwayat chat user |
-| `/cs 628xxx` | Aktifkan handover untuk user |
-| `/close 628xxx` | Tutup handover |
+| `!help` | Daftar command API admin |
+| `!aimode` | Lihat mode AI sekarang |
+| `!aimode 0` \| `1` \| `2` | Set mode AI (nonaktif / Bima / NDXStore CS) |
+| `!aireset` | Reset riwayat chat percakapan aktif |
+| `!clear <n>` | Hapus `n` pesan terakhir yang dikirim bot di chat ini (1–50) |
+| `!history [n]` | Lihat `n` riwayat chat terakhir (default 20) |
+| `!block` / `!unblock` | Blokir / buka blokir user (kirim di chat user, atau di grup) |
+| `!aimodesetting` | Lihat setting `jawab duluan` & `ungroup` |
+| `!aimodesetting jd` | Toggle *jawab duluan* (AI sapa customer duluan saat ada order baru) |
+| `!aimodesetting uningroup` | Toggle mode grup: hanya balas kalau di-mention/di-reply |
+| `!groupid` | Tampilkan Group ID (kirim di dalam grup) |
+| `!reply 628xxx <pesan>` | Kirim pesan langsung ke nomor user |
 
-## Catatan Penting
+Admin juga bisa **reply** pesan handover yang diteruskan bot untuk membalas user tanpa command.
 
-- Bot menggunakan `whatsapp-web.js` (unofficial) — resiko ban WA tetap ada jika disalahgunakan
-- **JANGAN** gunakan untuk blast/spam ke nomor yang tidak dikenal
-- Bot hanya membalas pesan masuk, tidak pernah memulai chat
-- Untuk 24/7, jalankan di VPS/Raspberry Pi dengan PM2
+### Command API NDXStore (butuh `API_PASSWORD`)
+
+| Command | Fungsi |
+|---------|--------|
+| `!stats` | Statistik transaksi |
+| `!orders` | 5 order terbaru |
+| `!pending [game]` | Order pending (opsional filter per game) |
+| `!detail NDX-XXXX` | Detail satu order |
+| `!status NDX-XXXX <STATUS>` | Update status order (`SUCCESS`, `PROCESSING`, `REJECTED`, `PENDING`, `WAITING_PAYMENT`) |
+
+## Health Check
+
+`GET http://localhost:<PORT>/` mengembalikan JSON status (`200` kalau WA & DB terhubung, `503` kalau degraded):
+
+```json
+{ "status": "ok", "wa": "connected", "db": "connected", "uptime": 12345, "botUptime": 678, "aiMode": 1 }
+```
+
+## Aturan & Catatan
+
+- Bot pakai `whatsapp-web.js` (**unofficial**) — risiko ban WA tetap ada kalau disalahgunakan. **Jangan** untuk blast/spam.
+- Balasan chat di-throttle (cooldown per user + antrian kirim ~1.2s) dan dibatasi **50 pesan/user/hari** untuk mengurangi risiko ban.
+- Bot **tidak memulai chat bebas** ke user — **kecuali** notifikasi order (order baru / pembayaran dikonfirmasi) yang memang dikirim otomatis ke customer & grup admin oleh order monitor.
+- Untuk 24/7, jalankan di VPS/Raspberry Pi dengan PM2 (auto-restart saat crash, cap memori 500M).

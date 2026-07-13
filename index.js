@@ -168,14 +168,14 @@ async function main() {
         if (body === '!block' && isAdmin) {
           const target = msg.to.includes('@g.us') ? msg.author || msg.from : msg.from;
           blockedUsers.add(target);
-          saveBlockedUsers();
+          await saveBlockedUsers();
           await msg.reply(`⛔ User diblokir: ${target}`);
           return;
         }
         if (body === '!unblock' && isAdmin) {
           const target = msg.to.includes('@g.us') ? msg.author || msg.from : msg.from;
           blockedUsers.delete(target);
-          saveBlockedUsers();
+          await saveBlockedUsers();
           await msg.reply(`✅ User di-unblock: ${target}`);
           return;
         }
@@ -189,8 +189,8 @@ async function main() {
         }
 
         // ── History ──
-        if (body === '!history' && isAdmin) {
-          const limit = parseInt(body.slice(9).trim()) || 20;
+        if (body.startsWith('!history') && isAdmin) {
+          const limit = parseInt(body.slice(8).trim()) || 20;
           const history = await getChatHistory(limit);
           if (!history?.length) return await msg.reply('📋 Riwayat chat kosong.');
           let reply = `📋 *RIWAYAT CHAT (${history.length})*\n━━━━━━━━━━━━━━\n`;
@@ -214,7 +214,7 @@ async function main() {
               clearHistoryExcept(senderJid);
               await msg.reply(aimodeVal === 1 ? 'Bima aktif' : 'NDXStore AI aktif');
             }
-            saveSettings();
+            await saveSettings();
             return;
           }
 
@@ -340,7 +340,7 @@ async function main() {
           if (lower === 'selesai' || lower === 'stop') {
             endHandover(msg.from);
             await msg.reply('🔚 Sesi CS selesai. Ketik *Menu* untuk kembali.');
-            await c.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai\nUser: ${msg.from}`);
+            await c.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai*\nUser: ${msg.from}`);
             return;
           }
           await forwardToAdmin(c, msg.from, body, config.adminNumber);
@@ -382,7 +382,7 @@ async function main() {
 
         // ── AI Mode ──
         if (settings.aiMode > 0) {
-          try { c.sendPresenceUpdate('composing', msg.from); } catch {}
+          await c.sendPresenceUpdate('composing', msg.from).catch(() => {});
           const thinkTime = 1500 + Math.random() * 2500;
           await new Promise(r => setTimeout(r, thinkTime));
           let reply;

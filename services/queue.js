@@ -26,10 +26,6 @@ export function isOnCooldown(userJid, type = 'default') {
   return false;
 }
 
-export function clearCooldown(userJid) {
-  cooldowns.delete(userJid);
-}
-
 export async function checkDailyLimit(userJid) {
   const db = getDb();
   if (!db) return { allowed: true };
