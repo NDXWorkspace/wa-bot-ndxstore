@@ -1,13 +1,13 @@
 import fsp from 'fs/promises';
+import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
 
 const NOTIFIED_FILE = './.notified.json';
-const API_BASE = 'https://ndxstoreid.vercel.app';
-const POLL_INTERVAL_MS = 10000;
 
 let notified = new Set();
-let pollTimer = null;
-let lastSince = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+let seenOrders = new Map();
+let supabase = null;
+let channel = null;
 
 async function loadNotified() {
   try {
@@ -137,71 +137,93 @@ function isPaymentConfirmed(order) {
   return PAYMENT_OK.includes(os) || PAYMENT_OK.includes(ps);
 }
 
-// Track seen orders and their status for detecting changes
-const seenOrders = new Map();
+function handleOrder(client, order) {
+  if (!order || !order.id) return;
 
-async function processOrders(client) {
+  if (!notified.has(order.id)) {
+    const type = isPaymentConfirmed(order) ? 'payment' : 'new';
+    sendNotif(client, order, type);
+    seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status });
+    return;
+  }
+
+  const prev = seenOrders.get(order.id);
+  if (prev) {
+    const osChanged = prev.status !== order.order_status;
+    const psChanged = prev.payment !== order.payment_status;
+    if (osChanged || psChanged) {
+      const confirmed = isPaymentConfirmed(order) && !PAYMENT_OK.includes(prev.status) && !PAYMENT_OK.includes(prev.payment);
+      if (confirmed) {
+        sendNotif(client, order, 'payment');
+      }
+      sendUpdateToUser(client, order);
+    }
+  }
+
+  seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status });
+}
+
+async function catchUp(client) {
   try {
-    const url = `${API_BASE}/api/bot/orders?since=${encodeURIComponent(lastSince)}`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!resp.ok) {
-      console.warn(`[OrderMonitor] API error: ${resp.status}`);
+    const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .gte('created_at', since)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.warn(`[OrderMonitor] Catch-up query failed: ${error.message}`);
       return;
     }
-    const result = await resp.json();
-    if (!result?.orders?.length) return;
+    if (!data?.length) return;
 
-    for (const order of result.orders) {
-      if (!order.id) continue;
-
-      // Track latest timestamp
-      if (order.created_at > lastSince) lastSince = order.created_at;
-
-      // New order detection
-      if (!notified.has(order.id)) {
-        const type = isPaymentConfirmed(order) ? 'payment' : 'new';
-        sendNotif(client, order, type);
-        seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status });
-        continue;
-      }
-
-      // Status change detection
-      const prev = seenOrders.get(order.id);
-      if (prev) {
-        const osChanged = prev.status !== order.order_status;
-        const psChanged = prev.payment !== order.payment_status;
-        if (osChanged || psChanged) {
-          const confirmed = isPaymentConfirmed(order) && !PAYMENT_OK.includes(prev.status) && !PAYMENT_OK.includes(prev.payment);
-          if (confirmed) {
-            sendNotif(client, order, 'payment');
-          }
-          sendUpdateToUser(client, order);
-        }
-      }
-      // Track current status (even if unchanged, for first poll after restart)
-      seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status });
+    console.log(`[OrderMonitor] Catch-up: ${data.length} order(s)`);
+    for (const order of data) {
+      handleOrder(client, order);
     }
   } catch (e) {
-    if (e.name !== 'AbortError') {
-      console.warn(`[OrderMonitor] Poll error: ${e.message}`);
-    }
+    console.warn(`[OrderMonitor] Catch-up error: ${e.message}`);
   }
 }
 
 export async function startOrderMonitor(client) {
   await loadNotified();
 
-  // Initial catch-up
-  await processOrders(client);
+  supabase = createClient(config.supabase.url, config.supabase.key, {
+    realtime: { params: { eventsPerSecond: 10 } },
+  });
 
-  // Start polling
-  pollTimer = setInterval(() => processOrders(client), POLL_INTERVAL_MS);
-  console.log(`[OrderMonitor] Polling started (every ${POLL_INTERVAL_MS / 1000}s)`);
+  // Catch-up for orders created while bot was offline
+  await catchUp(client);
+
+  // Supabase Realtime for live notifications
+  channel = supabase
+    .channel('wa-bot-orders')
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'transactions' },
+      (payload) => {
+        console.log(`[OrderMonitor] INSERT: ${payload.new?.id}`);
+        handleOrder(client, payload.new);
+      }
+    )
+    .on('postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'transactions' },
+      (payload) => {
+        console.log(`[OrderMonitor] UPDATE: ${payload.new?.id}`);
+        handleOrder(client, payload.new);
+      }
+    )
+    .subscribe((status) => {
+      console.log(`[OrderMonitor] Realtime: ${status}`);
+    });
+
+  console.log('[OrderMonitor] Supabase Realtime — no polling');
 
   return {
     unsubscribe: () => {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = null;
+      if (channel && supabase) supabase.removeChannel(channel);
+      channel = null;
     },
   };
 }
