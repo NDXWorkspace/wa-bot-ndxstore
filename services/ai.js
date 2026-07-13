@@ -1,17 +1,21 @@
 import { config } from '../config.js';
 
 const MODEL = config.aiModel || 'openai';
+const API_BASE = config.aiApiBase.replace(/\/+$/, '');
 
-const SYSTEM_PROMPT = `Kamu adalah teman ngobrol casual. Gaya bicara:
-- Jawab singkat, kayak temen ngobrol
-- Pake bahasa gaul sehari-hari, santai
-- Jangan formal, jangan kaku
-- Jangan pake "hai ada yang bisa dibantu?" atau "selamat datang"
-- Kalo orangnya chat "halo", jawab "halo" aja
-- Kalo ditanya, jawab seadanya, ga usah lebay
-- Pake gaya kayak cowok ngobrol sama temen
-- Ga perlu perkenalan diri tiap kali
-- Natural aja kayak chatting sama temen`;
+const SYSTEM_PROMPT = `Kamu temen ngobrol casual, santai.
+
+ATURAN:
+- Jawab singkat, ga usah panjang lebar
+- Pake bahasa Indonesia santai anak muda: pake "sih", "deh", "kok", "yah"
+- JANGAN ngarumus, jangan nambah-nambahin informasi
+- Kalo gak tau jawabannya, bilang "gatau" atau "gak tau deh"
+- Kalo chat cuma "halo", jawab "halo" doang
+- JANGAN ngomong pake bahasa Inggris kalo gak ditanya
+- JANGAN ngejelasin panjang lebar, cukup respon natural kayak chat WA
+- Fokus jawab apa yang ditanya doang, jangan ngelantur
+- Kalo ditanya opini, bilang seadanya
+- JANGAN berpura-pura jadi bot CS atau toko`;
 
 let conversationHistory = new Map();
 const MAX_HISTORY = 20;
@@ -32,21 +36,25 @@ export function clearHistory(jid) {
   conversationHistory.delete(jid);
 }
 
-async function callAI(body) {
-  const url = `${config.aiApiBase.replace(/\/+$/, '')}/openai`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!resp.ok) {
-    const err = await resp.text();
-    console.error(`[AI] ${url} error ${resp.status}:`, err.slice(0, 200));
+async function tryFetch(url, body) {
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error(`[AI] ${url.split('//')[1]} error ${resp.status}:`, err.slice(0, 100));
+      return null;
+    }
+    const data = await resp.json();
+    return data?.choices?.[0]?.message?.content?.trim() || null;
+  } catch (e) {
+    console.error(`[AI] ${url.split('//')[1]} fetch error:`, e.message);
     return null;
   }
-  const data = await resp.json();
-  return data?.choices?.[0]?.message?.content?.trim() || null;
 }
 
 export async function askAI(jid, message) {
@@ -59,15 +67,23 @@ export async function askAI(jid, message) {
   for (const m of recent) messages.push(m);
   messages.push({ role: 'user', content: message });
 
-  const body = { model: MODEL, messages, max_tokens: 200, temperature: 0.9 };
+  const baseBody = { model: MODEL, messages, max_tokens: 150, temperature: 0.5 };
 
-  const reply = await callAI(body);
-  if (reply) {
-    addHistory(jid, 'user', message);
-    addHistory(jid, 'assistant', reply);
-    return reply;
+  const endpoints = [
+    { url: `${API_BASE}/openai`, body: baseBody },
+    { url: 'https://text.pollinations.ai/openai', body: { ...baseBody, model: MODEL || 'openai' } },
+    { url: 'https://text.pollinations.ai/openai', body: { ...baseBody, model: 'llama' } },
+  ];
+
+  for (const { url, body } of endpoints) {
+    const reply = await tryFetch(url, body);
+    if (reply) {
+      addHistory(jid, 'user', message);
+      addHistory(jid, 'assistant', reply);
+      return reply;
+    }
   }
 
-  console.error('[AI] API failed');
-  return 'Error, coba lagi ya.';
+  console.error('[AI] All endpoints failed');
+  return null;
 }
