@@ -191,23 +191,22 @@ async function main() {
           }
         }
 
-        // === CORE MENU — jalan SELALU, di grup/DM, bypass AI mode ===
-        const lowered = body.toLowerCase();
-        if (lowered === 'menu' || lowered === '0' || lowered === 'halo' || lowered === 'hi' || lowered === 'p') {
+        // === CORE MENU — case-sensitive (huruf besar di awal) ===
+        if (body === 'Menu' || body === '0') {
           await msg.reply(getMenuText());
           return;
         }
-        if (body.startsWith('cek ') || lowered === '1') {
-          if (body.startsWith('cek ')) {
+        if (body.startsWith('Cek ') || body === '1') {
+          if (body.startsWith('Cek ')) {
             const username = body.slice(4).trim();
             if (username) return await checkOrders(msg, username);
           }
-          await msg.reply('Ketik *cek [username]* untuk cek status order.\nContoh: *cek ROWSOWS*');
+          await msg.reply('Ketik *Cek [username]* untuk cek status order.\nContoh: *Cek ROWSOWS*');
           return;
         }
-        if (lowered === '2') { await msg.reply(getInfoProduk()); return; }
-        if (lowered === '3') { await msg.reply(getCaraOrder()); return; }
-        if (lowered === '5') { await msg.reply(getInfoPembayaran()); return; }
+        if (body === '2') { await msg.reply(getInfoProduk()); return; }
+        if (body === '3') { await msg.reply(getCaraOrder()); return; }
+        if (body === '5') { await msg.reply(getInfoPembayaran()); return; }
 
         // === SKIP OWN GROUP NOTIFICATIONS ===
         if (msg.fromMe && msg.from.includes('@g.us')) return;
@@ -234,9 +233,9 @@ async function main() {
 
         // === ACTIVE HANDOVER — forward to admin ===
         if (isHandoverActive(msg.from) && config.adminNumber) {
-          if (body.toLowerCase() === 'selesai' || body.toLowerCase() === 'stop') {
+          if (body === 'Selesai' || body === 'Stop') {
             endHandover(msg.from);
-            await msg.reply('🔚 Sesi CS selesai. Ketik *menu* untuk kembali.');
+            await msg.reply('🔚 Sesi CS selesai. Ketik *Menu* untuk kembali.');
             await c.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai\nUser: ${msg.from}`);
             return;
           }
@@ -249,7 +248,7 @@ async function main() {
         if (isOnCooldown(msg.from, 'default')) return;
 
         // === CS HANDOVER (DM only) ===
-        if (lowered === '4' || lowered === 'cs') {
+        if (body === '4' || body === 'Cs' || body === 'CS') {
           if (config.adminNumber) {
             await startHandover(c, msg, config.adminNumber);
           } else {
