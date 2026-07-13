@@ -190,26 +190,33 @@ function saveExchange(jid, userMsg, reply) {
 
 // ─── API Fetch ───────────────────────────────────────────────────────
 
+const FAILED_ENDPOINTS = new Set();
+
 async function tryFetch(url, body, headers = {}) {
+  if (FAILED_ENDPOINTS.has(url)) return null;
   try {
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(20000),
     });
     if (!resp.ok) {
       const err = await resp.text();
-      console.error(`[AI] ${url.includes('api.groq') ? 'Groq' : url.includes('pollinations') ? 'Pollinations' : url.slice(0, 40)} error ${resp.status}`, err.slice(0, 120));
+      console.error(`[AI] ${url.includes('api.groq') ? 'Groq' : 'Pollinations'} error ${resp.status}`, err.slice(0, 120));
+      if (resp.status >= 400) FAILED_ENDPOINTS.add(url);
       return null;
     }
     const data = await resp.json();
     return data?.choices?.[0]?.message?.content?.trim() || null;
   } catch (e) {
-    console.error(`[AI] ${url.includes('api.groq') ? 'Groq' : 'API'} fetch error:`, e.message);
+    console.error(`[AI] ${url.includes('api.groq') ? 'Groq' : 'API'} error:`, e.message?.slice(0, 80));
+    FAILED_ENDPOINTS.add(url);
     return null;
   }
 }
+
+setInterval(() => { FAILED_ENDPOINTS.clear(); }, 300000);
 
 function buildProMessages(userHist, message, mode = 1) {
   const prompt = PROMPTS[mode] || PROMPTS[1];
@@ -228,39 +235,20 @@ export async function askAI(jid, message, mode = 1) {
   const userHist = await getOrLoadHistory(jid);
   const msgs = buildProMessages(userHist, message, mode);
 
-  // Attempt chain: best model → good model → fallback
-  const attempts = [];
+  const models = [
+    ...(config.groqKey?.startsWith('gsk_') ? [{ url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama3-70b-8192', headers: { Authorization: `Bearer ${config.groqKey}` } }] : []),
+    { url: `${config.aiApiBase.replace(/\/+$/, '')}/openai`, model: config.aiModel || 'openai' },
+    { url: 'https://text.pollinations.ai/openai', model: config.aiModel || 'openai' },
+    { url: 'https://text.pollinations.ai/openai', model: 'llama' },
+    { url: 'https://text.pollinations.ai/openai', model: 'mistral' },
+    { url: 'https://text.pollinations.ai/openai', model: 'openai-large' },
+  ];
 
-  // 1) Groq — Llama 3 70B (best quality, fast)
-  if (config.groqKey?.startsWith('gsk_')) {
-    attempts.push({
-      name: 'Groq Llama 70B',
-      url: 'https://api.groq.com/openai/v1/chat/completions',
-      body: { model: 'llama3-70b-8192', messages: msgs, max_tokens: 200, temperature: 0.7 },
-      headers: { Authorization: `Bearer ${config.groqKey}` },
-    });
-  }
-
-  // 2) Pollinations — primary
-  attempts.push({
-    name: 'Pollinations',
-    url: `${config.aiApiBase.replace(/\/+$/, '')}/openai`,
-    body: { model: config.aiModel || 'openai', messages: msgs, max_tokens: 200, temperature: 0.7 },
-  });
-
-  // 3) Pollinations — llama fallback
-  attempts.push({
-    name: 'Pollinations Llama',
-    url: 'https://text.pollinations.ai/openai',
-    body: { model: 'llama', messages: msgs, max_tokens: 200, temperature: 0.7 },
-  });
-
-  // 4) Pollinations — direct primary
-  attempts.push({
-    name: 'Pollinations Direct',
-    url: 'https://text.pollinations.ai/openai',
-    body: { model: 'openai', messages: msgs, max_tokens: 200, temperature: 0.7 },
-  });
+  const attempts = models.map(m => ({
+    url: m.url,
+    body: { model: m.model, messages: msgs, max_tokens: 200, temperature: 0.7 },
+    headers: m.headers || {},
+  }));
 
   for (const attempt of attempts) {
     const reply = await tryFetch(attempt.url, attempt.body, attempt.headers || {});
@@ -283,14 +271,16 @@ export async function askAIProactive(order, mode = 1) {
     { role: 'system', content: `${prompt}\n\nSekarang kirim pesan LANGSUNG ke pelanggan yang baru order. JANGAN pake tanda kutip, JANGAN pake kurung siku, JANGAN ngenalin diri. 1-2 kalimat doang.` },
     { role: 'user', content: userMsg },
   ];
-  const body = { messages: msgs, max_tokens: 100, temperature: 0.7 };
+  const proactiveModels = [
+    ...(config.groqKey?.startsWith('gsk_') ? [{ url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama3-70b-8192', headers: { Authorization: `Bearer ${config.groqKey}` } }] : []),
+    { url: `${config.aiApiBase.replace(/\/+$/, '')}/openai`, model: config.aiModel || 'openai' },
+    { url: 'https://text.pollinations.ai/openai', model: 'openai' },
+    { url: 'https://text.pollinations.ai/openai', model: 'llama' },
+  ];
 
-  if (config.groqKey?.startsWith('gsk_')) {
-    const r = await tryFetch('https://api.groq.com/openai/v1/chat/completions', { ...body, model: 'llama3-70b-8192' }, { Authorization: `Bearer ${config.groqKey}` });
+  for (const m of proactiveModels) {
+    const r = await tryFetch(m.url, { ...body, model: m.model }, m.headers || {});
     if (r) return r;
   }
-  const r = await tryFetch(`${config.aiApiBase.replace(/\/+$/, '')}/openai`, { ...body, model: config.aiModel || 'openai' });
-  if (r) return r;
-  const r2 = await tryFetch('https://text.pollinations.ai/openai', { ...body, model: 'openai' });
-  return r2;
+  return null;
 }
