@@ -213,13 +213,6 @@ async function main() {
         if (msg.fromMe) return;
         if (msg.from.includes('@g.us') && !aiMode) return;
 
-        // === GROUP: cuma bales kalo di-mention atau reply ke bot ===
-        if (msg.from.includes('@g.us')) {
-          const isMentioned = msg.mentionedIds?.some(id => id.includes(c.info.wid.user));
-          const isReplyToBot = msg.hasQuotedMsg ? (await msg.getQuotedMessage()).fromMe : false;
-          if (!isMentioned && !isReplyToBot) return;
-        }
-
         // === AI MODE — jawab SEMUA pesan ===
         if (aiMode > 0) {
           console.log('[AiMode] msg from', msg.from, 'body:', body.slice(0, 30));
