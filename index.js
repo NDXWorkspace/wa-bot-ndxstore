@@ -7,7 +7,7 @@ import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuR
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
 import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
-import { askAI, askAIWithImage, clearHistory, clearHistoryExcept, startHistoryCleanup } from './services/ai.js';
+import { askAI, askAIWithImage, clearHistory, clearHistoryExcept, startHistoryCleanup, detectGreeting } from './services/ai.js';
 import { bufferAiMessage } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
@@ -494,6 +494,16 @@ async function main() {
             : msg.type === 'video' ? 'video'
             : 'media ini';
           await msg.reply(`Maaf, aku belum bisa proses ${kind}. Ketik pesan teks aja ya 🙏`).catch(() => {});
+          return;
+        }
+
+        // ── Fast reply (common greetings) — instant, no buffer delay ──
+        const fastReply = detectGreeting(body);
+        if (fastReply) {
+          const reply = await askAI(senderJid, body, settings.aiMode).catch(() => null);
+          if (reply) {
+            await msg.reply(reply).catch(() => {});
+          }
           return;
         }
 

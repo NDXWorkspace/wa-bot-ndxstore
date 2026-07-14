@@ -513,7 +513,7 @@ async function tryPollinationsSequential(models, timeoutMs) {
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-function detectGreeting(text) {
+export function detectGreeting(text) {
   const cleaned = text.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
   return FAST_REPLIES.get(cleaned) || null;
 }
