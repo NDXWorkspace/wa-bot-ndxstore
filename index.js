@@ -215,8 +215,6 @@ async function main() {
       }
       if (!reply) reply = await askAI(jid, text, settings.aiMode).catch(() => null);
       if (reply) {
-        const delay = Math.min(reply.length * 10, 2000);
-        await new Promise(r => setTimeout(r, delay));
         latestMsg.reply(reply).catch(() => {});
       }
     }

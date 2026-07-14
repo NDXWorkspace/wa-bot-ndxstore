@@ -530,8 +530,9 @@ const FACTUAL_KW = /\b(harga|price|status|order|pesanan|produk|item|diamond|robu
 
 function pickTemperature(text, mode = 1) {
   const isFactual = FACTUAL_KW.test(text);
-  if (mode === 1) return isFactual ? 0.4 : 0.7;
-  return isFactual ? 0.3 : 0.5;
+  const jitter = (Math.random() - 0.5) * 0.2;
+  if (mode === 1) return Math.round((isFactual ? 0.5 + jitter : 0.75 + jitter) * 100) / 100;
+  return Math.round((isFactual ? 0.3 : 0.55 + jitter) * 100) / 100;
 }
 
 // ─── Tier racing (single model per tier, parallel within tier) ─────────
