@@ -146,7 +146,12 @@ async function reconnect(oldClient) {
       client = newClient;
       currentClientRef = newClient;
       if (onNewClient) onNewClient(newClient);
-      newClient.initialize();
+      const initPromise = newClient.initialize();
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 45000));
+      await Promise.race([initPromise, timeout]).catch(e => {
+        logger.error('WA', `Reconnect init issue:`, e.message);
+        // Don't throw — init might complete later after QR scan
+      });
       isReconnecting = false;
       return;
     } catch (e) {

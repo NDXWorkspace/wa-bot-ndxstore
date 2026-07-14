@@ -1,7 +1,7 @@
 import http from 'http';
 import os from 'os';
 import { config } from './config.js';
-import { createClient, getCurrentClient, getLatestQr } from './client.js';
+import { createClient, getCurrentClient, getLatestQr, detectBrowser } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
@@ -179,10 +179,8 @@ async function main() {
   logger.info('Bot', `Group ID: ${config.groupId || '(not set)'}`);
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
-  logger.info('Bot', `AI mode: ${['off', 'Bima', 'NDXStore'][settings.aiMode] || 'unknown'}`);
 
   // Validate Chrome/Puppeteer availability
-  const { detectBrowser } = await import('./client.js');
   const browserPath = await detectBrowser().catch(() => null);
   if (browserPath) {
     logger.info('Bot', `Browser: ${browserPath}`);
@@ -191,6 +189,7 @@ async function main() {
   }
 
   await loadSettings();
+  logger.info('Bot', `AI mode: ${['off', 'Bima', 'NDXStore'][settings.aiMode] || 'unknown'}`);
   await loadBlockedUsers();
   startMenuRefresh();
   startHistoryCleanup();

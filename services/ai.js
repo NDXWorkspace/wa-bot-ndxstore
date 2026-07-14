@@ -113,6 +113,8 @@ const PROMPTS = { 1: BIMA_PROMPT, 2: NDXSTORE_PROMPT };
 
 // ─── Fast-path responses (no API call) ─────────────────────────────────
 
+// NOTE: Keys are already stripped of spaces/special chars by detectGreeting
+// — so "halo juga" must be stored as "halojuga" to match.
 const FAST_REPLIES = new Map([
   ['p', 'p'],
   ['test', 'ok'],
@@ -124,7 +126,7 @@ const FAST_REPLIES = new Map([
   ['halo', 'halo juga, ada yang bisa dibantu?'],
   ['hai', 'hai juga'],
   ['hii', 'hai juga'],
-  ['halo juga', 'hehe, ada yang bisa dibantu?'],
+  ['halojuga', 'hehe, ada yang bisa dibantu?'],
   ['assalamualaikum', 'waalaikumsalam, ada yang bisa dibantu?'],
   ['assalamualaikumwrwb', 'waalaikumsalam wr wb, ada yang bisa dibantu?'],
   ['makasih', 'sama-sama kak'],
@@ -132,7 +134,7 @@ const FAST_REPLIES = new Map([
   ['thankyou', 'youre welcome'],
   ['makasi', 'sama-sama kak'],
   ['mksh', 'sama-sama kak'],
-  ['matur suwun', 'sami-sami kak'],
+  ['matursuwun', 'sami-sami kak'],
   ['trims', 'sama-sama kak'],
   ['ok', 'sip'],
   ['oke', 'sip'],
@@ -428,11 +430,12 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
         // If retry failed too, fall through to normal error handling
         const err2 = await resp.text().catch(() => 'unknown');
         logger.error('AI', `${url} (${model}) ${resp.status} (after retry):`, err2.slice(0, 120));
-        if (!isServerError) FAILED_ENDPOINTS.set(key, Date.now());
+        if (resp.status < 500 && resp.status !== 429) FAILED_ENDPOINTS.set(key, Date.now());
         return null;
       }
 
-      if (!isServerError) FAILED_ENDPOINTS.set(key, Date.now());
+      // Don't blacklist 5xx (transient server errors) or 429 (rate limit recovers)
+      if (resp.status < 500 && resp.status !== 429) FAILED_ENDPOINTS.set(key, Date.now());
       logger.error('AI', `${url} (${model}) ${resp.status}:`, err.slice(0, 120));
       return null;
     }
