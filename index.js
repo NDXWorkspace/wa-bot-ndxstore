@@ -306,24 +306,43 @@ async function main() {
             return;
           }
 
-          // !clear — simplified (removed dead WWebJS page eval)
+          // !clear — batch fetch & delete bot messages
           const clearMatch = body.match(/^!clear\s+(\d+)/i);
           if (clearMatch) {
             const num = parseInt(clearMatch[1]);
             if (num < 1 || num > 50) { await msg.reply('❌ Jumlah: 1-50'); return; }
             try {
               const chat = await c.getChatById(msg.from);
-              const msgs = await chat.fetchMessages({ limit: Math.min(num * 3, 50) });
-              const botMsgs = msgs.filter(m => m.fromMe).slice(0, num);
+              // Fetch with fromMe filter when available, fallback to batch
+              let botMsgs = [];
+              try {
+                botMsgs = await chat.fetchMessages({ limit: num, fromMe: true });
+              } catch {
+                // Fallback: fetch in batches
+                let total = Math.min(num * 2, 100);
+                while (botMsgs.length < num && total <= 200) {
+                  const msgs = await chat.fetchMessages({ limit: total });
+                  botMsgs = msgs.filter(m => m.fromMe).slice(0, num);
+                  if (botMsgs.length < num) total = Math.min(total + 50, 200);
+                  else break;
+                }
+              }
               if (!botMsgs.length) { await msg.reply('❌ Gak ada pesan bot.'); return; }
-              let ok = 0, fail = 0;
+              let ok = 0, fail = 0, old = 0;
               for (const m of botMsgs) {
                 try {
-                  if (typeof m.delete === 'function') { await m.delete(true); ok++; }
-                  else fail++;
-                } catch { fail++; }
+                  await m.delete(true);
+                  ok++;
+                } catch {
+                  // Retry: delete for myself only (older messages)
+                  try { await m.delete(false); ok++; old++; }
+                  catch { fail++; }
+                }
               }
-              await msg.reply(`🧹 ${ok} terhapus${fail ? `, ${fail} gagal` : ''}`);
+              let summary = `🧹 ${ok} terhapus`;
+              if (old) summary += ` (${old} lokal)`;
+              if (fail) summary += `, ${fail} gagal`;
+              await msg.reply(summary);
             } catch (e) {
               await msg.reply(`❌ Gagal: ${e.message.slice(0, 80)}`);
             }
