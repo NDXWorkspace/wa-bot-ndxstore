@@ -107,6 +107,10 @@ const healthApp = http.createServer(async (req, res) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
+healthApp.on('error', (err) => {
+  logger.error('Health', `Failed to start on ${PORT}:`, err.message);
+  process.exit(1);
+});
 healthApp.listen(PORT, () => {
   logger.info('Health', `HTTP server on port ${PORT}`);
 });
@@ -125,7 +129,11 @@ async function checkOrders(msg, username) {
     }
     let reply = `📋 *Order ${username}*\n━━━━━━━━━━━━━━\n`;
     for (const o of result.transactions.slice(0, 5)) {
-      reply += `\n🆔 ${o.id}\n📦 ${o.productName || '-'}\n💰 ${formatPrice(o.priceIdr)}\n📊 ${o.orderStatus || o.paymentStatus || '-'}\n⏰ ${formatTime(o.createdAt)}\n━━━━━━━━━━━━━━`;
+      const prod = o.productName || o.product_name || '-';
+      const price = o.priceIdr ?? o.price_idr;
+      const status = o.orderStatus || o.order_status || o.paymentStatus || o.payment_status || '-';
+      const time = o.createdAt || o.created_at;
+      reply += `\n🆔 ${o.id}\n📦 ${prod}\n💰 ${formatPrice(price)}\n📊 ${status}\n⏰ ${formatTime(time)}\n━━━━━━━━━━━━━━`;
     }
     await msg.reply(reply);
   } catch (e) {
@@ -217,19 +225,20 @@ async function main() {
       try {
         const body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from;
-        const isAdmin = senderJid.split('@')[0].replace(/^\+/, '') === config.adminNumber.replace(/^\+/, '');
+        const adminRaw = config.adminNumber.replace(/^\+/, '').trim();
+        const isAdmin = senderJid.split('@')[0].replace(/^\+/, '').trim() === adminRaw;
         logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}" | fromMe:${msg.fromMe} | admin:${isAdmin} | aiMode:${settings.aiMode}`);
 
         // ── Block / Unblock ──
         if (body === '!block' && isAdmin) {
-          const target = msg.to.includes('@g.us') ? msg.author || msg.from : msg.from;
+          const target = msg.to?.includes('@g.us') ? msg.author || msg.from : msg.from;
           blockedUsers.add(target);
           await saveBlockedUsers();
           await msg.reply(`⛔ User diblokir: ${target}`);
           return;
         }
         if (body === '!unblock' && isAdmin) {
-          const target = msg.to.includes('@g.us') ? msg.author || msg.from : msg.from;
+          const target = msg.to?.includes('@g.us') ? msg.author || msg.from : msg.from;
           blockedUsers.delete(target);
           await saveBlockedUsers();
           await msg.reply(`✅ User di-unblock: ${target}`);
@@ -524,12 +533,17 @@ async function main() {
     await flushSettings().catch(() => {});
     const client = getCurrentClient();
     if (client) await client.destroy().catch(() => {});
+    healthApp.close(() => {});
     process.exit(0);
   }
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('uncaughtException', (err) => logger.error('uncaughtException', err));
+  process.on('uncaughtException', (err) => {
+    logger.error('Uncaught', err.message);
+    logger.error('Uncaught', err.stack?.slice(0, 500));
+    process.exit(1);
+  });
   // Not fatal — the process keeps running; log as a warning rather than mislabeling it FATAL.
   process.on('unhandledRejection', (reason) => logger.warn('unhandledRejection', reason));
 

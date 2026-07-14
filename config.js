@@ -1,7 +1,9 @@
 import 'dotenv/config';
 
+const e = (key) => (process.env[key] || '').trim();
+
 const REQUIRED = ['SUPABASE_URL', 'SUPABASE_KEY', 'ADMIN_NUMBER'];
-const missing = REQUIRED.filter(k => !process.env[k]);
+const missing = REQUIRED.filter(k => !e(k));
 if (missing.length > 0) {
   console.error(`[Config] Missing required env vars: ${missing.join(', ')}`);
   process.exit(1);
@@ -9,21 +11,18 @@ if (missing.length > 0) {
 
 export const config = {
   supabase: {
-    url: process.env.SUPABASE_URL,
-    key: process.env.SUPABASE_KEY,
+    url: e('SUPABASE_URL'),
+    key: e('SUPABASE_KEY'),
   },
-  groupId: process.env.GROUP_ID || '',
-  adminNumber: process.env.ADMIN_NUMBER || '',
-  apiPassword: process.env.API_PASSWORD || '',
-  apiBase: process.env.API_BASE || 'https://ndxstoreid.vercel.app',
-  aiKey: process.env.AI_API_KEY || '',
-  aiApiBase: process.env.AI_API_BASE || 'https://text.pollinations.ai',
-  aiModel: process.env.AI_MODEL || 'openai',
-  groqKey: process.env.GROQ_API_KEY || '',
-  // Groq's vision lineup changes often (llama-3.2-vision → llama-4-scout → …),
-  // so vision via Groq is opt-in. Leave empty to route images through Pollinations.
-  // Set to a current model from console.groq.com/docs/models to re-enable Groq vision.
-  groqVisionModel: process.env.GROQ_VISION_MODEL || '',
+  groupId: e('GROUP_ID'),
+  adminNumber: e('ADMIN_NUMBER'),
+  apiPassword: e('API_PASSWORD'),
+  apiBase: e('API_BASE') || 'https://ndxstoreid.vercel.app',
+  aiKey: e('AI_API_KEY'),
+  aiApiBase: e('AI_API_BASE') || 'https://text.pollinations.ai',
+  aiModel: e('AI_MODEL') || 'openai',
+  groqKey: e('GROQ_API_KEY'),
+  groqVisionModel: e('GROQ_VISION_MODEL'),
 };
 
-console.log('[Config] Validated. Admin:', config.adminNumber);
+console.log('Config OK. Admin:', config.adminNumber.replace(/.(?=.{4})/g, '*'));

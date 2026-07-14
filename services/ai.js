@@ -241,8 +241,8 @@ async function runHistoryCleanup() {
 
 export function startHistoryCleanup() {
   if (historyCleanupTimer) return;
-  runHistoryCleanup();
-  historyCleanupTimer = setInterval(runHistoryCleanup, 24 * 60 * 60 * 1000);
+  runHistoryCleanup().catch(() => {});
+  historyCleanupTimer = setInterval(() => runHistoryCleanup().catch(() => {}), 24 * 60 * 60 * 1000);
   startEndpointCleanup();
 }
 
@@ -292,8 +292,8 @@ function saveExchange(jid, userMsg, reply) {
   hist.push({ role: 'user', content: userMsg });
   hist.push({ role: 'assistant', content: reply });
   setHistory(jid, hist);
-  persistToDb(jid, 'user', userMsg);
-  persistToDb(jid, 'assistant', reply);
+  persistToDb(jid, 'user', userMsg).catch(() => {});
+  persistToDb(jid, 'assistant', reply).catch(() => {});
 }
 
 // ─── Language detection ────────────────────────────────────────────────
