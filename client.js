@@ -28,6 +28,7 @@ export async function detectBrowser() {
   }
   const isWin = process.platform === 'win32';
   const isMac = process.platform === 'darwin';
+  const isAndroid = process.platform === 'linux' && process.arch === 'arm64';
   const candidates = [
     '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',
@@ -44,6 +45,10 @@ export async function detectBrowser() {
       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
       '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    ] : []),
+    ...(isAndroid ? [
+      '/data/data/com.termux/files/usr/bin/chromium',
+      '/data/data/com.termux/files/usr/bin/chromium-browser',
     ] : []),
   ];
   for (const c of candidates) {
@@ -77,6 +82,11 @@ async function getPuppeteerConfig() {
     return { headless: true, executablePath: detected, args: baseArgs };
   }
 
+  const isAndroid = process.platform === 'linux' && process.arch === 'arm64';
+  if (isAndroid) {
+    logger.error('Puppeteer', 'Chromium not found. Install it: pkg install chromium && export PUPPETEER_EXECUTABLE_PATH=$(which chromium)');
+    throw new Error('Chromium not found for Termux/Android. Run: pkg install chromium');
+  }
   logger.info('Puppeteer', 'No local browser found, using puppeteer default');
   return { headless: true, args: baseArgs };
 }
