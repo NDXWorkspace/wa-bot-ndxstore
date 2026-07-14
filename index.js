@@ -522,7 +522,7 @@ async function main() {
     if (monitor) orderMonitorCleanup = monitor;
   });
 
-  waClient.initialize().catch(e => logger.error('WA', 'Init failed:', e.message));
+  waClient.initialize().catch(e => logger.error('WA', 'Init failed:', `${e.message} (${process.platform}/${process.arch})`));
 
   async function shutdown(signal) {
     logger.info('Bot', `Received ${signal}, shutting down...`);

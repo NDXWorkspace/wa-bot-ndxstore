@@ -85,21 +85,19 @@ async function getPuppeteerConfig() {
     return { headless: true, executablePath: detected, args: baseArgs };
   }
 
-  // Android/Termux: try 'which chromium' before giving up
-  if (process.platform === 'linux' && process.arch === 'arm64') {
+  // Chromium not found via hardcoded paths — try 'which' before giving up
+  for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
     try {
-      const { stdout } = await execAsync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null');
+      const { stdout } = await execAsync(`which ${name} 2>/dev/null`);
       const p = stdout?.trim();
       if (p) {
-        logger.info('Puppeteer', `Using Chromium: ${p}`);
+        logger.info('Puppeteer', `Using ${name}: ${p}`);
         return { headless: true, executablePath: p, args: baseArgs };
       }
     } catch {}
-    logger.error('Puppeteer', 'Chromium tidak ditemukan. Install: pkg install chromium');
-    throw new Error('Chromium not found for Termux/Android. Run: pkg install chromium');
   }
-  logger.info('Puppeteer', 'No local browser found, using puppeteer default');
-  return { headless: true, args: baseArgs };
+  logger.error('Puppeteer', 'Chromium/Chrome tidak ditemukan. Install: pkg install chromium, lalu set PUPPETEER_EXECUTABLE_PATH=$(which chromium) di .env');
+  throw new Error('Browser not found');
 }
 
 function calcDelay(attempt) {
