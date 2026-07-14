@@ -51,6 +51,7 @@ async function saveBlockedUsers() {
   }
 }
 let botStartedAt = Date.now();
+const ADMIN_RAW = config.adminNumber.replace(/^\+/, '').trim();
 
 // ─── Health Check ──────────────────────────────────────────────────────
 
@@ -224,8 +225,7 @@ async function main() {
       try {
         const body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from;
-        const adminRaw = config.adminNumber.replace(/^\+/, '').trim();
-        const isAdmin = senderJid.split('@')[0].replace(/^\+/, '').trim() === adminRaw;
+        const isAdmin = senderJid.split('@')[0].replace(/^\+/, '').trim() === ADMIN_RAW;
         logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}" | fromMe:${msg.fromMe} | admin:${isAdmin} | aiMode:${settings.aiMode}`);
 
         // ── Block / Unblock ──
@@ -246,25 +246,6 @@ async function main() {
 
         // ── Blocked Users ──
         if (!isAdmin && blockedUsers.has(senderJid)) return;
-
-        // ── Welcome new users (DM only, only when AI is off) ──
-        if (!msg.fromMe && !msg.from.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
-          await sendWelcomeIfNew(c, msg);
-          return;
-        }
-
-        // ── History ──
-        if (body.startsWith('!history') && isAdmin) {
-          const limit = parseInt(body.slice(8).trim()) || 20;
-          const history = await getChatHistory(limit);
-          if (!history?.length) return await msg.reply('📋 Riwayat chat kosong.');
-          let reply = `📋 *RIWAYAT CHAT (${history.length})*\n━━━━━━━━━━━━━━\n`;
-          for (const h of history.slice(0, 10)) {
-            reply += `\n👤 ${h.user_number?.replace(/@.*/, '')}\n💬 ${(h.content || '').slice(0, 50)}${h.content?.length > 50 ? '...' : ''}\n⏰ ${formatTime(h.created_at)}\n━━━━━━━━━━━━━━`;
-          }
-          await msg.reply(reply);
-          return;
-        }
 
         // ── Admin Commands ──
         if (msg.fromMe || isAdmin) {
@@ -373,6 +354,19 @@ async function main() {
             return;
           }
 
+          // ── History ──
+          if (body.startsWith('!history') && isAdmin) {
+            const limit = parseInt(body.slice(8).trim()) || 20;
+            const history = await getChatHistory(limit);
+            if (!history?.length) return await msg.reply('📋 Riwayat chat kosong.');
+            let reply = `📋 *RIWAYAT CHAT (${history.length})*\n━━━━━━━━━━━━━━\n`;
+            for (const h of history.slice(0, 10)) {
+              reply += `\n👤 ${h.user_number?.replace(/@.*/, '')}\n💬 ${(h.content || '').slice(0, 50)}${h.content?.length > 50 ? '...' : ''}\n⏰ ${formatTime(h.created_at)}\n━━━━━━━━━━━━━━`;
+            }
+            await msg.reply(reply);
+            return;
+          }
+
           if (body.startsWith('!')) {
             const handled = await handleAdminCommand(c, msg, body);
             if (handled) return;
@@ -406,6 +400,13 @@ async function main() {
               return;
             }
           }
+        }
+        if (isAdmin) return;
+
+        // ── Welcome new users (DM only, only when AI is off) ──
+        if (!msg.fromMe && !msg.from.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
+          await sendWelcomeIfNew(c, msg);
+          return;
         }
 
         // ── Core Menu ──

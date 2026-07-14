@@ -5,8 +5,8 @@
 // Adaptive timing: short messages get a shorter window, long messages get more time.
 // Max 5 fragments: beyond that, flush immediately (user is spamming).
 
-const SHORT_WINDOW_MS = 2000;
-const LONG_WINDOW_MS = 4000;
+const SHORT_WINDOW_MS = 1000;
+const LONG_WINDOW_MS = 2000;
 const MAX_FRAGMENTS = 5;
 const SHORT_MSG_THRESHOLD = 3; // words
 
