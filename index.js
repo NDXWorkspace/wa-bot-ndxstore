@@ -544,8 +544,14 @@ async function main() {
     logger.error('Uncaught', err.stack?.slice(0, 500));
     process.exit(1);
   });
-  // Not fatal — the process keeps running; log as a warning rather than mislabeling it FATAL.
-  process.on('unhandledRejection', (reason) => logger.warn('unhandledRejection', reason));
+  // Not fatal — most unhandled rejections are harmless fire-and-forget promises.
+  // Log with details so we can trace it if something important fails.
+  process.on('unhandledRejection', (reason) => {
+    const detail = reason instanceof Error
+      ? `${reason.message}\n${reason.stack?.slice(0, 500)}`
+      : String(reason).slice(0, 600);
+    logger.warn('unhandledRejection', detail);
+  });
 
   logger.info('Bot', 'Starting WhatsApp client...');
 }

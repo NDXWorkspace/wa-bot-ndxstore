@@ -55,7 +55,7 @@ export function saveSettings() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    saveToDb();
+    saveToDb().catch(() => {});
   }, 1000);
 }
 

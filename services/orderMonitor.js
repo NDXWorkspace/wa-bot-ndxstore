@@ -47,7 +47,7 @@ function schedulePersist() {
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     persistTimer = null;
-    persistNotified();
+    persistNotified().catch(() => {});
   }, PERSIST_DEBOUNCE_MS);
 }
 
