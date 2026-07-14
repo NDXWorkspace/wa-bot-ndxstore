@@ -207,13 +207,14 @@ async function main() {
     c.removeAllListeners('message_create');
 
     // Called after a user's message burst settles — answers once, with full context.
-    async function flushAiReply(jid, text, image, latestMsg) {
-      await c.sendPresenceUpdate('composing', jid).catch(() => {});
+    async function flushAiReply(userJid, text, image, latestMsg) {
+      const chatJid = latestMsg.from; // group JID in groups, user JID in DMs
+      await c.sendPresenceUpdate('composing', chatJid).catch(() => {});
       let reply;
       if (image) {
-        reply = await askAIWithImage(jid, text, image.data, image.mime, settings.aiMode).catch(() => null);
+        reply = await askAIWithImage(userJid, text, image.data, image.mime, settings.aiMode).catch(() => null);
       }
-      if (!reply) reply = await askAI(jid, text, settings.aiMode).catch(() => null);
+      if (!reply) reply = await askAI(userJid, text, settings.aiMode).catch(() => null);
       if (reply) {
         latestMsg.reply(reply).catch(() => {});
       }
@@ -532,7 +533,7 @@ async function main() {
           const media = await msg.downloadMedia().catch(() => null);
           if (media) image = { data: media.data, mime: media.mimetype };
         }
-        bufferAiMessage(msg.from, msg, body, image, flushAiReply);
+        bufferAiMessage(senderJid, msg, body, image, flushAiReply);
         return;
 
       } catch (e) {
