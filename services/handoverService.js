@@ -66,7 +66,9 @@ async function removeSessionFromDb(userNumber) {
   } catch {}
 }
 
-loadSessionsFromDb();
+export async function initHandover() {
+  await loadSessionsFromDb();
+}
 
 setInterval(() => {
   const now = Date.now();
@@ -123,15 +125,23 @@ export async function handleAdminReply(client, msg) {
   const quoted = await msg.getQuotedMessage();
   if (!quoted) return null;
 
-  const data = forwardedMessages.get(quoted.id._serialized);
-  if (!data) return null;
+  let userNumber = forwardedMessages.get(quoted.id._serialized)?.userNumber;
 
-  await client.sendMessage(data.userNumber, `📨 *Pesan dari Admin:*\n\n${msg.body}`);
+  // Fallback that survives a restart (in-memory map is empty then): the bot's
+  // forwarded messages embed the user's JID in their text — recover it from there.
+  if (!userNumber && quoted.fromMe) {
+    const m = quoted.body?.match(/(\d{6,}@c\.us)/);
+    if (m) userNumber = m[1];
+  }
 
-  forwardedMessages.set(msg.id._serialized, { userNumber: data.userNumber, timestamp: Date.now() });
-  touchSession(data.userNumber);
+  if (!userNumber) return null;
 
-  return data.userNumber;
+  await client.sendMessage(userNumber, `📨 *Pesan dari Admin:*\n\n${msg.body}`);
+
+  forwardedMessages.set(msg.id._serialized, { userNumber, timestamp: Date.now() });
+  touchSession(userNumber);
+
+  return userNumber;
 }
 
 export async function forwardToAdmin(client, userNumber, messageBody, adminNumber) {

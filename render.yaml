@@ -8,8 +8,34 @@ services:
         value: https://jlfrtyyjxkmdetdbeakv.supabase.co
       - key: SUPABASE_KEY
         sync: false
+      - key: ADMIN_NUMBER
+        sync: false
       - key: GROUP_ID
         value: 120363411174055948@g.us
+      - key: API_PASSWORD
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_VISION_MODEL
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_API_BASE
+        value: https://text.pollinations.ai
+      - key: AI_MODEL
+        value: openai
+      - key: LOG_LEVEL
+        value: info
+      - key: API_BASE
+        value: https://ndxstoreid.vercel.app
+    # Persist WhatsApp session across deploys/restarts
+    disk:
+      name: wa-session
+      mountPath: /app/wa-session
+      sizeGB: 1
+    # /health returns 200 while the process is alive (before WhatsApp is ready).
+    # Render's healthcheck uses this path to avoid killing the container
+    # during first-run QR login.
     healthCheckPath: /health
     autoDeploy: false
     numInstances: 1

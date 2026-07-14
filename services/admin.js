@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { formatPrice, formatTime } from '../utils/format.js';
-import { VALID_ORDER_STATUSES, API_BASE } from '../utils/constants.js';
+import { VALID_ORDER_STATUSES } from '../utils/constants.js';
 import { logger } from '../utils/logger.js';
 
 async function apiCall(method, path, body = null) {
@@ -10,7 +10,7 @@ async function apiCall(method, path, body = null) {
   }
   const opts = { method, headers, signal: AbortSignal.timeout(15000) };
   if (body) opts.body = JSON.stringify(body);
-  const resp = await fetch(`${API_BASE}${path}`, opts);
+  const resp = await fetch(`${config.apiBase}${path}`, opts);
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
     throw new Error(`API ${resp.status}: ${text.slice(0, 100)}`);
@@ -72,15 +72,15 @@ function formatOrderDetail(tx) {
   return msg;
 }
 
-const HELPTEXT = `📋 *ADMIN COMMANDS*\n━━━━━━━━━━━━━━━━━━━
-!help — List command
+const HELPTEXT = `📋 *API COMMANDS*\n━━━━━━━━━━━━━━━━━━━
 !stats — Statistik
 !orders — 5 order terbaru
 !pending — Order pending
 !pending [game] — Filter by game
 !detail NDX-XXXX — Detail order
 !status NDX-XXXX STATUS — Update status
-━━━━━━━━━━━━━━━━━━━`;
+━━━━━━━━━━━━━━━━━━━
+Ketik !helpall untuk semua command bot.`;
 
 export async function handleAdminCommand(client, msg, body) {
   if (body === '!groupid') {

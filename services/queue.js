@@ -3,7 +3,20 @@ import { logger } from '../utils/logger.js';
 
 const DAILY_LIMIT_DEFAULT = 50;
 
-export async function checkDailyLimit(userJid) {
+// Serialize per user so the read-then-update below is atomic within this process
+// (single instance) — stops concurrent message fragments from miscounting the limit.
+const limitChains = new Map();
+
+export function checkDailyLimit(userJid) {
+  const prev = limitChains.get(userJid) || Promise.resolve();
+  const run = prev.then(() => checkDailyLimitInner(userJid), () => checkDailyLimitInner(userJid));
+  const tail = run.catch(() => {});
+  limitChains.set(userJid, tail);
+  tail.then(() => { if (limitChains.get(userJid) === tail) limitChains.delete(userJid); });
+  return run;
+}
+
+async function checkDailyLimitInner(userJid) {
   const db = getDb();
   if (!db) return { allowed: true };
   try {

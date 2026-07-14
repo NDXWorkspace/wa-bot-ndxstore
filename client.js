@@ -14,6 +14,43 @@ let reconnectTimer = null;
 let isReconnecting = false;
 let onNewClient = null;
 let currentClientRef = null;
+let latestQr = null;
+
+// Latest pending QR string (null once authenticated) — served at /qr for headless login.
+export function getLatestQr() {
+  return latestQr;
+}
+
+export async function detectBrowser() {
+  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envPath) {
+    try { await fsp.access(envPath); return envPath; } catch {}
+  }
+  const isWin = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+  const candidates = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium',
+    ...(isWin ? [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    ] : []),
+    ...(isMac ? [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    ] : []),
+  ];
+  for (const c of candidates) {
+    try { await fsp.access(c); return c; } catch {}
+  }
+  return null;
+}
 
 async function getPuppeteerConfig() {
   const baseArgs = [
@@ -34,27 +71,10 @@ async function getPuppeteerConfig() {
     } catch {}
   }
 
-  const isWin = process.platform === 'win32';
-  const candidates = [
-    '/data/data/com.termux/files/usr/bin/chromium',
-    '/data/data/com.termux/files/usr/bin/chromium-browser',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    ...(isWin ? [
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    ] : []),
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      await fsp.access(candidate);
-      logger.info('Puppeteer', `Using browser: ${candidate}`);
-      return { headless: true, executablePath: candidate, args: baseArgs };
-    } catch {}
+  const detected = await detectBrowser();
+  if (detected) {
+    logger.info('Puppeteer', `Using browser: ${detected}`);
+    return { headless: true, executablePath: detected, args: baseArgs };
   }
 
   logger.info('Puppeteer', 'No local browser found, using puppeteer default');
@@ -74,15 +94,18 @@ async function createClientCore() {
   });
 
   c.on('qr', (qr) => {
-    console.log('\n[WA] Scan QR code ini dengan WhatsApp Anda:');
+    latestQr = qr;
+    console.log('\n[WA] Scan QR code ini dengan WhatsApp Anda (atau buka /qr di browser):');
     qrcode.generate(qr, { small: true });
   });
 
   c.on('authenticated', () => {
+    latestQr = null;
     logger.info('WA', 'Authenticated');
   });
 
   c.on('ready', () => {
+    latestQr = null;
     reconnectAttempt = 0;
     isReconnecting = false;
     logger.info('WA', 'Client ready');

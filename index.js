@@ -1,23 +1,24 @@
 import http from 'http';
 import os from 'os';
 import { config } from './config.js';
-import { createClient, getCurrentClient } from './client.js';
+import { createClient, getCurrentClient, getLatestQr } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
-import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin } from './services/handoverService.js';
+import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
 import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
-import { askAI, askAIWithImage, clearHistory, clearHistoryExcept } from './services/ai.js';
+import { askAI, askAIWithImage, clearHistory, clearHistoryExcept, startHistoryCleanup } from './services/ai.js';
 import { bufferAiMessage } from './services/aiBuffer.js';
-import { settings, loadSettings, saveSettings } from './services/settings.js';
+import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
-import { formatPrice, formatTime } from './utils/format.js';
+import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
 import { logger } from './utils/logger.js';
-import { API_BASE } from './utils/constants.js';
+
 
 const WELCOMED_USERS = new Set();
 const blockedUsers = new Set();
 let waClient = null;
+let orderMonitorCleanup = null;
 
 async function loadBlockedUsers() {
   try {
@@ -53,13 +54,40 @@ let botStartedAt = Date.now();
 
 // ─── Health Check ──────────────────────────────────────────────────────
 
-const healthApp = http.createServer(async (_req, res) => {
+const healthApp = http.createServer(async (req, res) => {
+  const url = (req.url || '/').split('?')[0];
+
+  // Liveness — 200 while the process is up. Used by the Render/Docker healthcheck so
+  // the container isn't killed during first-run QR login (before WA/DB are ready).
+  if (url === '/health' || url === '/healthz' || url === '/livez') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'alive', botUptime: Math.floor((Date.now() - botStartedAt) / 1000) }));
+    return;
+  }
+
+  // First-run login on a headless host — scan the pending QR from a browser.
+  if (url === '/qr') {
+    const qr = getLatestQr();
+    const connected = getCurrentClient()?.info?.wid?.user ? true : false;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    if (connected) {
+      res.end('<h2>✅ WhatsApp sudah terhubung.</h2>');
+    } else if (qr) {
+      const img = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qr)}`;
+      res.end(`<html><body style="text-align:center;font-family:sans-serif"><h2>Scan di WhatsApp → Perangkat Tertaut</h2><img src="${img}" alt="QR"><p>Auto-refresh 20 detik.</p><script>setTimeout(()=>location.reload(),20000)</script></body></html>`);
+    } else {
+      res.end('<h2>⏳ QR belum siap, tunggu &amp; refresh…</h2><script>setTimeout(()=>location.reload(),5000)</script>');
+    }
+    return;
+  }
+
+  // Readiness + detailed status (default path and /ready).
   const waConnected = getCurrentClient()?.info?.wid?.user ? true : false;
   let dbConnected = false;
   try {
     const db = getDb();
     if (db) {
-      const { error } = await db.from('transactions').select('id').limit(1);
+      const { error } = await db.from('wa_bot_config').select('key').limit(1);
       dbConnected = !error;
     }
   } catch {}
@@ -87,7 +115,7 @@ healthApp.listen(PORT, () => {
 
 async function checkOrders(msg, username) {
   try {
-    const resp = await fetch(`${API_BASE}/api/transactions/user/${encodeURIComponent(username.trim())}`, {
+    const resp = await fetch(`${config.apiBase}/api/transactions/user/${encodeURIComponent(username.trim())}`, {
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return await msg.reply('❌ Gagal cek order.');
@@ -151,10 +179,22 @@ async function main() {
   logger.info('Bot', `Group ID: ${config.groupId || '(not set)'}`);
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
+  logger.info('Bot', `AI mode: ${['off', 'Bima', 'NDXStore'][settings.aiMode] || 'unknown'}`);
+
+  // Validate Chrome/Puppeteer availability
+  const { detectBrowser } = await import('./client.js');
+  const browserPath = await detectBrowser().catch(() => null);
+  if (browserPath) {
+    logger.info('Bot', `Browser: ${browserPath}`);
+  } else {
+    logger.warn('Bot', 'No local browser found — puppeteer will download Chromium');
+  }
 
   await loadSettings();
   await loadBlockedUsers();
   startMenuRefresh();
+  startHistoryCleanup();
+  await initHandover();
 
   function setupMessageHandler(c) {
     c.removeAllListeners('message_create');
@@ -220,6 +260,36 @@ async function main() {
 
         // ── Admin Commands ──
         if (msg.fromMe || isAdmin) {
+          // Comprehensive help listing all commands
+          if (body === '!help' || body === '!helpall') {
+            await msg.reply(
+              `📋 *BOT COMMANDS*\n━━━━━━━━━━━━━━━━━━━\n` +
+              `*AI & Chat*\n` +
+              `!aimode — lihat mode\n` +
+              `!aimode 0|1|2 — set mode\n` +
+              `!aireset — reset history\n` +
+              `!aimodesetting — lihat setting\n` +
+              `!aimodesetting jd — toggle jawab duluan\n` +
+              `!aimodesetting unigroup — toggle ungroup\n` +
+              `!history [n] — riwayat chat\n` +
+              `!clear <n> — hapus n pesan bot\n` +
+              `*Security*\n` +
+              `!block — blokir user\n` +
+              `!unblock — buka blokir\n` +
+              `*Messaging*\n` +
+              `!reply 628xxx <pesan> — kirim pesan\n` +
+              `!groupid — tampilkan ID grup\n` +
+              `*API NDXStore*\n` +
+              `!help — lihat command API\n` +
+              `!stats — statistik\n` +
+              `!orders — 5 order terbaru\n` +
+              `!pending [game] — order pending\n` +
+              `!detail NDX-xxxx — detail order\n` +
+              `!status NDX-xxxx STATUS — update status\n` +
+              `━━━━━━━━━━━━━━━━━━━`
+            );
+            return;
+          }
           // Aimode with flexible parsing
           const aimodeVal = parseAiMode(body);
           if (aimodeVal !== null) {
@@ -304,12 +374,19 @@ async function main() {
           if (body.startsWith('!reply ') && config.adminNumber) {
             const rest = body.slice(7).trim();
             const spaceIdx = rest.indexOf(' ');
-            if (spaceIdx > 0) {
-              const target = rest.slice(0, spaceIdx).replace(/[^0-9]/g, '') + '@c.us';
-              const replyText = rest.slice(spaceIdx + 1);
-              await c.sendMessage(target, `📨 *Pesan dari Admin:*\n\n${replyText}`);
-              await msg.reply('✅ Pesan terkirim.');
+            if (spaceIdx <= 0 || !rest.slice(spaceIdx + 1).trim()) {
+              await msg.reply('❌ Format: !reply [nomor] [pesan]\nContoh: !reply 6285159898005 Halo kak');
+              return;
             }
+            const rawNumber = rest.slice(0, spaceIdx).trim();
+            const replyText = rest.slice(spaceIdx + 1).trim();
+            const target = formatWaNumber(rawNumber);
+            if (!target) {
+              await msg.reply('❌ Nomor tujuan tidak valid. Format: 628xxx');
+              return;
+            }
+            await c.sendMessage(target, `📨 *Pesan dari Admin:*\n\n${replyText}`);
+            await msg.reply('✅ Pesan terkirim.');
             return;
           }
 
@@ -323,36 +400,41 @@ async function main() {
           }
         }
 
-        // ── Core Menu (case-insensitive) ──
+        // ── Core Menu ──
         const lower = body.toLowerCase();
-        if (lower === 'menu' || lower === '0' || body === 'Menu') {
-          await msg.reply(getMenuText());
-          return;
-        }
 
-        if (lower.startsWith('cek ') || body === '1') {
-          if (lower.startsWith('cek ')) {
-            const username = body.slice(4).trim();
-            if (username) return await checkOrders(msg, username);
+        // When AI mode is on, skip menu/CS commands → everything goes to AI
+        if (settings.aiMode <= 0) {
+          if (lower === 'menu' || lower === '0' || body === 'Menu') {
+            await msg.reply(getMenuText());
+            return;
           }
-          await msg.reply('Ketik *Cek [username]* buat cek status order.\nContoh: *Cek ROWSOWS*');
-          return;
-        }
 
-        if (body === '2') { await msg.reply(getInfoProduk()); return; }
-        if (body === '3') { await msg.reply(getCaraOrder()); return; }
-        if (body === '5') { await msg.reply(getInfoPembayaran()); return; }
-
-        // ── CS Handover ──
-        if (body === '4' || lower === 'cs') {
-          if (config.adminNumber) {
-            await startHandover(c, msg, config.adminNumber);
-          } else {
-            await msg.reply('❌ Admin belum dikonfigurasi.');
+          if (lower.startsWith('cek ') || body === '1') {
+            if (lower.startsWith('cek ')) {
+              const username = body.slice(4).trim();
+              if (username) return await checkOrders(msg, username);
+            }
+            await msg.reply('Ketik *Cek [username]* buat cek status order.\nContoh: *Cek ROWSOWS*');
+            return;
           }
-          return;
+
+          if (body === '2') { await msg.reply(getInfoProduk()); return; }
+          if (body === '3') { await msg.reply(getCaraOrder()); return; }
+          if (body === '5') { await msg.reply(getInfoPembayaran()); return; }
+
+          // ── CS Handover start ──
+          if (body === '4' || lower === 'cs') {
+            if (config.adminNumber) {
+              await startHandover(c, msg, config.adminNumber);
+            } else {
+              await msg.reply('❌ Admin belum dikonfigurasi.');
+            }
+            return;
+          }
         }
 
+        // Active CS session works regardless of AI mode
         if (isHandoverActive(msg.from) && config.adminNumber) {
           if (lower === 'selesai' || lower === 'stop') {
             endHandover(msg.from);
@@ -397,6 +479,17 @@ async function main() {
           }
         }
 
+        // ── Non-image media without a caption: we can't read it, respond gracefully ──
+        if (msg.hasMedia && msg.type !== 'image' && !body) {
+          if (msg.type === 'sticker') return; // ignore stickers silently
+          const kind = (msg.type === 'ptt' || msg.type === 'audio') ? 'voice note'
+            : msg.type === 'document' ? 'file/dokumen'
+            : msg.type === 'video' ? 'video'
+            : 'media ini';
+          await msg.reply(`Maaf, aku belum bisa proses ${kind}. Ketik pesan teks aja ya 🙏`).catch(() => {});
+          return;
+        }
+
         // ── Buffer fragments, answer once the burst settles (see aiBuffer.js) ──
         let image = null;
         if (msg.hasMedia && msg.type === 'image') {
@@ -415,24 +508,31 @@ async function main() {
   waClient = await createClient(setupMessageHandler);
   setupMessageHandler(waClient);
 
-  waClient.on('ready', () => {
+  waClient.on('ready', async () => {
     logger.info('Bot', 'Client ready — bot online!');
-    startOrderMonitor(waClient, settings);
+    const monitor = await startOrderMonitor(waClient, settings);
+    if (monitor) orderMonitorCleanup = monitor;
   });
 
   waClient.initialize();
 
-  function shutdown(signal) {
+  async function shutdown(signal) {
     logger.info('Bot', `Received ${signal}, shutting down...`);
+    if (orderMonitorCleanup) {
+      await orderMonitorCleanup.flush().catch(() => {});
+      orderMonitorCleanup.unsubscribe();
+    }
+    await flushSettings().catch(() => {});
     const client = getCurrentClient();
-    if (client) client.destroy().then(() => process.exit(0)).catch(() => process.exit(1));
-    else process.exit(0);
+    if (client) await client.destroy().catch(() => {});
+    process.exit(0);
   }
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('uncaughtException', (err) => logger.error('FATAL', err));
-  process.on('unhandledRejection', (reason) => logger.error('FATAL', reason));
+  process.on('uncaughtException', (err) => logger.error('uncaughtException', err));
+  // Not fatal — the process keeps running; log as a warning rather than mislabeling it FATAL.
+  process.on('unhandledRejection', (reason) => logger.warn('unhandledRejection', reason));
 
   logger.info('Bot', 'Starting WhatsApp client...');
 }

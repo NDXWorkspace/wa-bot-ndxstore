@@ -35,22 +35,34 @@ export async function loadSettings() {
   loaded = true;
 }
 
+async function saveToDb() {
+  const db = getDb();
+  if (!db) return;
+  try {
+    await db.from('wa_bot_config').upsert({
+      key: SETTINGS_KEY,
+      value: JSON.parse(JSON.stringify(settings)),
+    }, { onConflict: 'key' });
+  } catch (e) {
+    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+      logger.error('Settings', 'Save error:', e.message);
+    }
+  }
+}
+
 let saveTimer = null;
 export function saveSettings() {
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
+  saveTimer = setTimeout(() => {
     saveTimer = null;
-    const db = getDb();
-    if (!db) return;
-    try {
-      await db.from('wa_bot_config').upsert({
-        key: SETTINGS_KEY,
-        value: JSON.parse(JSON.stringify(settings)),
-      }, { onConflict: 'key' });
-    } catch (e) {
-      if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
-        logger.error('Settings', 'Save error:', e.message);
-      }
-    }
+    saveToDb();
   }, 1000);
+}
+
+export async function flushSettings() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  await saveToDb();
 }

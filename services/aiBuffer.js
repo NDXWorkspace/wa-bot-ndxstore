@@ -1,22 +1,25 @@
 // Aggregates rapid consecutive messages from the same user ("penggalan bahasan")
 // into one turn, so the AI reads the full thought before replying — instead of
 // answering the first bubble and dropping the rest.
+//
+// Adaptive timing: short messages get a shorter window, long messages get more time.
+// Max 5 fragments: beyond that, flush immediately (user is spamming).
 
-const BUFFER_WINDOW_MS = 4000; // wait this long after the last message before answering
+const SHORT_WINDOW_MS = 2000;
+const LONG_WINDOW_MS = 4000;
+const MAX_FRAGMENTS = 5;
+const SHORT_MSG_THRESHOLD = 3; // words
 
 const buffers = new Map(); // jid -> { parts: string[], image, timer, latestMsg }
 
-/**
- * Buffer an incoming AI-bound message. Every new message resets the timer.
- * When the user stops for BUFFER_WINDOW_MS, flushFn is called once with the
- * joined text, the latest image (if any), and the last message (to reply to).
- *
- * @param {string} jid
- * @param {object} msg        whatsapp-web.js message (used only to reply to)
- * @param {string} text       this fragment's text (may be empty for image-only)
- * @param {?{data:string,mime:string}} image
- * @param {(jid:string, text:string, image:?object, latestMsg:object)=>any} flushFn
- */
+function pickWindow(parts) {
+  // If any part is long enough, use the long window
+  for (const p of parts) {
+    if (p && p.split(/\s+/).filter(Boolean).length > SHORT_MSG_THRESHOLD) return LONG_WINDOW_MS;
+  }
+  return SHORT_WINDOW_MS;
+}
+
 export function bufferAiMessage(jid, msg, text, image, flushFn) {
   let entry = buffers.get(jid);
   if (!entry) {
@@ -25,13 +28,23 @@ export function bufferAiMessage(jid, msg, text, image, flushFn) {
   }
 
   if (text) entry.parts.push(text);
-  if (image) entry.image = image; // keep the most recent image
+  if (image) entry.image = image;
   entry.latestMsg = msg;
 
+  // Too many fragments — flush now
+  if (entry.parts.length >= MAX_FRAGMENTS) {
+    if (entry.timer) clearTimeout(entry.timer);
+    buffers.delete(jid);
+    const combined = entry.parts.join('\n').trim();
+    Promise.resolve(flushFn(jid, combined, entry.image, entry.latestMsg)).catch(() => {});
+    return;
+  }
+
   if (entry.timer) clearTimeout(entry.timer);
+  const windowMs = pickWindow(entry.parts);
   entry.timer = setTimeout(() => {
     buffers.delete(jid);
     const combined = entry.parts.join('\n').trim();
     Promise.resolve(flushFn(jid, combined, entry.image, entry.latestMsg)).catch(() => {});
-  }, BUFFER_WINDOW_MS);
+  }, windowMs);
 }

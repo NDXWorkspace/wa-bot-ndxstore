@@ -15,6 +15,7 @@ export const config = {
   groupId: process.env.GROUP_ID || '',
   adminNumber: process.env.ADMIN_NUMBER || '',
   apiPassword: process.env.API_PASSWORD || '',
+  apiBase: process.env.API_BASE || 'https://ndxstoreid.vercel.app',
   aiKey: process.env.AI_API_KEY || '',
   aiApiBase: process.env.AI_API_BASE || 'https://text.pollinations.ai',
   aiModel: process.env.AI_MODEL || 'openai',

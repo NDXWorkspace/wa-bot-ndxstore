@@ -5,7 +5,7 @@ let processing = false;
 let lastSent = 0;
 const MIN_INTERVAL_MS = 1200;
 const MAX_RETRIES = 3;
-const MAX_QUEUE_SIZE = 500;
+const MAX_QUEUE_SIZE = 2000;
 
 async function processQueue() {
   if (processing) return;

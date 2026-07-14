@@ -177,8 +177,9 @@ function handleOrder(client, order) {
         !PAYMENT_OK.includes(prev.payment);
       if (confirmed) {
         sendNotif(client, order, 'payment');
+      } else {
+        sendUpdateToUser(client, order);
       }
-      sendUpdateToUser(client, order);
     }
   }
 

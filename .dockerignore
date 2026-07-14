@@ -1,9 +1,12 @@
 node_modules
 wa-session
+.wwebjs_cache
 .env
 .git
-*.log
 .gitignore
+*.log
+logs/
+.notified.json
 README.md
 render.yaml
-.wwebjs_cache
+docker-compose.yml
