@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
-import { logger } from '../utils/logger.js';
+import { logger, throttleLog } from '../utils/logger.js';
 import { setDbAvailable, isDbAvailable, isRetryableError } from '../utils/db.js';
 
 let supabase = null;
@@ -19,7 +19,7 @@ function markDbResult(success) {
     dbFailureCount++;
     if (dbFailureCount >= DB_FAILURE_THRESHOLD && isDbAvailable()) {
       setDbAvailable(false);
-      logger.warn('Supabase', `DB marked unavailable after ${dbFailureCount} consecutive failures`);
+      throttleLog('warn', 'Supabase', 'db-unavail', `DB marked unavailable after ${dbFailureCount} consecutive failures`, 30000);
     }
   }
 }

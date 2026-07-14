@@ -2,7 +2,7 @@ import { config } from '../config.js';
 import { getDb } from './supabase.js';
 import { getStoreContext, getQueryContext } from './liveData.js';
 import { storeCacheVersion } from '../utils/cache.js';
-import { logger } from '../utils/logger.js';
+import { logger, throttleLog } from '../utils/logger.js';
 
 const KNOWLEDGE = `
 NDXStore — jual top up game & Roblox:
@@ -486,7 +486,7 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
       const err = await resp.text().catch(() => 'unknown');
 
       if (resp.status === 429) {
-        logger.warn('AI', `${url} (${model}) 429 — retrying after 2s`);
+        throttleLog('warn', 'AI', `429-${model}`, `${url} (${model}) 429 — retrying after 2s`, 30000);
         await new Promise(r => setTimeout(r, 2000));
         try {
           resp = await doFetch(timeoutMs);
@@ -507,7 +507,7 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
       }
 
       if (resp.status >= 500) {
-        logger.warn('AI', `${url} (${model}) ${resp.status} — server error, retrying once`);
+        throttleLog('warn', 'AI', `5xx-${model}`, `${url} (${model}) ${resp.status} — server error, retrying once`, 30000);
         await new Promise(r => setTimeout(r, 1000));
         try {
           resp = await doFetch(timeoutMs);

@@ -5,7 +5,7 @@ import { enqueueSend } from './rateLimiter.js';
 import { askAIProactive } from './ai.js';
 import { formatPrice, formatTime, formatWaNumber } from '../utils/format.js';
 import { PAYMENT_OK_STATUSES as PAYMENT_OK } from '../utils/constants.js';
-import { logger } from '../utils/logger.js';
+import { logger, throttleLog } from '../utils/logger.js';
 
 const NOTIFIED_FILE = './.notified.json';
 const PERSIST_DEBOUNCE_MS = 2000;
@@ -245,7 +245,7 @@ function setupRealtime(client) {
 
 function startReconnectLoop(client) {
   if (reconnectTimer) return;
-  logger.warn('OrderMonitor', 'Starting Realtime reconnect loop');
+    throttleLog('warn', 'OrderMonitor', 'reconnect-loop', 'Starting Realtime reconnect loop', 60000);
   reconnectTimer = setInterval(() => {
     logger.info('OrderMonitor', 'Attempting Realtime reconnect...');
     setupRealtime(client);

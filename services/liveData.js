@@ -8,7 +8,7 @@
 
 import { config } from '../config.js';
 import { formatPrice, formatTime } from '../utils/format.js';
-import { logger } from '../utils/logger.js';
+import { logger, throttleLog } from '../utils/logger.js';
 import { bumpStoreCacheVersion } from '../utils/cache.js';
 
 const TIMEOUT_MS = 9000;
@@ -71,7 +71,7 @@ async function refreshStoreContext() {
       admin = j.data.waNumber || j.data.adminWa || admin;
     }
   } catch (e) {
-    logger.debug('LiveData', 'config fetch failed:', e.message);
+    throttleLog('debug', 'LiveData', 'config-fetch', `config fetch failed: ${e.message}`, 30000);
   }
 
   const games = GAMES.map(g => g.label).join(', ');

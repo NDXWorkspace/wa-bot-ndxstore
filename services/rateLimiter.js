@@ -1,4 +1,4 @@
-import { logger } from '../utils/logger.js';
+import { logger, throttleLog } from '../utils/logger.js';
 
 const queue = [];
 let processing = false;
@@ -34,7 +34,7 @@ async function processQueue() {
               await new Promise(r => setTimeout(r, 5000 * attempt));
             }
           } else {
-            logger.warn('RateLimit', `Retry ${attempt}/${MAX_RETRIES}:`, e.message?.slice(0, 80));
+            throttleLog('warn', 'RateLimit', `retry-${item.send?.name || ''}`, `Retry ${attempt}/${MAX_RETRIES}: ${e.message?.slice(0, 80)}`, 5000);
             await new Promise(r => setTimeout(r, 2000 * attempt));
           }
         }
@@ -51,7 +51,7 @@ async function processQueue() {
 
 export function enqueueSend(sendFn) {
   if (queue.length >= MAX_QUEUE_SIZE) {
-    logger.warn('RateLimit', 'Queue full, dropping message');
+    throttleLog('warn', 'RateLimit', 'queue-full', 'Queue full, dropping message', 60000);
     return;
   }
   queue.push({ send: sendFn });

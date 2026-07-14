@@ -1,4 +1,4 @@
-import { logger } from './logger.js';
+import { logger, throttleLog } from './logger.js';
 
 const RETRYABLE_CODES = ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE', 'ECONNABORTED'];
 
@@ -38,7 +38,7 @@ export async function withRetry(fn, options = {}) {
       lastErr = err;
       if (attempt < maxRetries && isRetryableError(err)) {
         const delay = Math.min(baseDelay * Math.pow(2, attempt), 3000);
-        logger.warn(label, `Retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${err.message?.slice(0, 80)}`);
+        throttleLog('warn', label, `retry-${label}-${attempt}`, `Retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${err.message?.slice(0, 80)}`, 10000);
         await new Promise(r => setTimeout(r, delay));
       } else {
         throw err;
