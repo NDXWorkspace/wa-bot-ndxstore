@@ -1,10 +1,7 @@
 import ww from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import fsp from 'fs/promises';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { logger } from './utils/logger.js';
-const execAsync = promisify(exec);
 const { Client, LocalAuth } = ww;
 
 const MAX_RECONNECT_ATTEMPTS = 20;
@@ -52,10 +49,21 @@ export async function detectBrowser() {
     ...(isAndroid ? [
       '/data/data/com.termux/files/usr/bin/chromium',
       '/data/data/com.termux/files/usr/bin/chromium-browser',
+      '/data/data/com.termux/files/usr/bin/google-chrome',
+      '/data/data/com.termux/files/usr/bin/google-chrome-stable',
     ] : []),
   ];
   for (const c of candidates) {
     try { await fsp.access(c); return c; } catch {}
+  }
+  // Scan PATH directories for chromium executables
+  const pathDirs = (process.env.PATH || '').split(':');
+  for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
+    for (const dir of pathDirs) {
+      if (!dir) continue;
+      const full = `${dir}/${name}`;
+      try { await fsp.access(full); return full; } catch {}
+    }
   }
   return null;
 }
@@ -85,19 +93,8 @@ async function getPuppeteerConfig() {
     return { headless: true, executablePath: detected, args: baseArgs };
   }
 
-  // Chromium not found via hardcoded paths — try 'which' before giving up
-  for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
-    try {
-      const { stdout } = await execAsync(`which ${name} 2>/dev/null`);
-      const p = stdout?.trim();
-      if (p) {
-        logger.info('Puppeteer', `Using ${name}: ${p}`);
-        return { headless: true, executablePath: p, args: baseArgs };
-      }
-    } catch {}
-  }
-  logger.error('Puppeteer', 'Chromium/Chrome tidak ditemukan. Install: pkg install chromium, lalu set PUPPETEER_EXECUTABLE_PATH=$(which chromium) di .env');
-  throw new Error('Browser not found');
+  logger.error('Puppeteer', 'Chromium tidak ditemukan. Coba: pkg install chromium && which chromium, lalu set hasilnya di .env sebagai PUPPETEER_EXECUTABLE_PATH');
+  throw new Error('Chromium/Chrome tidak ditemukan — set PUPPETEER_EXECUTABLE_PATH di .env');
 }
 
 function calcDelay(attempt) {

@@ -188,12 +188,11 @@ async function main() {
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
 
-  // Validate Chrome/Puppeteer availability
   const browserPath = await detectBrowser().catch(() => null);
   if (browserPath) {
     logger.info('Bot', `Browser: ${browserPath}`);
   } else {
-    logger.warn('Bot', 'No local browser found — puppeteer will download Chromium');
+    logger.warn('Bot', 'Browser tidak ditemukan — pastikan chromium terinstall');
   }
 
   await loadSettings();
