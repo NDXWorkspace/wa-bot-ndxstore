@@ -1,7 +1,10 @@
 import ww from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import fsp from 'fs/promises';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { logger } from './utils/logger.js';
+const execAsync = promisify(exec);
 const { Client, LocalAuth } = ww;
 
 const MAX_RECONNECT_ATTEMPTS = 20;
@@ -82,9 +85,17 @@ async function getPuppeteerConfig() {
     return { headless: true, executablePath: detected, args: baseArgs };
   }
 
-  const isAndroid = process.platform === 'linux' && process.arch === 'arm64';
-  if (isAndroid) {
-    logger.error('Puppeteer', 'Chromium not found. Install it: pkg install chromium && export PUPPETEER_EXECUTABLE_PATH=$(which chromium)');
+  // Android/Termux: try 'which chromium' before giving up
+  if (process.platform === 'linux' && process.arch === 'arm64') {
+    try {
+      const { stdout } = await execAsync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null');
+      const p = stdout?.trim();
+      if (p) {
+        logger.info('Puppeteer', `Using Chromium: ${p}`);
+        return { headless: true, executablePath: p, args: baseArgs };
+      }
+    } catch {}
+    logger.error('Puppeteer', 'Chromium tidak ditemukan. Install: pkg install chromium');
     throw new Error('Chromium not found for Termux/Android. Run: pkg install chromium');
   }
   logger.info('Puppeteer', 'No local browser found, using puppeteer default');
