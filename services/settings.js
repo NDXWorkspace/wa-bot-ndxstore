@@ -5,7 +5,7 @@ const SETTINGS_KEY = 'bot_settings';
 
 const defaults = {
   jawabDuluan: false,
-  ungroup: true,
+  ungroup: false,
   aiMode: 0,
 };
 
