@@ -250,6 +250,7 @@ async function main() {
         // ── Welcome new users (DM only, only when AI is off) ──
         if (!msg.fromMe && !msg.from.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
           await sendWelcomeIfNew(c, msg);
+          return;
         }
 
         // ── History ──
@@ -308,7 +309,7 @@ async function main() {
               clearHistoryExcept(senderJid);
               await msg.reply(aimodeVal === 1 ? 'Bima aktif' : 'NDXStore AI aktif');
             }
-            await saveSettings();
+            await flushSettings();
             return;
           }
 
@@ -361,13 +362,13 @@ async function main() {
           }
           if (body === '!aimodesetting jd') {
             settings.jawabDuluan = !settings.jawabDuluan;
-            saveSettings();
+            await flushSettings();
             await msg.reply(`Jawab duluan ${settings.jawabDuluan ? 'ON' : 'OFF'}`);
             return;
           }
           if (body === '!aimodesetting unigroup' || body === '!aimodesetting uningroup') {
             settings.ungroup = !settings.ungroup;
-            saveSettings();
+            await flushSettings();
             await msg.reply(`Ungroup ${settings.ungroup ? 'ON — cuma bales di grup kalo di mention/di-reply' : 'OFF'}`);
             return;
           }

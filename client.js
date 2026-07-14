@@ -57,7 +57,8 @@ export async function detectBrowser() {
     try { await fsp.access(c); return c; } catch {}
   }
   // Scan PATH directories for chromium executables
-  const pathDirs = (process.env.PATH || '').split(':');
+  const pathSep = process.platform === 'win32' ? ';' : ':';
+const pathDirs = (process.env.PATH || '').split(pathSep);
   for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
     for (const dir of pathDirs) {
       if (!dir) continue;
@@ -138,7 +139,7 @@ async function createClientCore() {
       logger.warn('WA', 'Manual logout detected — NOT reconnecting');
       return;
     }
-    reconnect(c);
+    reconnect(c).catch(() => {});
   });
 
   return c;
@@ -162,7 +163,7 @@ async function reconnect(oldClient) {
       client = newClient;
       currentClientRef = newClient;
       if (onNewClient) onNewClient(newClient);
-      const initPromise = newClient.initialize();
+      const initPromise = newClient.initialize().catch(() => {});
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 45000));
       await Promise.race([initPromise, timeout]).catch(e => {
         logger.error('WA', `Reconnect init issue:`, e.message);

@@ -304,7 +304,10 @@ const EN_WORDS = new Set('the,is,are,am,you,your,my,me,please,how,what,when,wher
 function detectLang(text) {
   const t = text.toLowerCase().replace(/[^a-z0-9]/g, ' ');
   const words = t.split(/\s+/).filter(Boolean);
-  if (words.length < 2) return 'id';
+  if (words.length < 2) {
+    if (words.length === 1 && EN_WORDS.has(words[0])) return 'en';
+    return 'id';
+  }
   let id = 0, en = 0;
   for (const w of words) {
     if (ID_WORDS.has(w)) id++;

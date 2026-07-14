@@ -76,7 +76,7 @@ setInterval(() => {
     if (now - session.lastActivity > SESSION_TIMEOUT_MS) {
       handoverSessions.delete(userNumber);
       sessionTimers.delete(userNumber);
-      removeSessionFromDb(userNumber);
+      removeSessionFromDb(userNumber).catch(() => {});
     }
   }
   for (const [msgId, data] of forwardedMessages) {
@@ -93,7 +93,7 @@ export function isHandoverActive(userNumber) {
 export function endHandover(userNumber) {
   handoverSessions.delete(userNumber);
   sessionTimers.delete(userNumber);
-  removeSessionFromDb(userNumber);
+  removeSessionFromDb(userNumber).catch(() => {});
 }
 
 function touchSession(userNumber) {
@@ -107,7 +107,7 @@ function touchSession(userNumber) {
 export async function startHandover(client, msg, adminNumber) {
   const userNumber = msg.from;
   handoverSessions.set(userNumber, { adminNumber, lastActivity: Date.now() });
-  persistSession(userNumber, adminNumber);
+  persistSession(userNumber, adminNumber).catch(() => {});
 
   await msg.reply('🔄 *Terhubung ke Customer Service*\nSilakan kirim pesan Anda. Admin akan membalas segera.\n\nKetik *selesai* untuk mengakhiri.');
 

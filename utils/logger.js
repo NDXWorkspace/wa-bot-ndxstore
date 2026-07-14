@@ -20,7 +20,7 @@ function ts() {
 
 function log(level, label, ...args) {
   if (LOG_LEVELS[level] > CURRENT_LEVEL) return;
-  const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+  const msg = args.map(a => (a instanceof Error ? a.stack : typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
   const line = color(level, `[${ts()}] [${level.toUpperCase()}]`) + ` [${color('info', label)}] ${msg}`;
   console.log(line);
 }

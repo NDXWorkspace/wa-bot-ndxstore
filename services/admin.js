@@ -84,7 +84,7 @@ Ketik !helpall untuk semua command bot.`;
 
 export async function handleAdminCommand(client, msg, body) {
   if (body === '!groupid') {
-    const isGroup = msg.to.includes('@g.us');
+    const isGroup = msg.to?.includes('@g.us');
     const jid = msg.to.replace(/@(g\.us|s\.whatsapp\.net)/g, '');
     await msg.reply(isGroup
       ? `Group ID: ${jid}@g.us\n\nSimpan di .env:\nGROUP_ID=${jid}@g.us`

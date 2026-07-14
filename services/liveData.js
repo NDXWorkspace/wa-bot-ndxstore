@@ -90,7 +90,7 @@ async function refreshStoreContext() {
 
 // Start background refresh immediately (module load)
 refreshStoreContext();
-storeRefreshTimer = setInterval(refreshStoreContext, STORE_TTL_MS);
+storeRefreshTimer = setInterval(() => refreshStoreContext().catch(() => {}), STORE_TTL_MS);
 
 export async function getStoreContext() {
   if (storeCache.text && Date.now() - storeCache.ts < STORE_TTL_MS) return storeCache.text;
