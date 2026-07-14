@@ -248,8 +248,8 @@ async function main() {
         // ── Blocked Users ──
         if (!isAdmin && blockedUsers.has(senderJid)) return;
 
-        // ── Welcome new users (DM only) ──
-        if (!msg.fromMe && !msg.from.includes('@g.us') && !WELCOMED_USERS.has(senderJid)) {
+        // ── Welcome new users (DM only, only when AI is off) ──
+        if (!msg.fromMe && !msg.from.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
           await sendWelcomeIfNew(c, msg);
         }
 
