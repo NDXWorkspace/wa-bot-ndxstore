@@ -11,8 +11,9 @@ import { askAI, askAIWithImage, clearHistory, clearHistoryExcept, startHistoryCl
 import { bufferAiMessage } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
+import { withRetry, isDbAvailable } from './utils/db.js';
 import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
-import { logger } from './utils/logger.js';
+import { logger, setLogLevel, getLogLevel } from './utils/logger.js';
 
 
 const WELCOMED_USERS = new Set();
@@ -24,7 +25,7 @@ async function loadBlockedUsers() {
   try {
     const db = getDb();
     if (!db) return;
-    const { data } = await db.from('wa_bot_config').select('value').eq('key', 'blocked_users').single();
+    const { data } = await withRetry(() => db.from('wa_bot_config').select('value').eq('key', 'blocked_users').single(), { label: 'Blocklist:load' });
     if (data?.value && Array.isArray(data.value)) {
       data.value.forEach(jid => blockedUsers.add(jid));
       logger.info('Blocklist', `Loaded ${blockedUsers.size} blocked users`);
@@ -40,10 +41,10 @@ async function saveBlockedUsers() {
   const db = getDb();
   if (!db) return;
   try {
-    await db.from('wa_bot_config').upsert({
+    await withRetry(() => db.from('wa_bot_config').upsert({
       key: 'blocked_users',
       value: [...blockedUsers],
-    }, { onConflict: 'key' });
+    }, { onConflict: 'key' }), { label: 'Blocklist:save' });
   } catch (e) {
     if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
       logger.error('Blocklist', 'Save error:', e.message);
@@ -99,6 +100,7 @@ const healthApp = http.createServer(async (req, res) => {
     status: isOk ? 'ok' : 'degraded',
     wa: waConnected ? 'connected' : 'disconnected',
     db: dbConnected ? 'connected' : 'error',
+    dbAvailable: isDbAvailable(),
     uptime: os.uptime(),
     botUptime: Math.floor((Date.now() - botStartedAt) / 1000),
     aiMode: settings.aiMode,
@@ -123,22 +125,22 @@ async function checkOrders(msg, username) {
     const resp = await fetch(`${config.apiBase}/api/transactions/user/${encodeURIComponent(username.trim())}`, {
       signal: AbortSignal.timeout(10000),
     });
-    if (!resp.ok) return await msg.reply('❌ Gagal cek order.');
+    if (!resp.ok) return await msg.reply('Gagal cek order.');
     const result = await resp.json();
     if (!result?.success || !result?.transactions?.length) {
       return await msg.reply(`Tidak ada order untuk *${username}*.`);
     }
-    let reply = `📋 *Order ${username}*\n━━━━━━━━━━━━━━\n`;
+    let reply = `Order ${username}\n━━━━━━━━━━━━━━\n`;
     for (const o of result.transactions.slice(0, 5)) {
       const prod = o.productName || o.product_name || '-';
       const price = o.priceIdr ?? o.price_idr;
       const status = o.orderStatus || o.order_status || o.paymentStatus || o.payment_status || '-';
       const time = o.createdAt || o.created_at;
-      reply += `\n🆔 ${o.id}\n📦 ${prod}\n💰 ${formatPrice(price)}\n📊 ${status}\n⏰ ${formatTime(time)}\n━━━━━━━━━━━━━━`;
+      reply += `\nID: ${o.id}\nProduk: ${prod}\nHarga: ${formatPrice(price)}\nStatus: ${status}\nWaktu: ${formatTime(time)}\n━━━━━━━━━━━━━━`;
     }
     await msg.reply(reply);
   } catch (e) {
-    await msg.reply('❌ Error cek order.');
+    await msg.reply('Gagal cek order.');
     logger.error('CekOrder', e.message);
   }
 }
@@ -166,7 +168,7 @@ async function sendWelcomeIfNew(client, msg) {
   if (WELCOMED_USERS.has(jid)) return;
   WELCOMED_USERS.add(jid);
   await msg.reply(
-    `Halo! 👋\n\nSelamat datang di *NDXStore* — tempat top up game & Roblox!\n\nKetik *Menu* untuk lihat pilihan.`
+    `Halo!\n\nSelamat datang di *NDXStore* — tempat top up game & Roblox!\n\nKetik *Menu* untuk lihat pilihan.`
   );
 }
 
@@ -232,14 +234,14 @@ async function main() {
           const target = msg.to?.includes('@g.us') ? msg.author || msg.from : msg.from;
           blockedUsers.add(target);
           await saveBlockedUsers();
-          await msg.reply(`⛔ User diblokir: ${target}`);
+            await msg.reply(`User diblokir: ${target}`);
           return;
         }
         if (body === '!unblock' && isAdmin) {
           const target = msg.to?.includes('@g.us') ? msg.author || msg.from : msg.from;
           blockedUsers.delete(target);
           await saveBlockedUsers();
-          await msg.reply(`✅ User di-unblock: ${target}`);
+            await msg.reply(`User di-unblock: ${target}`);
           return;
         }
 
@@ -259,22 +261,23 @@ async function main() {
               `!aimodesetting — lihat setting\n` +
               `!aimodesetting jd — toggle jawab duluan\n` +
               `!aimodesetting unigroup — toggle ungroup\n` +
-              `!history [n] — riwayat chat\n` +
-              `!clear <n> — hapus n pesan bot\n` +
-              `*Security*\n` +
-              `!block — blokir user\n` +
-              `!unblock — buka blokir\n` +
-              `*Messaging*\n` +
-              `!reply 628xxx <pesan> — kirim pesan\n` +
-              `!groupid — tampilkan ID grup\n` +
-              `*API NDXStore*\n` +
-              `!help — lihat command API\n` +
-              `!stats — statistik\n` +
-              `!orders — 5 order terbaru\n` +
-              `!pending [game] — order pending\n` +
-              `!detail NDX-xxxx — detail order\n` +
-              `!status NDX-xxxx STATUS — update status\n` +
-              `━━━━━━━━━━━━━━━━━━━`
+               `!history [n] — riwayat chat\n` +
+               `!clear <n> — hapus n pesan bot\n` +
+               `!loglevel [level] — lihat/set log level\n` +
+               `*Security*\n` +
+               `!block — blokir user\n` +
+               `!unblock — buka blokir\n` +
+               `*Messaging*\n` +
+               `!reply 628xxx <pesan> — kirim pesan\n` +
+               `!groupid — tampilkan ID grup\n` +
+               `*API NDXStore*\n` +
+               `!help — lihat command API\n` +
+               `!stats — statistik\n` +
+               `!orders — 5 order terbaru\n` +
+               `!pending [game] — order pending\n` +
+               `!detail NDX-xxxx — detail order\n` +
+               `!status NDX-xxxx STATUS — update status\n` +
+               `━━━━━━━━━━━━━━━━━━━`
             );
             return;
           }
@@ -303,7 +306,7 @@ async function main() {
 
           if (body === '!aireset') {
             clearHistory(senderJid);
-            await msg.reply('🧹 Riwayat chat direset');
+            await msg.reply('Riwayat chat direset');
             return;
           }
 
@@ -311,7 +314,7 @@ async function main() {
           const clearMatch = body.match(/^!clear\s+(\d+)/i);
           if (clearMatch) {
             const num = parseInt(clearMatch[1]);
-            if (num < 1 || num > 50) { await msg.reply('❌ Jumlah: 1-50'); return; }
+            if (num < 1 || num > 50) { await msg.reply('Jumlah: 1-50'); return; }
             try {
               const chat = await c.getChatById(msg.from);
               // Fetch with fromMe filter when available, fallback to batch
@@ -328,7 +331,7 @@ async function main() {
                   else break;
                 }
               }
-              if (!botMsgs.length) { await msg.reply('❌ Gak ada pesan bot.'); return; }
+              if (!botMsgs.length) { await msg.reply('Gak ada pesan bot.'); return; }
               let ok = 0, fail = 0, old = 0;
               for (const m of botMsgs) {
                 try {
@@ -345,12 +348,26 @@ async function main() {
               if (fail) summary += `, ${fail} gagal`;
               await msg.reply(summary);
             } catch (e) {
-              await msg.reply(`❌ Gagal: ${e.message.slice(0, 80)}`);
+              await msg.reply('Gagal membersihkan pesan');
             }
             return;
           }
 
           // Settings
+          if (body.startsWith('!loglevel')) {
+            const level = body.slice(9).trim();
+            if (!level) {
+              await msg.reply(`Log level saat ini: ${getLogLevel()}. Opsi: error, warn, info, debug`);
+              return;
+            }
+            if (setLogLevel(level)) {
+              await msg.reply(`Log level → ${level}`);
+            } else {
+              await msg.reply(`Level invalid. Opsi: error, warn, info, debug`);
+            }
+            return;
+          }
+
           if (body === '!aimodesetting') {
             await msg.reply(
               `Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'} | ` +
@@ -376,10 +393,10 @@ async function main() {
           if (body.startsWith('!history') && isAdmin) {
             const limit = parseInt(body.slice(8).trim()) || 20;
             const history = await getChatHistory(limit);
-            if (!history?.length) return await msg.reply('📋 Riwayat chat kosong.');
-            let reply = `📋 *RIWAYAT CHAT (${history.length})*\n━━━━━━━━━━━━━━\n`;
+            if (!history?.length) return await msg.reply('Riwayat chat kosong.');
+            let reply = `RIWAYAT CHAT (${history.length})\n━━━━━━━━━━━━━━\n`;
             for (const h of history.slice(0, 10)) {
-              reply += `\n👤 ${h.user_number?.replace(/@.*/, '')}\n💬 ${(h.content || '').slice(0, 50)}${h.content?.length > 50 ? '...' : ''}\n⏰ ${formatTime(h.created_at)}\n━━━━━━━━━━━━━━`;
+              reply += `\nUser: ${h.user_number?.replace(/@.*/, '')}\nPesan: ${(h.content || '').slice(0, 50)}${h.content?.length > 50 ? '...' : ''}\nWaktu: ${formatTime(h.created_at)}\n━━━━━━━━━━━━━━`;
             }
             await msg.reply(reply);
             return;
@@ -395,18 +412,18 @@ async function main() {
             const rest = body.slice(7).trim();
             const spaceIdx = rest.indexOf(' ');
             if (spaceIdx <= 0 || !rest.slice(spaceIdx + 1).trim()) {
-              await msg.reply('❌ Format: !reply [nomor] [pesan]\nContoh: !reply 6285159898005 Halo kak');
+              await msg.reply('Format: !reply [nomor] [pesan]\nContoh: !reply 6285159898005 Halo kak');
               return;
             }
             const rawNumber = rest.slice(0, spaceIdx).trim();
             const replyText = rest.slice(spaceIdx + 1).trim();
             const target = formatWaNumber(rawNumber);
             if (!target) {
-              await msg.reply('❌ Nomor tujuan tidak valid. Format: 628xxx');
+              await msg.reply('Nomor tujuan tidak valid. Format: 628xxx');
               return;
             }
-            await c.sendMessage(target, `📨 *Pesan dari Admin:*\n\n${replyText}`);
-            await msg.reply('✅ Pesan terkirim.');
+            await c.sendMessage(target, `Pesan dari Admin:\n\n${replyText}`);
+            await msg.reply('Pesan terkirim.');
             return;
           }
 
@@ -414,7 +431,7 @@ async function main() {
           if (isAdmin && msg.hasQuotedMsg) {
             const forwarded = await handleAdminReply(c, msg);
             if (forwarded) {
-              await msg.reply('✅ Balasan terkirim ke user.');
+              await msg.reply('Balasan terkirim ke user.');
               return;
             }
           }
@@ -455,7 +472,7 @@ async function main() {
             if (config.adminNumber) {
               await startHandover(c, msg, config.adminNumber);
             } else {
-              await msg.reply('❌ Admin belum dikonfigurasi.');
+              await msg.reply('Admin belum dikonfigurasi.');
             }
             return;
           }
@@ -465,12 +482,12 @@ async function main() {
         if (isHandoverActive(msg.from) && config.adminNumber) {
           if (lower === 'selesai' || lower === 'stop') {
             endHandover(msg.from);
-            await msg.reply('🔚 Sesi CS selesai. Ketik *Menu* untuk kembali.');
-            await c.sendMessage(config.adminNumber, `🔚 *Sesi CS selesai*\nUser: ${msg.from}`);
+              await msg.reply('Sesi CS selesai. Ketik *Menu* untuk kembali.');
+            await c.sendMessage(config.adminNumber, `Sesi CS selesai\nUser: ${msg.from}`);
             return;
           }
           await forwardToAdmin(c, msg.from, body, config.adminNumber);
-          await msg.reply('✅ Pesan diteruskan ke admin.');
+            await msg.reply('Pesan diteruskan ke admin.');
           return;
         }
 
@@ -501,7 +518,7 @@ async function main() {
         if (!msg.from.includes('@g.us') && !isAdmin) {
           const limit = await checkDailyLimit(msg.from);
           if (!limit.allowed) {
-            await msg.reply(`❌ Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`);
+            await msg.reply(`Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`);
             return;
           }
         }
@@ -513,7 +530,7 @@ async function main() {
             : msg.type === 'document' ? 'file/dokumen'
             : msg.type === 'video' ? 'video'
             : 'media ini';
-          await msg.reply(`Maaf, aku belum bisa proses ${kind}. Ketik pesan teks aja ya 🙏`).catch(() => {});
+          await msg.reply(`Maaf, aku belum bisa proses ${kind}. Ketik pesan teks aja ya`).catch(() => {});
           return;
         }
 
@@ -546,9 +563,13 @@ async function main() {
   setupMessageHandler(waClient);
 
   waClient.on('ready', async () => {
-    logger.info('Bot', 'Client ready — bot online!');
-    const monitor = await startOrderMonitor(waClient, settings);
-    if (monitor) orderMonitorCleanup = monitor;
+    try {
+      logger.info('Bot', 'Client ready — bot online!');
+      const monitor = await startOrderMonitor(waClient, settings);
+      if (monitor) orderMonitorCleanup = monitor;
+    } catch (e) {
+      logger.error('Bot', 'Ready handler error:', e.message);
+    }
   });
 
   waClient.initialize().catch(e => logger.error('WA', 'Init failed:', `${e.message} (${process.platform}/${process.arch})`));
@@ -566,8 +587,9 @@ async function main() {
     process.exit(0);
   }
 
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT').catch(e => logger.error('Shutdown', e.message)));
+  process.on('SIGTERM', () => shutdown('SIGTERM').catch(e => logger.error('Shutdown', e.message)));
+  process.setMaxListeners(0);
   process.on('uncaughtException', (err) => {
     logger.error('Uncaught', err.message);
     logger.error('Uncaught', err.stack?.slice(0, 500));
@@ -581,6 +603,21 @@ async function main() {
       : String(reason).slice(0, 600);
     logger.warn('unhandledRejection', detail);
   });
+
+  const MEM_WARN_MB = 300;
+  let memWarned = false;
+  const memTimer = setInterval(() => {
+    const usage = process.memoryUsage();
+    const rssMB = Math.round(usage.rss / 1024 / 1024);
+    const heapMB = Math.round(usage.heapUsed / 1024 / 1024);
+    logger.info('Mem', `RSS: ${rssMB}MB | Heap: ${heapMB}MB`);
+    if (rssMB > MEM_WARN_MB && !memWarned) {
+      logger.warn('Mem', `Memory ${rssMB}MB exceeds ${MEM_WARN_MB}MB`);
+      memWarned = true;
+    }
+    if (rssMB <= MEM_WARN_MB) memWarned = false;
+  }, 5 * 60 * 1000);
+  memTimer.unref();
 
   logger.info('Bot', 'Starting WhatsApp client...');
 }

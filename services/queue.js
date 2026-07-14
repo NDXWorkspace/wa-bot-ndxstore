@@ -1,5 +1,6 @@
 import { getDb } from './supabase.js';
 import { logger } from '../utils/logger.js';
+import { withRetry } from '../utils/db.js';
 
 const DAILY_LIMIT_DEFAULT = 50;
 
@@ -8,7 +9,8 @@ const DAILY_LIMIT_DEFAULT = 50;
 const limitChains = new Map();
 
 export function checkDailyLimit(userJid) {
-  const prev = limitChains.get(userJid) || Promise.resolve();
+  if (!limitChains.has(userJid)) limitChains.set(userJid, Promise.resolve());
+  const prev = limitChains.get(userJid);
   const run = prev.then(() => checkDailyLimitInner(userJid), () => checkDailyLimitInner(userJid));
   const tail = run.catch(() => {});
   limitChains.set(userJid, tail);
@@ -21,36 +23,36 @@ async function checkDailyLimitInner(userJid) {
   if (!db) return { allowed: true };
   try {
     const today = new Date().toISOString().slice(0, 10);
-    const { data, error } = await db
+    const { data, error } = await withRetry(() => db
       .from('wa_user_limits')
       .select('message_count, last_reset_date, max_per_day')
       .eq('user_number', userJid)
-      .single();
+      .single(), { label: 'Queue:select' });
 
     if (error?.code === 'PGRST116') {
-      await db.from('wa_user_limits').insert({
+      await withRetry(() => db.from('wa_user_limits').insert({
         user_number: userJid,
         message_count: 1,
         last_reset_date: today,
         max_per_day: DAILY_LIMIT_DEFAULT,
-      });
+      }), { label: 'Queue:insert' });
       return { allowed: true, remaining: DAILY_LIMIT_DEFAULT - 1 };
     }
 
     if (data) {
       if (data.last_reset_date !== today) {
-        await db.from('wa_user_limits').update({
+        await withRetry(() => db.from('wa_user_limits').update({
           message_count: 1,
           last_reset_date: today,
-        }).eq('user_number', userJid);
+        }).eq('user_number', userJid), { label: 'Queue:update' });
         return { allowed: true, remaining: (data.max_per_day || DAILY_LIMIT_DEFAULT) - 1 };
       }
       if (data.message_count >= (data.max_per_day || DAILY_LIMIT_DEFAULT)) {
         return { allowed: false, remaining: 0 };
       }
-      await db.from('wa_user_limits').update({
+      await withRetry(() => db.from('wa_user_limits').update({
         message_count: data.message_count + 1,
-      }).eq('user_number', userJid);
+      }).eq('user_number', userJid), { label: 'Queue:update' });
       return { allowed: true, remaining: (data.max_per_day || DAILY_LIMIT_DEFAULT) - data.message_count - 1 };
     }
   } catch (e) {

@@ -1,9 +1,28 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { setDbAvailable, isDbAvailable, isRetryableError } from '../utils/db.js';
 
 let supabase = null;
 let supabaseRt = null;
+let dbFailureCount = 0;
+const DB_FAILURE_THRESHOLD = 3;
+
+function markDbResult(success) {
+  if (success) {
+    dbFailureCount = 0;
+    if (!isDbAvailable()) {
+      setDbAvailable(true);
+      logger.info('Supabase', 'DB connection restored');
+    }
+  } else {
+    dbFailureCount++;
+    if (dbFailureCount >= DB_FAILURE_THRESHOLD && isDbAvailable()) {
+      setDbAvailable(false);
+      logger.warn('Supabase', `DB marked unavailable after ${dbFailureCount} consecutive failures`);
+    }
+  }
+}
 
 export function getDb() {
   if (supabase) return supabase;
@@ -25,4 +44,30 @@ export function getDbWithRealtime() {
     realtime: { params: { eventsPerSecond: 10 } },
   });
   return supabaseRt;
+}
+
+export async function dbQuery(queryFn, label = 'DB') {
+  if (!isDbAvailable()) {
+    logger.debug(label, 'Skipping — DB unavailable');
+    return null;
+  }
+  try {
+    const result = await queryFn();
+    markDbResult(true);
+    return result;
+  } catch (err) {
+    if (isRetryableError(err)) {
+      logger.warn(label, `Retrying after error: ${err.message?.slice(0, 80)}`);
+      try {
+        const result = await queryFn();
+        markDbResult(true);
+        return result;
+      } catch (err2) {
+        markDbResult(false);
+        throw err2;
+      }
+    }
+    markDbResult(false);
+    throw err;
+  }
 }

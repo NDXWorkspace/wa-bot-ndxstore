@@ -56,7 +56,7 @@ ON CONFLICT (key) DO NOTHING;
 
 -- Default bot_settings
 INSERT INTO wa_bot_config (key, value) VALUES
-  ('bot_settings', to_jsonb('{"jawabDuluan": false, "ungroup": true, "aiMode": 0}'::jsonb))
+  ('bot_settings', '{"jawabDuluan": false, "ungroup": false, "aiMode": 0}'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 -- ============================================

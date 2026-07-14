@@ -1,4 +1,5 @@
 import { getDb } from './supabase.js';
+import { withRetry } from '../utils/db.js';
 import { logger } from '../utils/logger.js';
 
 const DEFAULTS = {
@@ -18,23 +19,34 @@ Ketik angka untuk pilih menu`,
 
 const cache = { ...DEFAULTS };
 
+let menuLoadPromise = null;
+let menuLoadTs = 0;
+const MENU_CACHE_TTL = 300000;
+
 async function loadFromDb() {
-  try {
-    const db = getDb();
-    if (!db) return;
-    const { data } = await db
-      .from('wa_bot_config')
-      .select('key, value')
-      .in('key', Object.keys(DEFAULTS));
-    if (!data?.length) return;
-    for (const row of data) {
-      if (row.value) {
-        const val = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
-        cache[row.key] = val;
+  if (Date.now() - menuLoadTs < MENU_CACHE_TTL && Object.keys(cache).length > 0) return;
+  if (menuLoadPromise) return menuLoadPromise;
+  menuLoadPromise = (async () => {
+    try {
+      const db = getDb();
+      if (!db) return;
+      const { data } = await withRetry(() => db
+        .from('wa_bot_config')
+        .select('key, value')
+        .in('key', Object.keys(DEFAULTS)), { label: 'Menu:load', maxRetries: 1 });
+      if (!data?.length) return;
+      for (const row of data) {
+        if (row.value) {
+          const val = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
+          cache[row.key] = val;
+        }
       }
-    }
-    logger.info('Menu', 'Loaded from DB');
-  } catch {}
+      menuLoadTs = Date.now();
+      logger.info('Menu', 'Loaded from DB');
+    } catch {}
+  })();
+  await menuLoadPromise;
+  menuLoadPromise = null;
 }
 
 let refreshTimer = null;

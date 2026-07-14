@@ -19,7 +19,7 @@ async function apiCall(method, path, body = null) {
 }
 
 function formatStats(data) {
-  if (!data?.success || !data?.stats) return '❌ Gagal ambil statistik.';
+  if (!data?.success || !data?.stats) return 'Gagal ambil statistik.';
   const s = data.stats;
   let msg = `📊 *STATISTIK NDXSTORE*\n━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📦 *Total Transaksi:* ${s.totalTransactions || 0}\n`;
@@ -57,8 +57,8 @@ function formatOrderDetail(tx) {
   msg += `📦 *Qty:* ${t.quantity || 1}\n`;
 
   if (t.robloxId || t.roblox_id) msg += `🆔 *Roblox ID:* ${t.robloxId || t.roblox_id}\n`;
-  if (t.robloxPassword || t.roblox_password) msg += `🔑 *Password:* ${t.robloxPassword || t.roblox_password}\n`;
-  if (t.backupCode || t.backup_code) msg += `🔐 *Backup Code:* ${t.backupCode || t.backup_code}\n`;
+  if (t.robloxPassword || t.roblox_password) msg += `🔑 *Password:* ********\n`;
+  if (t.backupCode || t.backup_code) msg += `🔐 *Backup Code:* ********\n`;
   if (t.contactAdmin || t.contact_admin) msg += `🔐 *Butuh 2FA*\n`;
 
   const ml = t.mlData || t.ml_data;
@@ -103,7 +103,7 @@ export async function handleAdminCommand(client, msg, body) {
       const data = await apiCall('GET', '/api/admin/stats');
       await msg.reply(formatStats(data));
     } catch (e) {
-      await msg.reply(`❌ Error: ${e.message}`);
+      await msg.reply('Gagal ambil statistik');
     }
     return true;
   }
@@ -111,10 +111,10 @@ export async function handleAdminCommand(client, msg, body) {
   if (body === '!orders') {
     try {
       const data = await apiCall('GET', '/api/admin/transactions?limit=5&sort=createdAt&sortDir=desc');
-      if (!data?.success) return await msg.reply('❌ Gagal ambil order.');
+      if (!data?.success) return await msg.reply('Gagal ambil order.');
       await msg.reply(formatOrderList(data.transactions, '5 ORDER TERBARU'));
     } catch (e) {
-      await msg.reply(`❌ Error: ${e.message}`);
+      await msg.reply('Gagal ambil order');
     }
     return true;
   }
@@ -125,25 +125,25 @@ export async function handleAdminCommand(client, msg, body) {
       let path = '/api/admin/transactions?paymentStatus=PENDING&sort=createdAt&sortDir=desc';
       if (game) path += `&game=${encodeURIComponent(game)}`;
       const data = await apiCall('GET', path);
-      if (!data?.success) return await msg.reply('❌ Gagal ambil pending.');
+      if (!data?.success) return await msg.reply('Gagal ambil pending.');
       const title = game ? `PENDING: ${game}` : 'ORDER PENDING';
       const totalInfo = data.total ? ` (${data.total} total)` : '';
       await msg.reply(formatOrderList(data.transactions, `${title}${totalInfo}`));
     } catch (e) {
-      await msg.reply(`❌ Error: ${e.message}`);
+      await msg.reply('Gagal ambil pending');
     }
     return true;
   }
 
   if (body.startsWith('!detail ')) {
     const txId = body.slice(8).trim().toUpperCase();
-    if (!txId.startsWith('NDX-')) return await msg.reply('❌ Format ID salah. Contoh: !detail NDX-XXXX');
+    if (!txId.startsWith('NDX-')) return await msg.reply('Format ID salah. Contoh: !detail NDX-XXXX');
     try {
       const data = await apiCall('GET', `/api/transaction/${txId}`);
-      if (!data?.success) return await msg.reply('❌ Transaksi tidak ditemukan.');
+      if (!data?.success) return await msg.reply('Transaksi tidak ditemukan.');
       await msg.reply(formatOrderDetail(data));
     } catch (e) {
-      await msg.reply(`❌ Error: ${e.message}`);
+      await msg.reply('Gagal ambil detail order');
     }
     return true;
   }
@@ -151,14 +151,14 @@ export async function handleAdminCommand(client, msg, body) {
   if (body.startsWith('!status ')) {
     const rest = body.slice(8).trim();
     const spaceIdx = rest.indexOf(' ');
-    if (spaceIdx <= 0) return await msg.reply('❌ Format: !status NDX-XXXX STATUS');
+    if (spaceIdx <= 0) return await msg.reply('Format: !status NDX-XXXX STATUS');
 
     const txId = rest.slice(0, spaceIdx).toUpperCase();
     const statusArg = rest.slice(spaceIdx + 1).toUpperCase();
 
-    if (!txId.startsWith('NDX-')) return await msg.reply('❌ Format ID salah.');
+    if (!txId.startsWith('NDX-')) return await msg.reply('Format ID salah.');
     if (!VALID_ORDER_STATUSES.includes(statusArg)) {
-      return await msg.reply(`❌ Status tidak valid. Pilih: ${VALID_ORDER_STATUSES.join(', ')}`);
+      return await msg.reply(`Status tidak valid. Pilih: ${VALID_ORDER_STATUSES.join(', ')}`);
     }
 
     try {
@@ -172,15 +172,15 @@ export async function handleAdminCommand(client, msg, body) {
       }
 
       const data = await apiCall('POST', `/api/admin/transaction/${txId}/status`, payload);
-      if (!data?.success) return await msg.reply(`❌ Gagal update: ${data?.message || 'unknown'}`);
+      if (!data?.success) return await msg.reply(`Gagal update: ${data?.message || 'unknown'}`);
 
       const updated = data.transaction || data;
       const os = updated.orderStatus || updated.order_status || '-';
       const ps = updated.paymentStatus || updated.payment_status || '-';
 
-      await msg.reply(`✅ *Status diupdate*\n🆔 ${txId}\n📊 Order: ${os}\n💳 Payment: ${ps}`);
+      await msg.reply(`Status diupdate: ${txId} — Order: ${os}, Payment: ${ps}`);
     } catch (e) {
-      await msg.reply(`❌ Error: ${e.message}`);
+      await msg.reply('Gagal update status');
     }
     return true;
   }

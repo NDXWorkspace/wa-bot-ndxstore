@@ -177,7 +177,6 @@ async function reconnect(oldClient) {
   }
 
   logger.error('WA', `Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
-  isReconnecting = false;
   process.exit(1);
 }
 

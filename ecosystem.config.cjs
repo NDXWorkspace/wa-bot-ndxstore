@@ -2,9 +2,9 @@ module.exports = {
   apps: [{
     name: 'wa-bot-ndxstore',
     script: './index.js',
-    node_args: '--no-warnings',
+    node_args: '--no-warnings --max-old-space-size=512',
     watch: false,
-    max_memory_restart: '500M',
+    max_memory_restart: '512M',
     restart_delay: 5000,
     max_restarts: 10,
     min_uptime: 10000,
@@ -17,6 +17,7 @@ module.exports = {
     error_file: './logs/error.log',
     out_file: './logs/output.log',
     combine_logs: true,
+    shutdown_with_message: true,
     env: {
       NODE_ENV: 'production',
     },

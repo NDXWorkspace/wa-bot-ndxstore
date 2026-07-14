@@ -9,7 +9,7 @@
 import { config } from '../config.js';
 import { formatPrice, formatTime } from '../utils/format.js';
 import { logger } from '../utils/logger.js';
-import { bumpStoreCacheVersion } from './ai.js';
+import { bumpStoreCacheVersion } from '../utils/cache.js';
 
 const TIMEOUT_MS = 9000;
 const STORE_TTL_MS = 5 * 60 * 1000;

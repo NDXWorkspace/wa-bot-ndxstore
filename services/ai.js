@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { getDb } from './supabase.js';
 import { getStoreContext, getQueryContext } from './liveData.js';
+import { storeCacheVersion } from '../utils/cache.js';
 import { logger } from '../utils/logger.js';
 
 const KNOWLEDGE = `
@@ -157,8 +158,8 @@ const FAST_REPLIES = new Map([
 // ─── Conversation history ──────────────────────────────────────────────
 
 const conversationHistory = new Map();
-const MAX_HISTORY = 100;
-const MAX_USERS = 500;
+const MAX_HISTORY = 60;
+const MAX_USERS = 200;
 const CONTEXT_SIZE_FULL = 6;
 const CONTEXT_SIZE_MIN = 3;
 
@@ -360,12 +361,6 @@ function sanitizeInput(text) {
 const responseCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX = 50;
-let storeCacheVersion = 0;
-
-export function bumpStoreCacheVersion() {
-  storeCacheVersion++;
-}
-
 function getCached(text, mode) {
   const key = text.toLowerCase().trim().replace(/\s+/g, ' ') + '|' + mode + '|' + storeCacheVersion;
   const entry = responseCache.get(key);
@@ -388,11 +383,13 @@ function setCache(text, mode, reply) {
   }
 }
 
-// ─── Endpoint tracking (per-model, bounded + periodic cleanup) ──────────
+// ─── Circuit breaker (per-endpoint, consecutive failures) ───────────────
 
 const FAILED_ENDPOINTS = new Map();
-const ENDPOINT_COOLDOWN_MS = 300000;
 const FAILED_ENDPOINTS_MAX = 100;
+const CB_THRESHOLD = 2;
+const CB_BASE_COOLDOWN = 60000;
+const CB_MAX_COOLDOWN = 600000;
 
 let endpointCleanupTimer = null;
 
@@ -400,14 +397,54 @@ function startEndpointCleanup() {
   if (endpointCleanupTimer) return;
   endpointCleanupTimer = setInterval(() => {
     const now = Date.now();
-    for (const [key, ts] of FAILED_ENDPOINTS) {
-      if (now - ts >= ENDPOINT_COOLDOWN_MS) FAILED_ENDPOINTS.delete(key);
+    for (const [key, state] of FAILED_ENDPOINTS) {
+      if (state.cooldown && now - state.markedAt >= state.cooldown) {
+        FAILED_ENDPOINTS.delete(key);
+      }
     }
-  }, ENDPOINT_COOLDOWN_MS);
+  }, 30000);
 }
 
 function trackEndpointKey(url, model) {
   return `${url}|${model}`;
+}
+
+function markEndpointSuccess(key) {
+  const entry = FAILED_ENDPOINTS.get(key);
+  if (entry) {
+    entry.count = 0;
+    entry.cooldown = 0;
+  }
+}
+
+function markEndpointFailure(key) {
+  const now = Date.now();
+  const entry = FAILED_ENDPOINTS.get(key);
+  if (entry) {
+    entry.count++;
+    entry.cooldown = Math.min(
+      CB_BASE_COOLDOWN * Math.pow(2, entry.count - 1),
+      CB_MAX_COOLDOWN
+    );
+    entry.markedAt = now;
+  } else {
+    FAILED_ENDPOINTS.set(key, { count: 1, cooldown: CB_BASE_COOLDOWN, markedAt: now });
+  }
+  if (FAILED_ENDPOINTS.size > FAILED_ENDPOINTS_MAX) {
+    const oldest = FAILED_ENDPOINTS.keys().next().value;
+    FAILED_ENDPOINTS.delete(oldest);
+  }
+}
+
+function isEndpointOpen(key) {
+  const entry = FAILED_ENDPOINTS.get(key);
+  if (!entry || entry.count < CB_THRESHOLD) return true;
+  if (!entry.cooldown) return true;
+  if (Date.now() - entry.markedAt >= entry.cooldown) {
+    FAILED_ENDPOINTS.delete(key);
+    return true;
+  }
+  return false;
 }
 
 // ─── User-Agent header ─────────────────────────────────────────────────
@@ -427,12 +464,11 @@ const TIER_TIMEOUTS = {
 async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
   const model = body?.model || 'unknown';
   const key = trackEndpointKey(url, model);
-  const failed = FAILED_ENDPOINTS.get(key);
-  if (failed && Date.now() - failed < ENDPOINT_COOLDOWN_MS) {
-    logger.debug('AI', `Skipping ${url} (model=${model}) — cooldown`);
+
+  if (!isEndpointOpen(key)) {
+    logger.debug('AI', `Skipping ${url} (model=${model}) — circuit open`);
     return null;
   }
-  if (failed) FAILED_ENDPOINTS.delete(key);
 
   const doFetch = async (timeout) => {
     const resp = await fetch(url, {
@@ -448,31 +484,46 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
     let resp = await doFetch(timeoutMs);
     if (!resp.ok) {
       const err = await resp.text().catch(() => 'unknown');
-      const isRateLimit = resp.status === 429;
-      const isServerError = resp.status >= 500;
 
-      if (isRateLimit) {
-        // Retry once after 2s
+      if (resp.status === 429) {
         logger.warn('AI', `${url} (${model}) 429 — retrying after 2s`);
         await new Promise(r => setTimeout(r, 2000));
         try {
           resp = await doFetch(timeoutMs);
         } catch {
+          markEndpointFailure(key);
           return null;
         }
         if (resp.ok) {
           const data = await resp.json();
-          return data?.choices?.[0]?.message?.content?.trim() || null;
+          const content = data?.choices?.[0]?.message?.content?.trim();
+          if (content) markEndpointSuccess(key);
+          return content || null;
         }
-        // If retry failed too, fall through to normal error handling
         const err2 = await resp.text().catch(() => 'unknown');
         logger.error('AI', `${url} (${model}) ${resp.status} (after retry):`, err2.slice(0, 120));
-        if (resp.status < 500 && resp.status !== 429) FAILED_ENDPOINTS.set(key, Date.now());
+        markEndpointFailure(key);
         return null;
       }
 
-      // Don't blacklist 5xx (transient server errors) or 429 (rate limit recovers)
-      if (resp.status < 500 && resp.status !== 429) FAILED_ENDPOINTS.set(key, Date.now());
+      if (resp.status >= 500) {
+        logger.warn('AI', `${url} (${model}) ${resp.status} — server error, retrying once`);
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          resp = await doFetch(timeoutMs);
+        } catch {
+          markEndpointFailure(key);
+          return null;
+        }
+        if (resp.ok) {
+          const data = await resp.json();
+          const content = data?.choices?.[0]?.message?.content?.trim();
+          if (content) markEndpointSuccess(key);
+          return content || null;
+        }
+      }
+
+      markEndpointFailure(key);
       logger.error('AI', `${url} (${model}) ${resp.status}:`, err.slice(0, 120));
       return null;
     }
@@ -480,19 +531,17 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
     const data = await resp.json();
     const content = data?.choices?.[0]?.message?.content?.trim();
     if (!content) {
-      FAILED_ENDPOINTS.set(key, Date.now());
+      markEndpointFailure(key);
       return null;
     }
+    markEndpointSuccess(key);
     return content;
   } catch (e) {
     logger.debug('AI', `${url} (${model}) error:`, e.message?.slice(0, 80));
-    if (e.name !== 'AbortError') {
-      FAILED_ENDPOINTS.set(key, Date.now());
-      // Evict oldest if over limit
-      if (FAILED_ENDPOINTS.size > FAILED_ENDPOINTS_MAX) {
-        const oldest = FAILED_ENDPOINTS.keys().next().value;
-        FAILED_ENDPOINTS.delete(oldest);
-      }
+    if (e.name === 'AbortError') {
+      markEndpointFailure(key);
+    } else {
+      markEndpointFailure(key);
     }
     return null;
   }

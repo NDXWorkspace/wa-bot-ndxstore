@@ -109,7 +109,7 @@ export async function startHandover(client, msg, adminNumber) {
   handoverSessions.set(userNumber, { adminNumber, lastActivity: Date.now() });
   persistSession(userNumber, adminNumber).catch(() => {});
 
-  await msg.reply('🔄 *Terhubung ke Customer Service*\nSilakan kirim pesan Anda. Admin akan membalas segera.\n\nKetik *selesai* untuk mengakhiri.');
+  await msg.reply('Terhubung ke Customer Service\nSilakan kirim pesan Anda. Admin akan membalas segera.\n\nKetik *selesai* untuk mengakhiri.');
 
   const body = msg.body.trim() === 'cs' || msg.body.trim() === '4' ? '(memulai CS)' : msg.body;
   const adminMsg = await client.sendMessage(adminNumber,
@@ -136,7 +136,7 @@ export async function handleAdminReply(client, msg) {
 
   if (!userNumber) return null;
 
-  await client.sendMessage(userNumber, `📨 *Pesan dari Admin:*\n\n${msg.body}`);
+  await client.sendMessage(userNumber, `Pesan dari Admin:\n\n${msg.body}`);
 
   forwardedMessages.set(msg.id._serialized, { userNumber, timestamp: Date.now() });
   touchSession(userNumber);

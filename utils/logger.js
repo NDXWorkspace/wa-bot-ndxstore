@@ -1,5 +1,21 @@
 const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
-const CURRENT_LEVEL = LOG_LEVELS[process.env.LOG_LEVEL] ?? LOG_LEVELS.info;
+let CURRENT_LEVEL = LOG_LEVELS[process.env.LOG_LEVEL] ?? LOG_LEVELS.info;
+
+export function setLogLevel(level) {
+  const num = LOG_LEVELS[level];
+  if (num !== undefined) {
+    CURRENT_LEVEL = num;
+    return true;
+  }
+  return false;
+}
+
+export function getLogLevel() {
+  for (const [k, v] of Object.entries(LOG_LEVELS)) {
+    if (v === CURRENT_LEVEL) return k;
+  }
+  return 'info';
+}
 
 const COLORS = {
   error: '31',  // red

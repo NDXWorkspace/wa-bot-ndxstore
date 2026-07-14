@@ -51,6 +51,32 @@ async function connect() {
   throw new Error('All connection attempts failed');
 }
 
+const RETRY_DELAYS = [2000, 5000, 10000];
+
+async function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+async function queryWithRetry(client, sql, label = 'query', retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      await client.query(sql);
+      return;
+    } catch (e) {
+      if (attempt < retries && (
+        e.message?.includes('timeout') ||
+        e.message?.includes('connection') ||
+        e.message?.includes('terminated')
+      )) {
+        console.log(`  ${label}: retry ${attempt + 1}/${retries} after ${RETRY_DELAYS[attempt]}ms`);
+        await sleep(RETRY_DELAYS[attempt]);
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 const SQL = `
 CREATE TABLE IF NOT EXISTS wa_chat_history (
   id SERIAL PRIMARY KEY,
@@ -86,7 +112,7 @@ INSERT INTO wa_bot_config (key, value) VALUES
   ('max_per_day', to_jsonb(50)),
   ('delay_ms', to_jsonb(3000)),
   ('bot_paused', to_jsonb(false)),
-  ('bot_settings', to_jsonb('{"jawabDuluan": false, "ungroup": true, "aiMode": 0}'::jsonb))
+  ('bot_settings', '{"jawabDuluan": false, "ungroup": false, "aiMode": 0}'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 ALTER TABLE wa_chat_history ENABLE ROW LEVEL SECURITY;
@@ -109,17 +135,20 @@ async function main() {
   console.log('Connecting to Supabase PostgreSQL...');
   const client = await connect();
   console.log('Connected. Running migration...');
-  await client.query(SQL);
-  console.log('Migration completed successfully!');
 
+  console.log('Creating tables & indexes...');
+  await queryWithRetry(client, SQL, 'schema');
+
+  console.log('Verifying tables...');
   const { rows } = await client.query(`
     SELECT table_name FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name IN ('wa_chat_history', 'wa_handover_sessions', 'wa_bot_config', 'wa_user_limits')
     ORDER BY table_name
   `);
-  console.log('Verified tables:', rows.map(r => r.table_name).join(', '));
+  console.log('Verified:', rows.map(r => r.table_name).join(', '));
 
   await client.end();
+  console.log('Migration completed successfully!');
 }
 
 main().catch(err => {

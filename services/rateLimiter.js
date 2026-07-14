@@ -41,9 +41,10 @@ async function processQueue() {
       }
     }
   } finally {
-    processing = false;
     if (queue.length > 0) {
       processQueue();
+    } else {
+      processing = false;
     }
   }
 }

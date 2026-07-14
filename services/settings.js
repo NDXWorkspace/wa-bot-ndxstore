@@ -1,5 +1,6 @@
 import { getDb } from './supabase.js';
 import { logger } from '../utils/logger.js';
+import { withRetry } from '../utils/db.js';
 
 const SETTINGS_KEY = 'bot_settings';
 
@@ -13,36 +14,42 @@ export const settings = { ...defaults };
 
 let loaded = false;
 
+let loadPromise = null;
+
 export async function loadSettings() {
   if (loaded) return;
-  const db = getDb();
-  if (!db) return;
-  try {
-    const { data } = await db
-      .from('wa_bot_config')
-      .select('value')
-      .eq('key', SETTINGS_KEY)
-      .single();
-    if (data?.value && typeof data.value === 'object') {
-      Object.assign(settings, defaults, data.value);
-      logger.info('Settings', 'Loaded from DB:', JSON.stringify(settings));
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    const db = getDb();
+    if (!db) return;
+    try {
+      const { data } = await withRetry(() => db
+        .from('wa_bot_config')
+        .select('value')
+        .eq('key', SETTINGS_KEY)
+        .single(), { label: 'Settings:load' });
+      if (data?.value && typeof data.value === 'object') {
+        Object.assign(settings, defaults, data.value);
+        logger.info('Settings', 'Loaded from DB:', JSON.stringify(settings));
+      }
+    } catch (e) {
+      if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+        logger.error('Settings', 'Load error:', e.message);
+      }
     }
-  } catch (e) {
-    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
-      logger.error('Settings', 'Load error:', e.message);
-    }
-  }
-  loaded = true;
+    loaded = true;
+  })();
+  return loadPromise;
 }
 
 async function saveToDb() {
   const db = getDb();
   if (!db) return;
   try {
-    await db.from('wa_bot_config').upsert({
+    await withRetry(() => db.from('wa_bot_config').upsert({
       key: SETTINGS_KEY,
       value: JSON.parse(JSON.stringify(settings)),
-    }, { onConflict: 'key' });
+    }, { onConflict: 'key' }), { label: 'Settings:save' });
   } catch (e) {
     if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
       logger.error('Settings', 'Save error:', e.message);

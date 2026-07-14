@@ -70,13 +70,13 @@ function sendNotif(client, order, type) {
     } else {
       let creds = '';
       if (order.roblox_password || order.backup_code) {
-        creds = '\n\n🔐 *Akses Roblox:*\n';
-        if (order.roblox_password) creds += `🔑 Password: ${order.roblox_password}\n`;
-        if (order.backup_code) creds += `🔐 Backup Code: ${order.backup_code}\n`;
+        creds = '\n\n🔐 *Akses Roblox tersedia*\n';
+        if (order.roblox_password) creds += `🔑 Password: ********\n`;
+        if (order.backup_code) creds += `🔐 Backup Code: ********\n`;
       }
       const userMsg = type === 'payment'
-        ? `💰 *Pembayaran Diterima!*\n\nHalo *${order.username || 'Kak'}*, pembayaran untuk pesanan *${order.id}* sudah kami terima. Pesanan akan segera diproses.${creds}\n\nTerima kasih telah berbelanja di NDXStore! 🎉`
-        : `📩 *Pesanan Baru Diterima*\n\nHalo *${order.username || 'Kak'}*, pesanan kamu *${order.id}* sudah tercatat.\n\nKami akan proses setelah pembayaran dikonfirmasi.${creds}\n\nGunakan *cek ${order.username}* untuk cek status terbaru.`;
+        ? `Pembayaran Diterima!\n\nHalo *${order.username || 'Kak'}*, pembayaran untuk pesanan *${order.id}* sudah kami terima. Pesanan akan segera diproses.${creds}\n\nTerima kasih telah berbelanja di NDXStore!`
+        : `Pesanan Baru Diterima\n\nHalo *${order.username || 'Kak'}*, pesanan kamu *${order.id}* sudah tercatat.\n\nKami akan proses setelah pembayaran dikonfirmasi.${creds}\n\nGunakan *cek ${order.username}* untuk cek status terbaru.`;
       enqueueSend(() => client.sendMessage(userJid, userMsg));
     }
   }
@@ -98,14 +98,14 @@ function sendUpdateToUser(client, order) {
   if (!userJid) return;
 
   const statusLabels = {
-    PROCESSING: 'sedang diproses ✅',
-    SUCCESS: 'selesai! 🎉',
-    REJECTED: 'dibatalkan ❌',
+    PROCESSING: 'sedang diproses',
+    SUCCESS: 'selesai',
+    REJECTED: 'dibatalkan',
   };
 
   const label = statusLabels[(order.order_status || '').toUpperCase()] || (order.order_status || order.payment_status || '-');
 
-  const msg = `📋 *Update Pesanan*\n\nHalo *${order.username || 'Kak'}*,\nPesanan *${order.id}* saat ini: *${label}*.\n\nTerima kasih! 🙏`;
+  const msg = `Update Pesanan\n\nHalo *${order.username || 'Kak'}*,\nPesanan *${order.id}* saat ini: *${label}*.`;
   enqueueSend(() => client.sendMessage(userJid, msg));
 }
 
@@ -123,8 +123,7 @@ function formatOrderMessage(order, type) {
     extra += `\n🆔 Roblox ID: ${order.roblox_id}`;
   }
   if (order.roblox_password) {
-    const pw = String(order.roblox_password);
-    extra += `\n🔑 *Password:* ${pw.length > 6 ? pw.slice(0, 2) + '****' + pw.slice(-2) : '********'}`;
+    extra += `\n🔑 *Password:* ********`;
   }
   if (order.backup_code) {
     extra += `\n🔐 *Backup Code:* ********`;
@@ -134,8 +133,8 @@ function formatOrderMessage(order, type) {
   }
 
   let msg = type === 'payment'
-    ? `💰 *PEMBAYARAN DIKONFIRMASI*\n`
-    : `🆕 *PESANAN BARU NDXSTORE*\n`;
+    ? `PEMBAYARAN DIKONFIRMASI\n`
+    : `PESANAN BARU NDXSTORE\n`;
 
   msg += `━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📋 *ID:* ${order.id}\n`;

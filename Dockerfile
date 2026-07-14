@@ -5,7 +5,6 @@
 # ============================================
 FROM node:22-bullseye-slim
 
-# Install system deps + Chrome (amd64) or Chromium (arm64)
 RUN apt-get update && apt-get install -y \
     wget ca-certificates curl gnupg \
     fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 \
@@ -31,18 +30,16 @@ RUN apt-get update && apt-get install -y \
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable \
     NODE_ENV=production \
-    PORT=3000
+    PORT=3000 \
+    NODE_OPTIONS="--max-old-space-size=512"
 
 WORKDIR /app
 
-# Layer cache: copy package files first
 COPY package*.json ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
-# Copy app source
 COPY . .
 
-# Session & cache directories
 RUN mkdir -p /app/wa-session /app/.wwebjs_cache /app/logs \
     && chown -R node:node /app
 
@@ -50,10 +47,8 @@ USER node
 
 EXPOSE 3000
 
-# Liveness: /health returns 200 while process is alive (even during QR login)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -sf http://127.0.0.1:${PORT:-3000}/health || exit 1
 
-# tini reaps Chromium zombie processes
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "index.js"]

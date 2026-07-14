@@ -1,15 +1,3 @@
-# =============================================
-# WA Bot NDXStore — Local development & testing
-# =============================================
-# Usage:
-#   docker compose up -d
-#   docker compose logs -f
-#   docker compose down
-#
-# First run: open http://localhost:3000/qr to scan QR code.
-# Session persists in ./wa-session (bind mount).
-# =============================================
-
 services:
   bot:
     build:
@@ -19,11 +7,8 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Persist WhatsApp session across restarts
       - ./wa-session:/app/wa-session
-      # Persist wwebjs cache (Chrome profile, media cache)
       - .wwebjs_cache:/app/.wwebjs_cache
-      # Persist notified IDs so restarts don't re-notify
       - ./.notified.json:/app/.notified.json
     env_file:
       - .env
@@ -33,3 +18,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     init: true
+    mem_limit: 768m
+    memswap_limit: 1024m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
