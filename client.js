@@ -3,6 +3,7 @@ import qrcode from 'qrcode-terminal';
 import fsp from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { logger } from './utils/logger.js';
 const { Client, LocalAuth } = ww;
 
@@ -121,6 +122,13 @@ function cleanupLockfiles() {
   }
   const defLock = path.join(sessionDir, 'Default', 'LOCK');
   try { if (fs.existsSync(defLock)) { fs.unlinkSync(defLock); logger.info('WA', 'Cleaned stale: Default/LOCK'); } } catch {}
+  // Kill orphaned Chrome processes holding this profile
+  if (process.platform === 'linux') {
+    try {
+      execSync('pkill -f "chrome.*wa-session" 2>/dev/null; pkill -f "chromium.*wa-session" 2>/dev/null');
+      logger.info('WA', 'Killed orphaned Chrome processes');
+    } catch {}
+  }
 }
 
 async function createClientCore() {
