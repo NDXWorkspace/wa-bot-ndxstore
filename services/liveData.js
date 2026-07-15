@@ -8,6 +8,7 @@
 
 import { config } from '../config.js';
 import { formatPrice, formatTime } from '../utils/format.js';
+import { pick } from '../utils/fieldResolver.js';
 import { logger, throttleLog } from '../utils/logger.js';
 import { bumpStoreCacheVersion } from '../utils/cache.js';
 
@@ -83,14 +84,19 @@ async function refreshStoreContext() {
     `- Juga melayani Mobile Legends (ML)\n` +
     `- Cek status order: user ketik "cek [username]" atau kasih order ID (TX-xxxx)`;
 
-  storeCache = { text, ts: Date.now() };
-  bumpStoreCacheVersion();
+  if (text !== storeCache.text) {
+    storeCache = { text, ts: Date.now() };
+    bumpStoreCacheVersion();
+  } else {
+    storeCache.ts = Date.now();
+  }
   return text;
 }
 
-// Start background refresh immediately (module load)
-refreshStoreContext();
-storeRefreshTimer = setInterval(() => refreshStoreContext().catch(() => {}), STORE_TTL_MS);
+export function startLiveDataRefresh() {
+  refreshStoreContext();
+  storeRefreshTimer = setInterval(() => refreshStoreContext().catch(() => {}), STORE_TTL_MS);
+}
 
 export async function getStoreContext() {
   if (storeCache.text && Date.now() - storeCache.ts < STORE_TTL_MS) return storeCache.text;
@@ -145,8 +151,8 @@ function extractUsername(text) {
 
 function summarizeOrders(txs, who) {
   const top = txs.slice(0, 3).map(o => {
-    const status = o.orderStatus || o.paymentStatus || '-';
-    return `- ${o.id} | ${o.productName || '-'} | ${status} | ${formatTime(o.createdAt)}`;
+    const status = pick(o, 'orderStatus', 'order_status') || pick(o, 'paymentStatus', 'payment_status') || '-';
+    return `- ${o.id} | ${pick(o, 'productName', 'product_name') || '-'} | ${status} | ${formatTime(pick(o, 'createdAt', 'created_at'))}`;
   });
   return `STATUS ORDER ${who} (${txs.length} order):\n${top.join('\n')}`;
 }

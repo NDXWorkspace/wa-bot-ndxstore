@@ -17,17 +17,17 @@ async function processQueue() {
       const wait = Math.max(0, MIN_INTERVAL_MS - (now - lastSent));
       if (wait > 0) await new Promise(r => setTimeout(r, wait));
 
-      let retryable = true;
+      let success = false;
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
           await item.send();
           lastSent = Date.now();
-          retryable = false;
+          success = true;
           break;
         } catch (e) {
           const isRateLimit = e.message?.includes('rate') || e.message?.includes('429') || e.message?.includes('too many');
           const isNetwork = e.message?.includes('timeout') || e.message?.includes('ETIMEDOUT') || e.message?.includes('ECONN');
-          retryable = isRateLimit || isNetwork;
+          const retryable = isRateLimit || isNetwork;
           if (!retryable || attempt >= MAX_RETRIES) {
             logger.error('RateLimit', `Send failed (${attempt}/${MAX_RETRIES}):`, e.message?.slice(0, 120));
             if (isRateLimit) {
@@ -39,13 +39,12 @@ async function processQueue() {
           }
         }
       }
+      if (!success) {
+        throttleLog('warn', 'RateLimit', 'dropped', 'Message dropped after exhausting retries', 60000);
+      }
     }
   } finally {
-    if (queue.length > 0) {
-      processQueue();
-    } else {
-      processing = false;
-    }
+    processing = false;
   }
 }
 

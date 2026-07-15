@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: 'wa-bot-ndxstore',
     script: './index.js',
-    node_args: '--no-warnings --max-old-space-size=512',
+    node_args: '--max-old-space-size=512',
     watch: false,
     max_memory_restart: '512M',
     restart_delay: 5000,
@@ -14,8 +14,8 @@ module.exports = {
     exp_backoff_restart_delay: 5000,
     merge_logs: true,
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    error_file: './logs/error.log',
-    out_file: './logs/output.log',
+    error_file: '/dev/null',
+    out_file: '/dev/null',
     combine_logs: true,
     shutdown_with_message: true,
     env: {

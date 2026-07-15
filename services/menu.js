@@ -24,7 +24,7 @@ let menuLoadTs = 0;
 const MENU_CACHE_TTL = 300000;
 
 async function loadFromDb() {
-  if (Date.now() - menuLoadTs < MENU_CACHE_TTL && Object.keys(cache).length > 0) return;
+  if (menuLoadTs > 0 && Date.now() - menuLoadTs < MENU_CACHE_TTL) return;
   if (menuLoadPromise) return menuLoadPromise;
   menuLoadPromise = (async () => {
     try {

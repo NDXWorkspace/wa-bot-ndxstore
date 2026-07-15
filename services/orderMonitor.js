@@ -4,6 +4,7 @@ import { getDbWithRealtime } from './supabase.js';
 import { enqueueSend } from './rateLimiter.js';
 import { askAIProactive } from './ai.js';
 import { formatPrice, formatTime, formatWaNumber } from '../utils/format.js';
+import { pick } from '../utils/fieldResolver.js';
 import { PAYMENT_OK_STATUSES as PAYMENT_OK } from '../utils/constants.js';
 import { logger, throttleLog } from '../utils/logger.js';
 
@@ -52,18 +53,16 @@ function schedulePersist() {
 }
 
 function sendNotif(client, order, type) {
-  if (!config.groupId) {
-    logger.warn('OrderMonitor', 'GROUP_ID not set');
-    return;
-  }
   if (notified.has(order.id)) return;
   notified.add(order.id);
   schedulePersist();
 
-  const msg = formatOrderMessage(order, type);
-  enqueueSend(() => client.sendMessage(config.groupId, msg));
+  if (config.groupId) {
+    const msg = formatOrderMessage(order, type);
+    enqueueSend(() => client.sendMessage(config.groupId, msg));
+  }
 
-  const userJid = formatWaNumber(order.wa_number);
+  const userJid = formatWaNumber(pick(order, 'waNumber', 'wa_number'));
   if (userJid) {
     if (_settings.jawabDuluan) {
       sendAIProactive(client, order, type, userJid);
@@ -94,7 +93,7 @@ async function sendAIProactive(client, order, type, userJid) {
 }
 
 function sendUpdateToUser(client, order) {
-  const userJid = formatWaNumber(order.wa_number);
+  const userJid = formatWaNumber(pick(order, 'waNumber', 'wa_number'));
   if (!userJid) return;
 
   const statusLabels = {
@@ -119,16 +118,16 @@ function formatOrderMessage(order, type) {
   if (ml && typeof ml === 'object') {
     extra += `\n🆔 ID ML: ${ml.userId || ml.user_id || '-'} (Zone ${ml.zoneId || ml.zone_id || '-'})`;
   }
-  if (order.roblox_id) {
-    extra += `\n🆔 Roblox ID: ${order.roblox_id}`;
+  if (pick(order, 'robloxId', 'roblox_id')) {
+    extra += `\n🆔 Roblox ID: ${pick(order, 'robloxId', 'roblox_id')}`;
   }
-  if (order.roblox_password) {
+  if (pick(order, 'robloxPassword', 'roblox_password')) {
     extra += `\n🔑 *Password:* ********`;
   }
-  if (order.backup_code) {
+  if (pick(order, 'backupCode', 'backup_code')) {
     extra += `\n🔐 *Backup Code:* ********`;
   }
-  if (order.contact_admin) {
+  if (pick(order, 'contactAdmin', 'contact_admin')) {
     extra += '\n🔐 *Butuh bantuan 2FA*';
   }
 
@@ -237,7 +236,7 @@ function setupRealtime(client) {
           reconnectTimer = null;
         }
       }
-      if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+      if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMEOUT') {
         startReconnectLoop(client);
       }
     });

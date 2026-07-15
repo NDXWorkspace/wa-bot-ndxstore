@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 import { getDb } from './supabase.js';
 import { getStoreContext, getQueryContext } from './liveData.js';
-import { storeCacheVersion } from '../utils/cache.js';
+import { getStoreCacheVersion } from '../utils/cache.js';
 import { logger, throttleLog } from '../utils/logger.js';
 
 const KNOWLEDGE = `
@@ -160,8 +160,7 @@ const FAST_REPLIES = new Map([
 const conversationHistory = new Map();
 const MAX_HISTORY = 60;
 const MAX_USERS = 200;
-const CONTEXT_SIZE_FULL = 6;
-const CONTEXT_SIZE_MIN = 3;
+const CONTEXT_SIZE_FULL = 12;
 
 function getHistory(jid) {
   const hist = conversationHistory.get(jid);
@@ -201,20 +200,25 @@ function compressHistory(hist) {
   const keep = hist.slice(-CONTEXT_SIZE_FULL);
   const old = hist.slice(0, -CONTEXT_SIZE_FULL);
 
-  const summaryLines = [];
-  let userMsgs = [], asstMsgs = [];
-  for (const m of old) {
-    if (m.role === 'user') userMsgs.push(m.content);
-    else if (m.role === 'assistant') asstMsgs.push(m.content);
+  const pairs = [];
+  for (let i = 0; i < old.length; i += 2) {
+    if (old[i]?.role === 'user') {
+      pairs.push({ user: old[i].content, asst: old[i + 1]?.content || '' });
+    }
   }
-  const userSummary = userMsgs.slice(-3).join(' | ');
-  const asstSummary = asstMsgs.slice(-3).join(' | ');
-  if (userSummary && asstSummary) {
-    summaryLines.push({ role: 'system', content: `(Percakapan sebelumnya: user bilang "${userSummary}" — lo jawab "${asstSummary}")` });
-  } else if (userSummary) {
-    summaryLines.push({ role: 'system', content: `(Percakapan sebelumnya: user bilang "${userSummary}")` });
-  }
-  return [...summaryLines, ...keep];
+
+  const recentPairs = pairs.slice(-4);
+  const summaryParts = recentPairs.map((p, idx) => {
+    const turn = pairs.length - recentPairs.length + idx + 1;
+    const userMsg = p.user.length > 80 ? p.user.slice(0, 80) + '...' : p.user;
+    const asstMsg = p.asst ? (p.asst.length > 60 ? p.asst.slice(0, 60) + '...' : p.asst) : '';
+    return asstMsg ? `[${turn}] "${userMsg}" → "${asstMsg}"` : `[${turn}] "${userMsg}"`;
+  });
+
+  return [
+    { role: 'system', content: `(Percakapan sebelumnya:\n${summaryParts.join('\n')})` },
+    ...keep,
+  ];
 }
 
 // ─── DB persistence ────────────────────────────────────────────────────
@@ -286,12 +290,13 @@ async function getOrLoadHistory(jid) {
   return hist;
 }
 
-function saveExchange(jid, userMsg, reply) {
+function saveExchange(jid, userMsg, reply, senderName) {
   const hist = getHistory(jid);
-  hist.push({ role: 'user', content: userMsg });
+  const userContent = senderName ? `[${senderName}]: ${userMsg}` : userMsg;
+  hist.push({ role: 'user', content: userContent });
   hist.push({ role: 'assistant', content: reply });
   setHistory(jid, hist);
-  persistToDb(jid, 'user', userMsg).catch(() => {});
+  persistToDb(jid, 'user', userContent).catch(() => {});
   persistToDb(jid, 'assistant', reply).catch(() => {});
 }
 
@@ -362,7 +367,7 @@ const responseCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX = 50;
 function getCached(text, mode) {
-  const key = text.toLowerCase().trim().replace(/\s+/g, ' ') + '|' + mode + '|' + storeCacheVersion;
+  const key = text.toLowerCase().trim().replace(/\s+/g, ' ') + '|' + mode + '|' + getStoreCacheVersion();
   const entry = responseCache.get(key);
   if (entry && Date.now() - entry.ts < CACHE_TTL_MS) {
     responseCache.delete(key);
@@ -374,7 +379,7 @@ function getCached(text, mode) {
 }
 
 function setCache(text, mode, reply) {
-  const key = text.toLowerCase().trim().replace(/\s+/g, ' ') + '|' + mode + '|' + storeCacheVersion;
+  const key = text.toLowerCase().trim().replace(/\s+/g, ' ') + '|' + mode + '|' + getStoreCacheVersion();
   responseCache.delete(key);
   responseCache.set(key, { reply, ts: Date.now() });
   while (responseCache.size > CACHE_MAX) {
@@ -615,22 +620,20 @@ export function detectGreeting(text) {
 
 // ─── Main AI ───────────────────────────────────────────────────────────
 
-export async function askAI(jid, message, mode = 1) {
+export async function askAI(jid, message, mode = 1, senderName = null) {
   if (!message?.trim()) return '...';
 
   const clean = sanitizeInput(message);
 
-  // Fast path: common greetings return instantly, no API call
   const fast = detectGreeting(clean);
   if (fast) {
-    saveExchange(jid, message, fast);
+    saveExchange(jid, message, fast, senderName);
     return fast;
   }
 
-  // Response cache hit
   const cached = getCached(clean, mode);
   if (cached) {
-    saveExchange(jid, message, cached);
+    saveExchange(jid, message, cached, senderName);
     return cached;
   }
 
@@ -643,7 +646,7 @@ export async function askAI(jid, message, mode = 1) {
   const temp = pickTemperature(clean, mode);
   const maxTokens = mode === 1 ? 250 : 400;  // Bima concise, NDXStore detailed
 
-  const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  const groqUrl = config.groqUrl;
   const groqHeaders = { Authorization: `Bearer ${config.groqKey}` };
   const opts = { messages: msgs, max_tokens: maxTokens, temperature: temp };
   const pollBase = config.aiApiBase.replace(/\/+$/, '');
@@ -671,7 +674,6 @@ export async function askAI(jid, message, mode = 1) {
       { model: 'llama', url: `${pollBase}/openai` },
       { model: 'mistral', url: `${pollBase}/openai` },
       { model: 'openai-large', url: `${pollBase}/openai` },
-      { model: 'openai', url: 'https://text.pollinations.ai/openai' },
     ];
     reply = await tryPollinationsSequential(
       pollModels.map(m => ({
@@ -682,27 +684,22 @@ export async function askAI(jid, message, mode = 1) {
     );
   }
 
-  // Retry #1: minimal context (no history, no store, no query)
+  // Retry #1: minimal context (no history, no store, no query) — skip Groq, go straight to Pollinations
   if (!reply) {
-    logger.warn('AI', 'All endpoints failed, retrying with minimal context');
+    logger.warn('AI', 'All endpoints failed, retrying with minimal context via Pollinations');
     const minimalMsgs = [
       { role: 'system', content: (PROMPTS[mode] || PROMPTS[1]) },
       { role: 'user', content: clean },
     ];
     const retryOpts = { messages: minimalMsgs, max_tokens: 300, temperature: 0.5 };
-    if (config.groqKey?.startsWith('gsk_')) {
-      reply = await tryFetch(groqUrl, { model: 'llama-3.1-8b-instant', ...retryOpts }, groqHeaders, 10000);
-    }
-    if (!reply) {
-      const fallbackModels = [
-        { model: config.aiModel || 'openai', url: `${pollBase}/openai` },
-        { model: 'openai', url: 'https://text.pollinations.ai/openai' },
-      ];
-      reply = await tryPollinationsSequential(
-        fallbackModels.map(m => ({ url: m.url, body: { model: m.model, ...retryOpts } })),
-        10000,
-      );
-    }
+    const fallbackModels = [
+      { model: config.aiModel || 'openai', url: `${pollBase}/openai` },
+      { model: 'openai', url: `${pollBase}/openai` },
+    ];
+    reply = await tryPollinationsSequential(
+      fallbackModels.map(m => ({ url: m.url, body: { model: m.model, ...retryOpts } })),
+      10000,
+    );
   }
 
   // Retry #2: absolutely minimal (no persona prompt, just a simple system msg)
@@ -721,7 +718,7 @@ export async function askAI(jid, message, mode = 1) {
   }
 
   if (reply) {
-    saveExchange(jid, message, reply);
+    saveExchange(jid, message, reply, senderName);
     setCache(clean, mode, reply);
     return reply;
   }
@@ -732,7 +729,7 @@ export async function askAI(jid, message, mode = 1) {
 
 // ─── Image AI ──────────────────────────────────────────────────────────
 
-export async function askAIWithImage(jid, text, base64img, mime, mode = 1) {
+export async function askAIWithImage(jid, text, base64img, mime, mode = 1, senderName = null) {
   const lang = detectLang(text);
   const prompt = PROMPTS[mode] || PROMPTS[1];
   const langHint = LANG_HINTS[lang] || '';
@@ -751,7 +748,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1) {
       model: config.groqVisionModel, messages: msgs, max_tokens: 400, temperature: 0.5,
     }, { Authorization: `Bearer ${config.groqKey}` }, 20000);
     if (r) {
-      saveExchange(jid, text || '[gambar]', r);
+      saveExchange(jid, text || '[gambar]', r, senderName);
       return r;
     }
   }
@@ -770,13 +767,12 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1) {
       messages: msgs, max_tokens: 400, temperature: 0.5,
     }, {}, 20000);
     if (r) {
-      saveExchange(jid, text || '[gambar]', r);
+      saveExchange(jid, text || '[gambar]', r, senderName);
       return r;
     }
   }
 
-  // Fallback: text-only response with description context
-  const textOnly = await askAI(jid, text || '[gambar]', mode);
+  const textOnly = await askAI(jid, text || '[gambar]', mode, senderName);
   return textOnly || 'Maaf, gak bisa baca gambar.';
 }
 
@@ -788,7 +784,7 @@ const PROACTIVE_FALLBACK = {
 };
 
 export async function askAIProactive(order, mode = 1) {
-  const prompt = mode === 2 ? NDXSTORE_PROMPT : BIMA_PROMPT;
+  const prompt = mode === 1 ? BIMA_PROMPT : NDXSTORE_PROMPT;
   const userMsg = `(Ada pelanggan baru order: ${order.product_name || 'produk'}, username: ${order.username || '-'}, harga: ${order.price_idr ? 'Rp' + Number(order.price_idr).toLocaleString('id-ID') : '-'}). Kirim pesan sapaan singkat 1-2 kalimat.`;
   const msgs = [
     { role: 'system', content: `${prompt}\n\nSekarang kirim pesan LANGSUNG ke pelanggan baru. JANGAN pake tanda kutip, JANGAN ngenalin diri. 1 kalimat doang.` },

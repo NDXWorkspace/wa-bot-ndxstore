@@ -1,7 +1,7 @@
 import http from 'http';
 import os from 'os';
 import { config } from './config.js';
-import { createClient, getCurrentClient, getLatestQr, detectBrowser } from './client.js';
+import { createClient, getCurrentClient, getLatestQr, detectBrowser, setOnMaxReconnect } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
@@ -13,6 +13,7 @@ import { settings, loadSettings, saveSettings, flushSettings } from './services/
 import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
 import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
+import { startLiveDataRefresh } from './services/liveData.js';
 import { logger, setLogLevel, getLogLevel } from './utils/logger.js';
 
 
@@ -109,7 +110,7 @@ const healthApp = http.createServer(async (req, res) => {
   }));
 });
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = config.port;
 healthApp.on('error', (err) => {
   logger.error('Health', `Failed to start on ${PORT}:`, err.message);
   process.exit(1);
@@ -201,22 +202,27 @@ async function main() {
   await loadSettings();
   logger.info('Bot', `AI mode: ${['off', 'Bima', 'NDXStore'][settings.aiMode] || 'unknown'}`);
   await loadBlockedUsers();
+  startLiveDataRefresh();
   startMenuRefresh();
   startHistoryCleanup();
   await initHandover();
 
+  setOnMaxReconnect(() => shutdown('MaxReconnect'));
+
   function setupMessageHandler(c) {
     c.removeAllListeners('message_create');
 
-    // Called after a user's message burst settles — answers once, with full context.
     async function flushAiReply(userJid, text, image, latestMsg) {
-      const chatJid = latestMsg.from; // group JID in groups, user JID in DMs
+      const chatJid = latestMsg.from;
+      const isGroup = chatJid.includes('@g.us');
+      const historyJid = isGroup ? chatJid : userJid;
+      const senderName = isGroup ? userJid.split('@')[0] : null;
       await c.sendPresenceUpdate('composing', chatJid).catch(() => {});
       let reply;
       if (image) {
-        reply = await askAIWithImage(userJid, text, image.data, image.mime, settings.aiMode).catch(() => null);
+        reply = await askAIWithImage(historyJid, text, image.data, image.mime, settings.aiMode, senderName).catch(() => null);
       }
-      if (!reply) reply = await askAI(userJid, text, settings.aiMode).catch(() => null);
+      if (!reply) reply = await askAI(historyJid, text, settings.aiMode, senderName).catch(() => null);
       if (reply) {
         latestMsg.reply(reply).catch(() => {});
       }
@@ -230,18 +236,26 @@ async function main() {
         logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}" | fromMe:${msg.fromMe} | admin:${isAdmin} | aiMode:${settings.aiMode}`);
 
         // ── Block / Unblock ──
-        if (body === '!block' && isAdmin) {
-          const target = msg.to?.includes('@g.us') ? msg.author || msg.from : msg.from;
-          blockedUsers.add(target);
+        if ((body === '!block' || body === '!unblock') && isAdmin) {
+          const isBlock = body === '!block';
+          let target = null;
+          if (msg.hasQuotedMsg) {
+            try {
+              const quoted = await msg.getQuotedMessage();
+              target = quoted?.author || quoted?.from || null;
+            } catch {}
+          }
+          if (!target && msg.mentionedIds?.length) {
+            target = msg.mentionedIds[0];
+          }
+          if (!target) {
+            await msg.reply(`Reply pesan user yang mau di-${isBlock ? 'block' : 'unblock'}, atau mention user-nya.`);
+            return;
+          }
+          if (isBlock) blockedUsers.add(target);
+          else blockedUsers.delete(target);
           await saveBlockedUsers();
-            await msg.reply(`User diblokir: ${target}`);
-          return;
-        }
-        if (body === '!unblock' && isAdmin) {
-          const target = msg.to?.includes('@g.us') ? msg.author || msg.from : msg.from;
-          blockedUsers.delete(target);
-          await saveBlockedUsers();
-            await msg.reply(`User di-unblock: ${target}`);
+          await msg.reply(`User ${isBlock ? 'diblokir' : 'di-unblock'}: ${target}`);
           return;
         }
 
@@ -371,8 +385,8 @@ async function main() {
           if (body === '!aimodesetting') {
             await msg.reply(
               `Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'} | ` +
-              `Ungroup: ${settings.ungroup ? 'ON (mention/reply)' : 'OFF'}\n` +
-              `Gunakan: !aimodesetting jd, !aimodesetting uningroup`
+              `Ungroup: ${settings.ungroup ? 'ON (hanya di mention/reply)' : 'OFF (bales semua pesan grup)'}\n` +
+              `Gunakan: !aimodesetting jd, !aimodesetting unigroup`
             );
             return;
           }
@@ -382,10 +396,10 @@ async function main() {
             await msg.reply(`Jawab duluan ${settings.jawabDuluan ? 'ON' : 'OFF'}`);
             return;
           }
-          if (body === '!aimodesetting unigroup' || body === '!aimodesetting uningroup') {
+          if (body === '!aimodesetting ungroup' || body === '!aimodesetting unigroup' || body === '!aimodesetting uningroup') {
             settings.ungroup = !settings.ungroup;
             await flushSettings();
-            await msg.reply(`Ungroup ${settings.ungroup ? 'ON — cuma bales di grup kalo di mention/di-reply' : 'OFF'}`);
+            await msg.reply(`Ungroup ${settings.ungroup ? 'ON — bales kalo di mention/di-reply aja' : 'OFF — bales semua pesan grup'}`);
             return;
           }
 
@@ -492,11 +506,15 @@ async function main() {
         }
 
         // ── Group / self filters ──
-        if (msg.fromMe && msg.from.includes('@g.us')) return;
-        if (msg.fromMe) return;
-        if (msg.from.includes('@g.us') && !settings.aiMode) return;
+        const isGroup = msg.from.includes('@g.us');
+        const aiOn = settings.aiMode > 0;
+        const ungroupOn = settings.ungroup === true;
 
-        if (msg.from.includes('@g.us') && settings.ungroup) {
+        if (msg.fromMe) return;
+
+        if (isGroup && !aiOn) return;
+
+        if (isGroup && ungroupOn) {
           const botUser = c.info?.wid?.user;
           if (botUser) {
             const mentioned = msg.mentionedIds?.some(id => id.includes(botUser));
@@ -511,8 +529,19 @@ async function main() {
           }
         }
 
-        // Free-form chat only goes to the AI. If AI is off, there's nothing left to do.
-        if (settings.aiMode <= 0) return;
+        if (!aiOn) return;
+
+        const historyJid = isGroup ? msg.from : senderJid;
+        const senderName = isGroup ? senderJid.split('@')[0] : null;
+
+        const fastReply = detectGreeting(body);
+        if (fastReply) {
+          const reply = await askAI(historyJid, body, settings.aiMode, senderName).catch(() => null);
+          if (reply) {
+            await msg.reply(reply).catch(() => {});
+          }
+          return;
+        }
 
         // ── Daily Limit (DM users only) ──
         if (!msg.from.includes('@g.us') && !isAdmin) {
@@ -531,16 +560,6 @@ async function main() {
             : msg.type === 'video' ? 'video'
             : 'media ini';
           await msg.reply(`Maaf, aku belum bisa proses ${kind}. Ketik pesan teks aja ya`).catch(() => {});
-          return;
-        }
-
-        // ── Fast reply (common greetings) — instant, no buffer delay ──
-        const fastReply = detectGreeting(body);
-        if (fastReply) {
-          const reply = await askAI(senderJid, body, settings.aiMode).catch(() => null);
-          if (reply) {
-            await msg.reply(reply).catch(() => {});
-          }
           return;
         }
 
@@ -589,7 +608,7 @@ async function main() {
 
   process.on('SIGINT', () => shutdown('SIGINT').catch(e => logger.error('Shutdown', e.message)));
   process.on('SIGTERM', () => shutdown('SIGTERM').catch(e => logger.error('Shutdown', e.message)));
-  process.setMaxListeners(0);
+  process.setMaxListeners(50);
   process.on('uncaughtException', (err) => {
     logger.error('Uncaught', err.message);
     logger.error('Uncaught', err.stack?.slice(0, 500));
@@ -623,6 +642,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  logger.error('FATAL', 'Bot failed to start:', err.message);
+  logger.error('FATAL', err.stack || err.message);
   process.exit(1);
 });

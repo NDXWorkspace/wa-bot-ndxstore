@@ -1,7 +1,5 @@
 -- ============================================
--- WA Bot NDXStore — Supabase SQL Migration
--- Jalankan di Supabase Dashboard → SQL Editor
--- Sumber: scripts/schema.sql (satu sumber)
+-- WA Bot NDXStore — Schema (single source of truth)
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS wa_chat_history (
@@ -56,5 +54,3 @@ CREATE POLICY "no anon access" ON wa_chat_history FOR ALL TO anon USING (false);
 CREATE POLICY "no anon access" ON wa_user_limits FOR ALL TO anon USING (false);
 CREATE POLICY "no anon access" ON wa_handover_sessions FOR ALL TO anon USING (false);
 CREATE POLICY "no anon access" ON wa_bot_config FOR ALL TO anon USING (false);
-
-SELECT 'WA Bot NDXStore tables + RLS created successfully!' as result;

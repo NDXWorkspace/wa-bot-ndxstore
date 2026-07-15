@@ -3,18 +3,29 @@ import { logger } from '../utils/logger.js';
 import { withRetry } from '../utils/db.js';
 
 const DAILY_LIMIT_DEFAULT = 50;
+const CHAIN_CLEANUP_MS = 3600000;
 
 // Serialize per user so the read-then-update below is atomic within this process
 // (single instance) — stops concurrent message fragments from miscounting the limit.
 const limitChains = new Map();
 
+setInterval(() => {
+  const cutoff = Date.now() - CHAIN_CLEANUP_MS;
+  for (const [jid, entry] of limitChains) {
+    if (entry.ts < cutoff || limitChains.size > 500) limitChains.delete(jid);
+  }
+}, 300000).unref();
+
 export function checkDailyLimit(userJid) {
-  if (!limitChains.has(userJid)) limitChains.set(userJid, Promise.resolve());
-  const prev = limitChains.get(userJid);
+  if (!limitChains.has(userJid)) limitChains.set(userJid, { chain: Promise.resolve(), ts: Date.now() });
+  const prev = limitChains.get(userJid).chain;
   const run = prev.then(() => checkDailyLimitInner(userJid), () => checkDailyLimitInner(userJid));
   const tail = run.catch(() => {});
-  limitChains.set(userJid, tail);
-  tail.then(() => { if (limitChains.get(userJid) === tail) limitChains.delete(userJid); });
+  limitChains.set(userJid, { chain: tail, ts: Date.now() });
+  tail.then(() => {
+    const cur = limitChains.get(userJid);
+    if (cur && cur.chain === tail) limitChains.delete(userJid);
+  });
   return run;
 }
 

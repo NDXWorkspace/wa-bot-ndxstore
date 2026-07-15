@@ -46,28 +46,4 @@ export function getDbWithRealtime() {
   return supabaseRt;
 }
 
-export async function dbQuery(queryFn, label = 'DB') {
-  if (!isDbAvailable()) {
-    logger.debug(label, 'Skipping — DB unavailable');
-    return null;
-  }
-  try {
-    const result = await queryFn();
-    markDbResult(true);
-    return result;
-  } catch (err) {
-    if (isRetryableError(err)) {
-      logger.warn(label, `Retrying after error: ${err.message?.slice(0, 80)}`);
-      try {
-        const result = await queryFn();
-        markDbResult(true);
-        return result;
-      } catch (err2) {
-        markDbResult(false);
-        throw err2;
-      }
-    }
-    markDbResult(false);
-    throw err;
-  }
-}
+

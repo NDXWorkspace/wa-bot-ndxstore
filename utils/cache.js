@@ -1,5 +1,9 @@
-export let storeCacheVersion = 0;
+let _storeCacheVersion = 0;
+
+export function getStoreCacheVersion() {
+  return _storeCacheVersion;
+}
 
 export function bumpStoreCacheVersion() {
-  storeCacheVersion++;
+  _storeCacheVersion++;
 }

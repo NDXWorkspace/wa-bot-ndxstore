@@ -115,6 +115,17 @@ function log(level, label, ...args) {
 
 const throttleTimers = new Map();
 
+const throttleCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, last] of throttleTimers) {
+    if (now - last > 60000) throttleTimers.delete(key);
+  }
+  for (const [key, count] of sampleCounters) {
+    if (count > 1000) sampleCounters.set(key, count % 100);
+  }
+}, 60000);
+throttleCleanupTimer.unref();
+
 export function throttle(key, ms = 10000) {
   const now = Date.now();
   const last = throttleTimers.get(key);

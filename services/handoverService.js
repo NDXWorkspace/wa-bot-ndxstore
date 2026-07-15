@@ -9,6 +9,10 @@ const handoverSessions = new Map();
 const forwardedMessages = new Map();
 const sessionTimers = new Map();
 
+function msgKey(msg) {
+  return msg && msg.id ? `${msg.id.id}|${msg.id.fromMe}|${msg.id.remote}` : '';
+}
+
 async function loadSessionsFromDb() {
   try {
     const db = getDb();
@@ -116,7 +120,7 @@ export async function startHandover(client, msg, adminNumber) {
     `📞 *CS Request*\nDari: ${userNumber}\nPesan: ${body}\n\nBalas dengan reply untuk membalas.`
   );
 
-  forwardedMessages.set(adminMsg.id._serialized, { userNumber, timestamp: Date.now() });
+  forwardedMessages.set(msgKey(adminMsg), { userNumber, timestamp: Date.now() });
 }
 
 export async function handleAdminReply(client, msg) {
@@ -125,7 +129,7 @@ export async function handleAdminReply(client, msg) {
   const quoted = await msg.getQuotedMessage();
   if (!quoted) return null;
 
-  let userNumber = forwardedMessages.get(quoted.id._serialized)?.userNumber;
+  let userNumber = forwardedMessages.get(msgKey(quoted))?.userNumber;
 
   // Fallback that survives a restart (in-memory map is empty then): the bot's
   // forwarded messages embed the user's JID in their text — recover it from there.
@@ -138,7 +142,7 @@ export async function handleAdminReply(client, msg) {
 
   await client.sendMessage(userNumber, `Pesan dari Admin:\n\n${msg.body}`);
 
-  forwardedMessages.set(msg.id._serialized, { userNumber, timestamp: Date.now() });
+  forwardedMessages.set(msgKey(msg), { userNumber, timestamp: Date.now() });
   touchSession(userNumber);
 
   return userNumber;
@@ -150,5 +154,5 @@ export async function forwardToAdmin(client, userNumber, messageBody, adminNumbe
   const adminMsg = await client.sendMessage(adminNumber,
     `📩 *Pesan dari ${userNumber}:*\n\n${messageBody}\n\nBalas dengan reply untuk membalas.`
   );
-  forwardedMessages.set(adminMsg.id._serialized, { userNumber, timestamp: Date.now() });
+  forwardedMessages.set(msgKey(adminMsg), { userNumber, timestamp: Date.now() });
 }

@@ -58,6 +58,15 @@ async function saveToDb() {
 }
 
 let saveTimer = null;
+
+setInterval(() => {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    saveToDb().catch(() => {});
+  }
+}, 30000).unref();
+
 export function saveSettings() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {

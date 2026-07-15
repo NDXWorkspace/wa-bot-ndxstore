@@ -8,7 +8,7 @@ services:
       - "3000:3000"
     volumes:
       - ./wa-session:/app/wa-session
-      - .wwebjs_cache:/app/.wwebjs_cache
+      - ./.wwebjs_cache:/app/.wwebjs_cache
       - ./.notified.json:/app/.notified.json
     env_file:
       - .env

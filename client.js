@@ -12,7 +12,9 @@ let client = null;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
 let isReconnecting = false;
+let reconnectGen = 0;
 let onNewClient = null;
+let onMaxReconnect = null;
 let currentClientRef = null;
 let latestQr = null;
 
@@ -125,6 +127,10 @@ async function createClientCore() {
     latestQr = null;
     reconnectAttempt = 0;
     isReconnecting = false;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     logger.info('WA', 'Client ready');
   });
 
@@ -149,35 +155,61 @@ async function reconnect(oldClient) {
   if (isReconnecting) return;
   isReconnecting = true;
 
+  reconnectGen++;
+  const myGen = reconnectGen;
+
   try { await oldClient.destroy().catch(() => {}); } catch {}
 
   while (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+    if (myGen !== reconnectGen) return;
+
     reconnectAttempt++;
     const delay = calcDelay(reconnectAttempt);
     logger.warn('WA', `Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`);
 
     await new Promise(resolve => { reconnectTimer = setTimeout(resolve, delay); });
 
+    if (myGen !== reconnectGen) return;
+
     try {
       const newClient = await createClientCore();
+
+      if (myGen !== reconnectGen) {
+        try { await newClient.destroy().catch(() => {}); } catch {}
+        return;
+      }
+
       client = newClient;
       currentClientRef = newClient;
       if (onNewClient) onNewClient(newClient);
+
       const initPromise = newClient.initialize().catch(() => {});
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 45000));
       await Promise.race([initPromise, timeout]).catch(e => {
-        logger.error('WA', `Reconnect init issue:`, e.message);
-        // Don't throw — init might complete later after QR scan
+        if (myGen === reconnectGen) {
+          logger.error('WA', `Reconnect init issue:`, e.message);
+        }
       });
+
+      if (myGen !== reconnectGen) {
+        try { await newClient.destroy().catch(() => {}); } catch {}
+        return;
+      }
+
       isReconnecting = false;
       return;
     } catch (e) {
+      if (myGen !== reconnectGen) return;
       logger.error('WA', `Reconnect attempt ${reconnectAttempt} failed:`, e.message);
     }
   }
 
-  logger.error('WA', `Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting.`);
-  process.exit(1);
+  logger.error('WA', `Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached.`);
+  if (typeof onMaxReconnect === 'function') {
+    onMaxReconnect();
+  } else {
+    process.exit(1);
+  }
 }
 
 export async function createClient(setupHandler) {
@@ -190,4 +222,8 @@ export async function createClient(setupHandler) {
 
 export function getCurrentClient() {
   return currentClientRef;
+}
+
+export function setOnMaxReconnect(fn) {
+  onMaxReconnect = fn;
 }
