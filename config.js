@@ -27,4 +27,6 @@ export const config = {
   groqUrl: e('GROQ_URL') || 'https://api.groq.com/openai/v1/chat/completions',
 };
 
-console.log('Config OK. Admin:', config.adminNumber.replace(/.(?=.{4})/g, '*'));
+if (process.env.LOG_CONSOLE !== 'false') {
+  console.log('Config OK. Admin:', config.adminNumber.replace(/.(?=.{4})/g, '*'));
+}

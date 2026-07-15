@@ -20,6 +20,7 @@ module.exports = {
     shutdown_with_message: true,
     env: {
       NODE_ENV: 'production',
+      LOG_CONSOLE: 'false',
     },
   }],
 };

@@ -146,8 +146,10 @@ async function createClientCore() {
 
   c.on('qr', (qr) => {
     latestQr = qr;
-    console.log('\n[WA] Scan QR code ini dengan WhatsApp Anda (atau buka /qr di browser):');
-    qrcode.generate(qr, { small: true });
+    logger.info('WA', 'Scan QR code (atau buka /qr di browser)');
+    if (process.env.LOG_CONSOLE !== 'false') {
+      qrcode.generate(qr, { small: true });
+    }
   });
 
   c.on('authenticated', () => {

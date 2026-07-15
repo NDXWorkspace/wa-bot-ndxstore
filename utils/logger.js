@@ -101,9 +101,11 @@ function log(level, label, ...args) {
     return;
   }
 
-  const short = level === 'info' ? '•' : level === 'warn' ? '⚠' : level === 'error' ? '✗' : '›';
-  const line = `${color(level, short)} ${color(level, `[${paddedLabel}]`)} ${truncate(formatted, MAX_LINE)}`;
-  console.log(line);
+  if (process.env.LOG_CONSOLE !== 'false') {
+    const short = level === 'info' ? '•' : level === 'warn' ? '⚠' : level === 'error' ? '✗' : '›';
+    const line = `${color(level, short)} ${color(level, `[${paddedLabel}]`)} ${truncate(formatted, MAX_LINE)}`;
+    console.log(line);
+  }
 
   if (fileEnabled && fileTransport) {
     const plain = `[${time}] [${level.toUpperCase()}] [${label}] ${truncate(formatted, 5000)}`;
