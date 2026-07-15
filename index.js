@@ -492,28 +492,44 @@ async function main() {
         // ── Group / self filters ──
         const isGroup = msg.from.includes('@g.us');
         const aiOn = settings.aiMode > 0;
-        const ungroupOn = settings.ungroup === true;
 
         if (msg.fromMe) return;
 
-        if (isGroup && !aiOn) return;
-
-        if (isGroup && ungroupOn) {
-          const botUser = c.info?.wid?.user;
-          if (botUser) {
-            const mentioned = msg.mentionedIds?.some(id => id.includes(botUser));
-            let repliedToBot = false;
-            if (msg.hasQuotedMsg) {
-              try {
-                const quoted = await msg.getQuotedMessage();
-                repliedToBot = quoted?.fromMe === true;
-              } catch {}
-            }
-            if (!mentioned && !repliedToBot) return;
-          }
+        if (!aiOn) {
+          if (isGroup) return;
+          // When AI is off in DM, let menu/CS flow handle it (already processed above)
+          return;
         }
 
-        if (!aiOn) return;
+        // ── Group: smart response ──
+        if (isGroup) {
+          const botUser = c.info?.wid?.user;
+          const mentioned = botUser ? msg.mentionedIds?.some(id => id.includes(botUser)) : false;
+          let repliedToBot = false;
+          if (msg.hasQuotedMsg) {
+            try {
+              const quoted = await msg.getQuotedMessage();
+              repliedToBot = quoted?.fromMe === true;
+            } catch {}
+          }
+
+          if (mentioned || repliedToBot) {
+            // Mentioned/replied → always respond
+          } else if (settings.ungroup) {
+            // Old strict mode: only respond when mentioned/replied
+            return;
+          } else {
+            // Smart mode: check if message is relevant
+            const storeKW = /\b(top ?up|harga|beli|order|pesan|diamond|robux|ml|mobile ?legends|free ?fire|valorant|game|cek|status|bayar|dana|gopay|transfer|produk|item|stok|tersedia|voucher|chip)\b/i;
+            const isQuestion = body.includes('?') || /\b(berapa|bagaimana|gimana|apa|siapa|kapan|dimana|kenapa|bisakah|bisa|minta|tolong)\b/i.test(body);
+            const isRelevant = storeKW.test(body);
+            if (!isRelevant && !isQuestion) return;
+          }
+
+          // Human-like thinking delay (1-3s) so AI doesn't reply instantly
+          const delay = 1000 + Math.random() * 2000;
+          await new Promise(r => setTimeout(r, delay));
+        }
 
         const historyJid = isGroup ? msg.from : senderJid;
         const senderName = isGroup ? senderJid.split('@')[0] : null;
@@ -529,7 +545,7 @@ async function main() {
 
         // ── Non-image media without a caption: we can't read it, respond gracefully ──
         if (msg.hasMedia && msg.type !== 'image' && !body) {
-          if (msg.type === 'sticker') return; // ignore stickers silently
+          if (msg.type === 'sticker') return;
           const kind = (msg.type === 'ptt' || msg.type === 'audio') ? 'voice note'
             : msg.type === 'document' ? 'file/dokumen'
             : msg.type === 'video' ? 'video'
@@ -538,7 +554,7 @@ async function main() {
           return;
         }
 
-        // ── Buffer fragments, answer once the burst settles (see aiBuffer.js) ──
+        // ── Buffer fragments, answer once the burst settles ──
         let image = null;
         if (msg.hasMedia && msg.type === 'image') {
           const media = await msg.downloadMedia().catch(() => null);
