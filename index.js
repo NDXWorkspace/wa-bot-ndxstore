@@ -7,7 +7,7 @@ import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuR
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
 import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
-import { askAI, askAIWithImage, clearHistory, clearHistoryExcept, startHistoryCleanup, detectGreeting } from './services/ai.js';
+import { askAI, askAIWithImage, clearHistory, clearHistoryExcept, startHistoryCleanup } from './services/ai.js';
 import { bufferAiMessage } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
@@ -211,22 +211,6 @@ async function main() {
 
   function setupMessageHandler(c) {
     c.removeAllListeners('message_create');
-
-    async function flushAiReply(userJid, text, image, latestMsg) {
-      const chatJid = latestMsg.from;
-      const isGroup = chatJid.includes('@g.us');
-      const historyJid = isGroup ? chatJid : userJid;
-      const senderName = isGroup ? userJid.split('@')[0] : null;
-      await c.sendPresenceUpdate('composing', chatJid).catch(() => {});
-      let reply;
-      if (image) {
-        reply = await askAIWithImage(historyJid, text, image.data, image.mime, settings.aiMode, senderName).catch(() => null);
-      }
-      if (!reply) reply = await askAI(historyJid, text, settings.aiMode, senderName).catch(() => null);
-      if (reply) {
-        latestMsg.reply(reply).catch(() => {});
-      }
-    }
 
     c.on('message_create', async (msg) => {
       try {
@@ -534,15 +518,6 @@ async function main() {
         const historyJid = isGroup ? msg.from : senderJid;
         const senderName = isGroup ? senderJid.split('@')[0] : null;
 
-        const fastReply = detectGreeting(body);
-        if (fastReply) {
-          const reply = await askAI(historyJid, body, settings.aiMode, senderName).catch(() => null);
-          if (reply) {
-            await msg.reply(reply).catch(() => {});
-          }
-          return;
-        }
-
         // ── Daily Limit (DM users only) ──
         if (!msg.from.includes('@g.us') && !isAdmin) {
           const limit = await checkDailyLimit(msg.from);
@@ -569,7 +544,13 @@ async function main() {
           const media = await msg.downloadMedia().catch(() => null);
           if (media) image = { data: media.data, mime: media.mimetype };
         }
-        bufferAiMessage(senderJid, msg, body, image, flushAiReply);
+        bufferAiMessage(senderJid, msg, body, image, (jid, text, img, latestMsg) => {
+          const fn = img ? askAIWithImage : askAI;
+          return fn(historyJid, text, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
+            .then(reply => {
+              if (reply) latestMsg.reply(reply).catch(() => {});
+            });
+        });
         return;
 
       } catch (e) {

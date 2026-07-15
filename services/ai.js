@@ -226,9 +226,13 @@ async function getOrLoadHistory(jid) {
   return hist;
 }
 
-function saveExchange(jid, userMsg, reply, senderName) {
+function saveExchange(jid, userMsg, reply, senderName = null, isGroup = false) {
   const hist = getHistory(jid);
-  const userContent = senderName ? `[${senderName}]: ${userMsg}` : userMsg;
+  const userContent = senderName
+    ? `[${senderName}]: ${userMsg}`
+    : isGroup
+      ? `(seseorang): ${userMsg}`
+      : userMsg;
   hist.push({ role: 'user', content: userContent });
   hist.push({ role: 'assistant', content: reply });
   setHistory(jid, hist);
@@ -518,7 +522,7 @@ function detectUserLang(jid, message, userHist) {
   return dominant;
 }
 
-function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx = '', jid = '') {
+function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx = '', jid = '', isGroup = false, senderName = null) {
   const lang = detectUserLang(jid, message, userHist);
   const prompt = PROMPTS[mode] || PROMPTS[1];
   const langHint = LANG_HINTS[lang] || '';
@@ -526,7 +530,10 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
   const store = storeCtx ? `\n\n${storeCtx}` : '';
   const ctx = queryCtx ? `\n\nDATA REAL-TIME NDXStore (WAJIB dipakai, JANGAN mengarang harga/status/angka):\n${queryCtx}` : '';
   const langForce = `\n\n⚠️ BAHASA PERCAKAPAN: ${lang === 'en' ? 'ENGLISH' : 'INDONESIA'}. Kamu WAJIB membalas dalam bahasa ${lang === 'en' ? 'Inggris' : 'Indonesia'}. JANGAN pakai bahasa lain. JANGAN campur aduk bahasa. JIKA user pake bahasa Indonesia, balas Indonesia. JIKA user pake bahasa Inggris, balas Inggris. INI PENTING.`;
-  const msgs = [{ role: 'system', content: prompt + store + guard + ctx + langForce + langHint }];
+  const chatType = isGroup
+    ? `\n\n📌 INI GRUP CHAT. Lo lagi di grup WhatsApp. Yang ngirim: ${senderName || 'seseorang'}. Lo ngobrol bareng banyak orang. Jawab kayak lo lagi chat di grup beneran — santai, sesuaikan sama vibe grup.`
+    : `\n\n📌 INI CHAT PRIBADI. Lo lagi chat 1-on-1 sama orang. Jawab kayak lo lagi chat pribadi beneran.`;
+  const msgs = [{ role: 'system', content: prompt + store + guard + ctx + langForce + chatType + langHint }];
   const compressed = compressHistory(userHist);
   for (const m of compressed) msgs.push(m);
   msgs.push({ role: 'user', content: message });
@@ -575,20 +582,20 @@ export function detectGreeting(text) {
 
 // ─── Main AI ───────────────────────────────────────────────────────────
 
-export async function askAI(jid, message, mode = 1, senderName = null) {
+export async function askAI(jid, message, mode = 1, senderName = null, isGroup = false) {
   if (!message?.trim()) return '...';
 
   const clean = sanitizeInput(message);
 
   const fast = detectGreeting(clean);
   if (fast) {
-    saveExchange(jid, message, fast, senderName);
+    saveExchange(jid, message, fast, senderName, isGroup);
     return fast;
   }
 
   const cached = getCached(clean, mode);
   if (cached) {
-    saveExchange(jid, message, cached, senderName);
+    saveExchange(jid, message, cached, senderName, isGroup);
     return cached;
   }
 
@@ -597,7 +604,7 @@ export async function askAI(jid, message, mode = 1, senderName = null) {
     getStoreContext().catch(() => ''),
     getQueryContext(clean).catch(() => ''),
   ]);
-  const msgs = buildProMessages(userHist, clean, mode, storeCtx, queryCtx, jid);
+  const msgs = buildProMessages(userHist, clean, mode, storeCtx, queryCtx, jid, isGroup, senderName);
   const temp = pickTemperature(clean, mode);
   const maxTokens = mode === 1 ? 250 : 400;
   const userLang = detectLang(clean);
@@ -663,7 +670,7 @@ export async function askAI(jid, message, mode = 1, senderName = null) {
       logger.debug('AI', 'Reply in Indonesian for English user — correcting');
       reply = `(sorry, let me switch to English)\n${reply}`;
     }
-    saveExchange(jid, message, reply, senderName);
+    saveExchange(jid, message, reply, senderName, isGroup);
     setCache(clean, mode, reply);
     return reply;
   }
@@ -674,7 +681,7 @@ export async function askAI(jid, message, mode = 1, senderName = null) {
 
 // ─── Image AI ──────────────────────────────────────────────────────────
 
-export async function askAIWithImage(jid, text, base64img, mime, mode = 1, senderName = null) {
+export async function askAIWithImage(jid, text, base64img, mime, mode = 1, senderName = null, isGroup = false) {
   const userHist = getHistory(jid);
   const lang = detectUserLang(jid, text, userHist);
   const prompt = PROMPTS[mode] || PROMPTS[1];
@@ -698,7 +705,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       const rLang = detectLang(r);
       if (lang === 'id' && rLang === 'en') r += '\n\nmaaf kak tadi keceplosan bahasa Inggris';
       if (lang === 'en' && rLang === 'id') r = `(sorry, let me switch to English)\n${r}`;
-      saveExchange(jid, text || '[gambar]', r, senderName);
+      saveExchange(jid, text || '[gambar]', r, senderName, isGroup);
       return r;
     }
   }
@@ -721,7 +728,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       const r = (lang === 'id' && rLang === 'en') ? rRaw + '\n\nmaaf kak tadi keceplosan bahasa Inggris'
         : (lang === 'en' && rLang === 'id') ? `(sorry, let me switch to English)\n${rRaw}`
         : rRaw;
-      saveExchange(jid, text || '[gambar]', r, senderName);
+      saveExchange(jid, text || '[gambar]', r, senderName, isGroup);
       return r;
     }
   }
