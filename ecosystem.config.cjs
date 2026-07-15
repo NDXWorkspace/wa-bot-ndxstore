@@ -14,8 +14,8 @@ module.exports = {
     exp_backoff_restart_delay: 5000,
     merge_logs: true,
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    error_file: '/dev/null',
-    out_file: '/dev/null',
+    error_file: './logs/error.log',
+    out_file: './logs/app.log',
     combine_logs: true,
     shutdown_with_message: true,
     env: {
