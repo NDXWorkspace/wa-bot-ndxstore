@@ -217,7 +217,7 @@ async function main() {
         const body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from;
         const isAdmin = senderJid.split('@')[0].replace(/^\+/, '').trim() === ADMIN_RAW;
-        logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}" | fromMe:${msg.fromMe} | admin:${isAdmin} | aiMode:${settings.aiMode}`);
+        logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}"`);
 
         // ── Block / Unblock ──
         if ((body === '!block' || body === '!unblock') && isAdmin) {
@@ -638,16 +638,20 @@ async function main() {
 
   const MEM_WARN_MB = 300;
   let memWarned = false;
+  let lastMemLog = 0;
   const memTimer = setInterval(() => {
     const usage = process.memoryUsage();
     const rssMB = Math.round(usage.rss / 1024 / 1024);
     const heapMB = Math.round(usage.heapUsed / 1024 / 1024);
-    logger.info('Mem', `RSS: ${rssMB}MB | Heap: ${heapMB}MB`);
     if (rssMB > MEM_WARN_MB && !memWarned) {
-      logger.warn('Mem', `Memory ${rssMB}MB exceeds ${MEM_WARN_MB}MB`);
+      logger.warn('Mem', `${rssMB}MB > ${MEM_WARN_MB}MB`);
       memWarned = true;
     }
     if (rssMB <= MEM_WARN_MB) memWarned = false;
+    if (rssMB > 200 || Date.now() - lastMemLog > 1800000) {
+      logger.info('Mem', `${rssMB}MB`);
+      lastMemLog = Date.now();
+    }
   }, 5 * 60 * 1000);
   memTimer.unref();
 

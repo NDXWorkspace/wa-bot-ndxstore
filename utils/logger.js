@@ -87,7 +87,7 @@ function log(level, label, ...args) {
   const formatted = args.map(formatArg).join(' ');
   const time = ts();
 
-  const paddedLabel = label.padEnd(12).slice(0, 12);
+  const paddedLabel = label.padEnd(8).slice(0, 8);
 
   if (useJson) {
     const entry = JSON.stringify({
@@ -101,9 +101,8 @@ function log(level, label, ...args) {
     return;
   }
 
-  const coloredLevel = color(level, `[${time}] [${level.toUpperCase()}]`);
-  const coloredLabel = color('info', `[${paddedLabel}]`);
-  const line = `${coloredLevel} ${coloredLabel} ${truncate(formatted, MAX_LINE)}`;
+  const short = level === 'info' ? '•' : level === 'warn' ? '⚠' : level === 'error' ? '✗' : '›';
+  const line = `${color(level, short)} ${color(level, `[${paddedLabel}]`)} ${truncate(formatted, MAX_LINE)}`;
   console.log(line);
 
   if (fileEnabled && fileTransport) {

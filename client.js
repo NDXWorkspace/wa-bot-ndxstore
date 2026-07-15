@@ -257,14 +257,20 @@ export function getConnectionState() {
   return connectionState;
 }
 
+let lastMonitorState = '';
 export function startConnectionMonitor(intervalMs = 60000) {
   return setInterval(() => {
     const state = connectionState;
     const client = getCurrentClient();
     const wid = client?.info?.wid?.user;
-    logger.info('Monitor', `WA state: ${state} | WID: ${wid || 'null'}`);
+    const now = `${state}|${wid || ''}`;
+    if (now !== lastMonitorState) {
+      logger.info('WA', state === 'ready' ? `✓ ${wid || ''}` : `${state}`);
+      lastMonitorState = now;
+    }
     if (state === 'failed' || state === 'disconnected' || (state === 'connecting' && !wid)) {
-      logger.warn('Monitor', `Client stuck in "${state}" state — triggering reconnect`);
+      logger.warn('WA', `reconnecting (${state})`);
+      lastMonitorState = now;
       if (client && !isReconnecting) {
         reconnect(client).catch(() => {});
       }
