@@ -27,6 +27,8 @@ yang penting: lu lagi chat doang. bukan lagi kerja, bukan lagi jaga toko, bukan 
 
 jangan pake emoji, tanda kurung, tanda bintang, atau format aneh. lo bukan bikin laporan. lo chat doang.
 
+kalo di grup: baca percakapan yang ada di [percakapan grup tadi: ...] untuk ngerti konteks. kalo pesannya gak relevan buat lo atau cuma obrolan orang lain, balas "SKIP" aja. kalo relevan atau butuh bantuan, baru jawab normally.
+
 singkatnya: jawab kaya anak muda sidoarjo lagi chat whatsapp. santai. wajar. gausa lebay.`;
 
 const NDXSTORE_PROMPT = `Lo adalah Customer Service NDXStore — toko top up game & Roblox yang udah berjalan 2 tahun. Profesional, ramah, dan helpful.
@@ -660,6 +662,10 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   }
 
   if (reply) {
+    if (reply.includes('SKIP')) {
+      logger.debug('AI', 'Skipping — not relevant');
+      return null;
+    }
     const replyLang = detectLang(reply);
     const detectedUserLang = userLangs.get(jid) || userLang;
     if (detectedUserLang === 'id' && replyLang === 'en') {
@@ -702,6 +708,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       model: config.groqVisionModel, messages: msgs, max_tokens: 400, temperature: 0.5,
     }, { Authorization: `Bearer ${config.groqKey}` }, 20000);
     if (r) {
+      if (r.includes('SKIP')) return null;
       const rLang = detectLang(r);
       if (lang === 'id' && rLang === 'en') r += '\n\nmaaf kak tadi keceplosan bahasa Inggris';
       if (lang === 'en' && rLang === 'id') r = `(sorry, let me switch to English)\n${r}`;
@@ -724,6 +731,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       messages: msgs, max_tokens: 400, temperature: 0.5,
     }, {}, 20000);
     if (rRaw) {
+      if (rRaw.includes('SKIP')) return null;
       const rLang = detectLang(rRaw);
       const r = (lang === 'id' && rLang === 'en') ? rRaw + '\n\nmaaf kak tadi keceplosan bahasa Inggris'
         : (lang === 'en' && rLang === 'id') ? `(sorry, let me switch to English)\n${rRaw}`

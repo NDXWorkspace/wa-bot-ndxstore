@@ -501,7 +501,7 @@ async function main() {
           return;
         }
 
-        // ── Group: smart response ──
+        // ── Group: scan conversation flow ──
         if (isGroup) {
           const botUser = c.info?.wid?.user;
           const mentioned = botUser ? msg.mentionedIds?.some(id => id.includes(botUser)) : false;
@@ -514,21 +514,27 @@ async function main() {
           }
 
           if (mentioned || repliedToBot) {
-            // Mentioned/replied → always respond
+            // Mentioned/replied → respond
           } else if (settings.ungroup) {
-            // Old strict mode: only respond when mentioned/replied
-            return;
+            return; // strict mode: only on mention/reply
           } else {
-            // Smart mode: check if message is relevant
-            const storeKW = /\b(top ?up|harga|beli|order|pesan|diamond|robux|ml|mobile ?legends|free ?fire|valorant|game|cek|status|bayar|dana|gopay|transfer|produk|item|stok|tersedia|voucher|chip)\b/i;
-            const isQuestion = body.includes('?') || /\b(berapa|bagaimana|gimana|apa|siapa|kapan|dimana|kenapa|bisakah|bisa|minta|tolong)\b/i.test(body);
-            const isRelevant = storeKW.test(body);
-            if (!isRelevant && !isQuestion) return;
+            // Fetch recent chat context for the AI to scan
+            try {
+              const chat = await c.getChatById(msg.from);
+              const recentMsgs = await chat.fetchMessages({ limit: 6 });
+              const lines = [];
+              for (const m of recentMsgs) {
+                if (m.fromMe) {
+                  lines.push(`Bima: ${(m.body || '(media)').slice(0, 100)}`);
+                } else {
+                  const name = (m.author || m.from).split('@')[0];
+                  lines.push(`${name}: ${(m.body || '(media)').slice(0, 100)}`);
+                }
+              }
+              // Store context for the AI buffer callback to use
+              msg._recentContext = lines.reverse().join('\n');
+            } catch {}
           }
-
-          // Human-like thinking delay (1-3s) so AI doesn't reply instantly
-          const delay = 1000 + Math.random() * 2000;
-          await new Promise(r => setTimeout(r, delay));
         }
 
         const historyJid = isGroup ? msg.from : senderJid;
@@ -562,9 +568,13 @@ async function main() {
         }
         bufferAiMessage(senderJid, msg, body, image, (jid, text, img, latestMsg) => {
           const fn = img ? askAIWithImage : askAI;
-          return fn(historyJid, text, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
+          const groupCtx = latestMsg._recentContext || '';
+          const textToSend = groupCtx
+            ? `[percakapan grup tadi:\n${groupCtx}\n]\n${text}`
+            : text;
+          return fn(historyJid, textToSend, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
             .then(reply => {
-              if (reply) latestMsg.reply(reply).catch(() => {});
+              if (reply && !reply.includes('SKIP')) latestMsg.reply(reply).catch(() => {});
             });
         });
         return;
