@@ -570,7 +570,7 @@ async function main() {
           const fn = img ? askAIWithImage : askAI;
           const groupCtx = latestMsg._recentContext || '';
           const textToSend = groupCtx
-            ? `[percakapan grup tadi:\n${groupCtx}\n]\n${text}`
+            ? `INI PERCAKAPAN GRUP TADI:\n${groupCtx}\n\nPESAN BARU:\n${text}`
             : text;
           return fn(historyJid, textToSend, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
             .then(reply => {
