@@ -1,6 +1,8 @@
 import ww from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import fsp from 'fs/promises';
+import fs from 'fs';
+import path from 'path';
 import { logger } from './utils/logger.js';
 const { Client, LocalAuth } = ww;
 
@@ -17,6 +19,7 @@ let onNewClient = null;
 let onMaxReconnect = null;
 let currentClientRef = null;
 let latestQr = null;
+let connectionState = 'init'; // init | connecting | authenticated | ready | failed
 
 // Latest pending QR string (null once authenticated) — served at /qr for headless login.
 export function getLatestQr() {
@@ -79,6 +82,10 @@ async function getPuppeteerConfig() {
     '--no-first-run',
     '--no-zygote',
     '--disable-gpu',
+    '--disable-features=LockProfileOnLaunch',
+    '--disable-background-networking',
+    '--disable-renderer-backgrounding',
+    '--window-size=800,600',
   ];
 
   const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -105,12 +112,26 @@ function calcDelay(attempt) {
   return Math.min(BASE_DELAY * Math.pow(2, attempt - 1) + jitter, MAX_DELAY);
 }
 
+function cleanupLockfiles() {
+  const sessionDir = path.resolve('./wa-session/session');
+  const files = ['lockfile', 'singletonlock', 'DevToolsActivePort'];
+  for (const f of files) {
+    const fp = path.join(sessionDir, f);
+    try { if (fs.existsSync(fp)) { fs.unlinkSync(fp); logger.info('WA', `Cleaned stale: ${f}`); } } catch {}
+  }
+  const defLock = path.join(sessionDir, 'Default', 'LOCK');
+  try { if (fs.existsSync(defLock)) { fs.unlinkSync(defLock); logger.info('WA', 'Cleaned stale: Default/LOCK'); } } catch {}
+}
+
 async function createClientCore() {
+  cleanupLockfiles();
   const puppeteerConfig = await getPuppeteerConfig();
   const c = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
     puppeteer: puppeteerConfig,
   });
+
+  connectionState = 'connecting';
 
   c.on('qr', (qr) => {
     latestQr = qr;
@@ -120,11 +141,13 @@ async function createClientCore() {
 
   c.on('authenticated', () => {
     latestQr = null;
+    connectionState = 'authenticated';
     logger.info('WA', 'Authenticated');
   });
 
   c.on('ready', () => {
     latestQr = null;
+    connectionState = 'ready';
     reconnectAttempt = 0;
     isReconnecting = false;
     if (reconnectTimer) {
@@ -135,10 +158,12 @@ async function createClientCore() {
   });
 
   c.on('auth_failure', (msg) => {
+    connectionState = 'failed';
     logger.error('WA', 'Auth failure:', msg);
   });
 
   c.on('disconnected', async (reason) => {
+    connectionState = 'disconnected';
     if (isReconnecting) return;
     logger.warn('WA', `Disconnected: ${reason}`);
     if (reason === 'LOGOUT') {
@@ -226,4 +251,41 @@ export function getCurrentClient() {
 
 export function setOnMaxReconnect(fn) {
   onMaxReconnect = fn;
+}
+
+export function getConnectionState() {
+  return connectionState;
+}
+
+export function startConnectionMonitor(intervalMs = 60000) {
+  return setInterval(() => {
+    const state = connectionState;
+    const client = getCurrentClient();
+    const wid = client?.info?.wid?.user;
+    logger.info('Monitor', `WA state: ${state} | WID: ${wid || 'null'}`);
+    if (state === 'failed' || state === 'disconnected' || (state === 'connecting' && !wid)) {
+      logger.warn('Monitor', `Client stuck in "${state}" state — triggering reconnect`);
+      if (client && !isReconnecting) {
+        reconnect(client).catch(() => {});
+      }
+    }
+  }, intervalMs);
+}
+
+export async function initWithRetry(initialClient, maxAttempts = 20) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await Promise.race([
+        initialClient.initialize(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 60000)),
+      ]);
+      return;
+    } catch (e) {
+      logger.error('WA', `Init attempt ${attempt}/${maxAttempts} failed:`, e.message || 'unknown');
+      if (attempt >= maxAttempts) throw e;
+      const delay = Math.min(5000 * Math.pow(2, attempt - 1) + Math.random() * 1000, 300000);
+      logger.warn('WA', `Retrying init in ${Math.round(delay / 1000)}s...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
 }

@@ -1,7 +1,7 @@
 import http from 'http';
 import os from 'os';
 import { config } from './config.js';
-import { createClient, getCurrentClient, getLatestQr, detectBrowser, setOnMaxReconnect } from './client.js';
+import { createClient, getCurrentClient, getLatestQr, detectBrowser, setOnMaxReconnect, initWithRetry, startConnectionMonitor, getConnectionState } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
@@ -591,7 +591,13 @@ async function main() {
     }
   });
 
-  waClient.initialize().catch(e => logger.error('WA', 'Init failed:', `${e.message} (${process.platform}/${process.arch})`));
+  initWithRetry(waClient).catch(e => {
+    logger.error('WA', 'All init attempts failed:', e.message);
+    process.exit(1);
+  });
+
+  const monitorTimer = startConnectionMonitor(60000);
+  monitorTimer.unref();
 
   async function shutdown(signal) {
     logger.info('Bot', `Received ${signal}, shutting down...`);
