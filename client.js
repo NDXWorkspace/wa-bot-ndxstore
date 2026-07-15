@@ -115,19 +115,22 @@ function calcDelay(attempt) {
 
 function cleanupLockfiles() {
   const sessionDir = path.resolve('./wa-session/session');
-  const files = ['lockfile', 'singletonlock', 'DevToolsActivePort'];
+  const files = ['lockfile', 'SingletonLock', 'SingletonSocket', 'DevToolsActivePort'];
   for (const f of files) {
     const fp = path.join(sessionDir, f);
     try { if (fs.existsSync(fp)) { fs.unlinkSync(fp); logger.info('WA', `Cleaned stale: ${f}`); } } catch {}
   }
-  const defLock = path.join(sessionDir, 'Default', 'LOCK');
-  try { if (fs.existsSync(defLock)) { fs.unlinkSync(defLock); logger.info('WA', 'Cleaned stale: Default/LOCK'); } } catch {}
-  // Kill orphaned Chrome processes holding this profile
+  // Clean Default/ lock files
+  const defDir = path.join(sessionDir, 'Default');
+  for (const f of ['LOCK', 'SingletonLock', 'SingletonSocket', 'DevToolsActivePort']) {
+    const fp = path.join(defDir, f);
+    try { if (fs.existsSync(fp)) { fs.unlinkSync(fp); logger.info('WA', `Cleaned stale: Default/${f}`); } } catch {}
+  }
+  // Kill orphaned Chrome/chromium processes on Linux
   if (process.platform === 'linux') {
-    try {
-      execSync('pkill -f "chrome.*wa-session" 2>/dev/null; pkill -f "chromium.*wa-session" 2>/dev/null');
-      logger.info('WA', 'Killed orphaned Chrome processes');
-    } catch {}
+    for (const name of ['chrome','chromium','chromium-browser','google-chrome','google-chrome-stable']) {
+      try { execSync(`pkill -9 ${name} 2>/dev/null`); } catch {}
+    }
   }
 }
 
