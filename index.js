@@ -7,7 +7,6 @@ import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuR
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
 import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
-import { MessageMedia } from 'whatsapp-web.js';
 import { askAI, askAIWithImage, transcribeAudio, clearHistory, clearHistoryExcept, startHistoryCleanup, getAiMetrics } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
 import { bufferAiMessage, savePendingBuffers } from './services/aiBuffer.js';
@@ -18,6 +17,8 @@ import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
 import { startLiveDataRefresh } from './services/liveData.js';
 import { logger, setLogLevel, getLogLevel } from './utils/logger.js';
 
+import ww from 'whatsapp-web.js';
+const { MessageMedia } = ww;
 
 const WELCOMED_USERS = new Map();
 
