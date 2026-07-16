@@ -737,11 +737,11 @@ async function main() {
         return;
 
       } catch (e) {
-        const msg2 = e.message || '';
-        logger.error('Bot', 'Handler error:', msg2.slice(0, 200));
-        if (msg2.includes('window.require') || msg2.includes('require') || msg2.includes('evaluation')) {
+        const errMsg = e?.message || String(e) || '';
+        logger.error('Bot', 'Handler error:', errMsg.slice(0, 200));
+        if (errMsg.includes('window.require') || errMsg.includes('require') || errMsg.includes('evaluation')) {
           logger.warn('Bot', 'Page injection failed — kemungkinan Chromium versi baru. Coba restart bot.');
-          logger.error('Bot', 'Stack:', (e.stack || '').slice(0, 300));
+          logger.error('Bot', 'Stack:', (e?.stack || errMsg).slice(0, 300));
         }
       }
     });
