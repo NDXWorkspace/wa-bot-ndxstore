@@ -10,20 +10,20 @@ const { Client, LocalAuth } = ww;
 const MAX_RECONNECT_ATTEMPTS = 20;
 const BASE_DELAY = 5000;
 const MAX_DELAY = 300000;
+const RECONNECT_COOLDOWN_MS = 120000; // 2 menit cooldown antar siklus
 
 let client = null;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
-let isReconnecting = false;
 let activeReconnectPromise = null;
 let reconnectGen = 0;
 let onNewClient = null;
 let onMaxReconnect = null;
 let currentClientRef = null;
 let latestQr = null;
-let connectionState = 'init'; // init | connecting | authenticated | ready | failed
+let connectionState = 'init';
+let wasReady = false;
 
-// Latest pending QR string (null once authenticated) — served at /qr for headless login.
 export function getLatestQr() {
   return latestQr;
 }
@@ -63,7 +63,6 @@ export async function detectBrowser() {
   for (const c of candidates) {
     try { await fsp.access(c); return c; } catch {}
   }
-  // Scan PATH directories for chromium executables
   const pathSep = process.platform === 'win32' ? ';' : ':';
 const pathDirs = (process.env.PATH || '').split(pathSep);
   for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
@@ -124,7 +123,6 @@ function calcDelay(attempt) {
 function cleanupLockfiles() {
   const sessionDir = path.resolve('./wa-session/session');
 
-  // 1. Kill orphaned processes on Linux by reading SingletonLock first
   if (process.platform === 'linux') {
     const killPidFromLock = (lockPath) => {
       try {
@@ -153,7 +151,6 @@ function cleanupLockfiles() {
     const killedRoot = killPidFromLock(path.join(sessionDir, 'SingletonLock'));
     const killedDef = killPidFromLock(path.join(sessionDir, 'Default', 'SingletonLock'));
 
-    // Fallback: safe pkill -f matching wa-session
     if (!killedRoot && !killedDef) {
       try {
         execSync('pkill -f "chrome.*wa-session" 2>/dev/null; pkill -f "chromium.*wa-session" 2>/dev/null');
@@ -161,13 +158,11 @@ function cleanupLockfiles() {
     }
   }
 
-  // 2. Clean lock files
   const files = ['lockfile', 'SingletonLock', 'SingletonSocket', 'DevToolsActivePort'];
   for (const f of files) {
     const fp = path.join(sessionDir, f);
     try { if (fs.existsSync(fp)) { fs.unlinkSync(fp); logger.info('WA', `Cleaned stale: ${f}`); } } catch {}
   }
-  // Clean Default/ lock files
   const defDir = path.join(sessionDir, 'Default');
   for (const f of ['LOCK', 'SingletonLock', 'SingletonSocket', 'DevToolsActivePort']) {
     const fp = path.join(defDir, f);
@@ -207,8 +202,8 @@ async function createClientCore() {
   c.on('ready', () => {
     latestQr = null;
     connectionState = 'ready';
+    wasReady = true;
     reconnectAttempt = 0;
-    isReconnecting = false;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
@@ -223,13 +218,14 @@ async function createClientCore() {
 
   c.on('disconnected', async (reason) => {
     connectionState = 'disconnected';
-    if (isReconnecting) return;
     logger.warn('WA', `Disconnected: ${reason}`);
     if (reason === 'LOGOUT') {
       logger.warn('WA', 'Manual logout detected — NOT reconnecting');
       return;
     }
-    reconnect(c).catch(() => {});
+    if (!activeReconnectPromise) {
+      reconnect(c).catch(() => {});
+    }
   });
 
   return c;
@@ -239,7 +235,6 @@ async function reconnect(oldClient) {
   if (activeReconnectPromise) return activeReconnectPromise;
 
   activeReconnectPromise = (async () => {
-    isReconnecting = true;
     reconnectGen++;
     const myGen = reconnectGen;
 
@@ -281,6 +276,8 @@ async function reconnect(oldClient) {
           return;
         }
 
+        // Jika berhasil reconnect, reset attempt + cooldown
+        reconnectAttempt = 0;
         return;
       } catch (e) {
         if (myGen !== reconnectGen) return;
@@ -288,7 +285,11 @@ async function reconnect(oldClient) {
       }
     }
 
-    logger.error('WA', `Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached.`);
+    // Max attempts — tunggu cooldown before next cycle
+    logger.error('WA', `Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Cooldown ${RECONNECT_COOLDOWN_MS / 1000}s.`);
+    await new Promise(r => setTimeout(r, RECONNECT_COOLDOWN_MS));
+    reconnectAttempt = 0;
+
     if (typeof onMaxReconnect === 'function') {
       onMaxReconnect();
     } else {
@@ -300,7 +301,6 @@ async function reconnect(oldClient) {
     await activeReconnectPromise;
   } finally {
     activeReconnectPromise = null;
-    isReconnecting = false;
   }
 }
 
@@ -335,10 +335,14 @@ export function startConnectionMonitor(intervalMs = 60000) {
       logger.info('WA', state === 'ready' ? `✓ ${wid || ''}` : `${state}`);
       lastMonitorState = now;
     }
+
+    // Hanya reconnect kalo pernah ready sebelumnya (bukan initial startup)
+    if (!wasReady) return;
+
     if (state === 'failed' || state === 'disconnected' || (state === 'connecting' && !wid)) {
       logger.warn('WA', `reconnecting (${state})`);
       lastMonitorState = now;
-      if (client && !isReconnecting) {
+      if (client && !activeReconnectPromise) {
         reconnect(client).catch(() => {});
       }
     }
