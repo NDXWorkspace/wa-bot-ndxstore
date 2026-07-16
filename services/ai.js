@@ -370,12 +370,15 @@ async function loadHistoryFromDb(jid) {
     if (!db) return [];
     const { data } = await withTimeout(db
       .from('wa_chat_history')
-      .select('role, content')
+      .select('role, content, created_at')
       .eq('user_number', jid)
       .order('created_at', { ascending: false })
       .limit(MAX_HISTORY), 5000);
     if (!data?.length) return [];
     const hist = data.reverse().map(m => ({ role: m.role, content: m.content }));
+    // Restore _lastTimestamp from most recent message so time-gap detection works
+    const lastCreated = data[data.length - 1]?.created_at;
+    if (lastCreated) hist._lastTimestamp = new Date(lastCreated).getTime();
     setHistory(jid, hist);
     return hist;
   } catch {
@@ -979,7 +982,7 @@ const PROACTIVE_FALLBACK = {
 };
 
 export async function askAIProactive(order, mode = 1) {
-  const prompt = mode === 1 ? makeBimaPrompt() : makeNdxstorePrompt();
+  const prompt = getPrompt(mode);
   const userMsg = `(Ada pelanggan baru order: ${order.product_name || 'produk'}, username: ${order.username || '-'}, harga: ${order.price_idr ? 'Rp' + Number(order.price_idr).toLocaleString('id-ID') : '-'}). Kirim pesan sapaan singkat 1-2 kalimat.`;
   const msgs = [
     { role: 'system', content: `${prompt}\n\nSekarang kirim pesan LANGSUNG ke pelanggan baru. JANGAN pake tanda kutip, JANGAN ngenalin diri. 1 kalimat doang.` },

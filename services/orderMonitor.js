@@ -120,7 +120,7 @@ function formatOrderMessage(order, type) {
   const username = order.username || '-';
 
   let extra = '';
-  const ml = order.ml_data;
+  const ml = order.ml_data || order.mlData;
   if (ml && typeof ml === 'object') {
     extra += `\n🆔 ID ML: ${ml.userId || ml.user_id || '-'} (Zone ${ml.zoneId || ml.zone_id || '-'})`;
   }

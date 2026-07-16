@@ -38,8 +38,26 @@ const recentContextMap = new Map();
 const lastUserMessage = new Map();
 let waClient = null;
 let orderMonitorCleanup = null;
-let burstCount = 0;
-let burstStart = Date.now();
+const burstCounts = new Map();
+
+// Periodic cleanup of recentContextMap + burstCounts
+setInterval(() => {
+  const cutoff = Date.now() - 120000;
+  for (const [key, entry] of recentContextMap) {
+    if (entry.ts < cutoff) recentContextMap.delete(key);
+  }
+  for (const [key, entry] of burstCounts) {
+    if (entry.ts < cutoff) burstCounts.delete(key);
+  }
+  if (recentContextMap.size > 500) {
+    const oldest = recentContextMap.keys().next().value;
+    recentContextMap.delete(oldest);
+  }
+  if (burstCounts.size > 200) {
+    const oldest = burstCounts.keys().next().value;
+    burstCounts.delete(oldest);
+  }
+}, 60000);
 
 async function loadBlockedUsers() {
   try {
@@ -552,15 +570,15 @@ async function main() {
 
         if (msg.fromMe) return;
 
-        // Track burst for group rate limiting (E5)
+        // Track burst per-group (E5)
         if (isGroup) {
-          if (Date.now() - burstStart > 10000) {
-            burstCount = 0;
-            burstStart = Date.now();
-          }
-          burstCount++;
-          // Skip if >5 msgs in 10 sec window
-          if (burstCount > 5) return;
+          const now = Date.now();
+          let burst = burstCounts.get(msg.from) || { count: 0, ts: now };
+          if (now - burst.ts > 10000) { burst.count = 0; burst.ts = now; }
+          burst.count++;
+          // Skip if >5 msgs in 10 sec window (per-group)
+          if (burst.count > 5) return;
+          burstCounts.set(msg.from, burst);
         }
 
         if (!aiOn) {
@@ -599,8 +617,8 @@ async function main() {
                   lines.push(`${name}: ${(m.body || '(media)').slice(0, 100)}`);
                 }
               }
-              // Store context for the AI buffer callback to use
-              recentContextMap.set(senderJid, lines.reverse().join('\n'));
+              // Store context per-group for the AI buffer callback to use
+              recentContextMap.set(msg.from, { text: lines.reverse().join('\n'), ts: Date.now() });
             } catch (e) { logger.debug('Bot', 'fetchMsgs context failed:', e.message); }
           }
         }
@@ -680,7 +698,7 @@ async function main() {
         // ── Buffer fragments, answer once the burst settles ──
         bufferAiMessage(senderJid, msg, body, mediaImage, (jid, text, img, latestMsg) => {
           const fn = img ? askAIWithImage : askAI;
-          const groupCtx = recentContextMap.get(senderJid) || '';
+          const groupCtx = recentContextMap.get(historyJid)?.text || '';
           const textToSend = groupCtx
             ? `INI PERCAKAPAN GRUP TADI:\n${groupCtx}\n\nPESAN BARU:\n${text}`
             : text;

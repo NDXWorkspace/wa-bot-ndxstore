@@ -140,7 +140,7 @@ function getCachedProducts(game) {
 // ─── Per-message query context ─────────────────────────────────────────
 
 function detectGame(lowerText) {
-  if (/\b(mlbb|mobile legends?)\b/.test(lowerText) || /\bml\b/.test(lowerText)) return ML;
+  if (/\b(mlbb|mobile legends?)\b/.test(lowerText) || /(?:^|\s)ml(?:\s|$)/.test(lowerText)) return ML;
   for (const g of GAMES) {
     if (g.kw.some(k => lowerText.includes(k))) return g;
   }
