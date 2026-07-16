@@ -582,7 +582,7 @@ const UA_HEADERS = { 'User-Agent': 'NDXStoreBot/1.0' };
 const TIER_TIMEOUTS = {
   groq70b: 12000,
   groq8b: 10000,
-  pollinations: 4000,
+  pollinations: 15000,
 };
 
 // ─── AI fetch ──────────────────────────────────────────────────────────
@@ -870,7 +870,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       `${pollBase}/openai`,
       { model: 'openai', messages: minimalMsgs, max_tokens: 200, temperature: 0.4 },
       {},
-      10000,
+      15000,
     );
     if (reply) { usedModel = 'openai-retry'; trackMetric(usedModel, Date.now() - retryStart, true); }
   }
