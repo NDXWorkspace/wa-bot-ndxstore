@@ -8,7 +8,6 @@ const MSG_CLEANUP_AGE_MS = 60 * 60 * 1000;
 
 const handoverSessions = new Map();
 const forwardedMessages = new Map();
-const sessionTimers = new Map();
 
 function msgKey(msg) {
   return msg && msg.id ? `${msg.id.id}|${msg.id.fromMe}|${msg.id.remote}` : '';
@@ -80,7 +79,6 @@ setInterval(() => {
   for (const [userNumber, session] of handoverSessions) {
     if (now - session.lastActivity > SESSION_TIMEOUT_MS) {
       handoverSessions.delete(userNumber);
-      sessionTimers.delete(userNumber);
       removeSessionFromDb(userNumber).catch(() => {});
     }
   }
@@ -89,7 +87,7 @@ setInterval(() => {
       forwardedMessages.delete(msgId);
     }
   }
-}, CLEANUP_INTERVAL_MS);
+}, CLEANUP_INTERVAL_MS).unref();
 
 export function isHandoverActive(userNumber) {
   return handoverSessions.has(userNumber);
@@ -97,7 +95,6 @@ export function isHandoverActive(userNumber) {
 
 export function endHandover(userNumber) {
   handoverSessions.delete(userNumber);
-  sessionTimers.delete(userNumber);
   removeSessionFromDb(userNumber).catch(() => {});
 }
 

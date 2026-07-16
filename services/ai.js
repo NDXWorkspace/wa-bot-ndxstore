@@ -242,6 +242,16 @@ const conversationHistory = new Map();
 const MAX_HISTORY = 60;
 const MAX_USERS = 200;
 const CONTEXT_SIZE_FULL = 20;
+const HISTORY_TTL = 24 * 60 * 60 * 1000;
+
+// Periodic cleanup of stale conversation histories (24h inactivity)
+setInterval(() => {
+  const cutoff = Date.now() - HISTORY_TTL;
+  for (const [jid, hist] of conversationHistory) {
+    const last = hist._lastTimestamp || 0;
+    if (last > 0 && last < cutoff) conversationHistory.delete(jid);
+  }
+}, 60 * 60 * 1000).unref();
 
 function getHistory(jid) {
   const hist = conversationHistory.get(jid);
@@ -268,6 +278,7 @@ export function clearHistory(jid) {
 }
 
 export function clearHistoryExcept(jid) {
+  if (!jid) return;
   for (const key of conversationHistory.keys()) {
     if (key !== jid) conversationHistory.delete(key);
   }
@@ -330,7 +341,7 @@ async function runHistoryCleanup() {
 export function startHistoryCleanup() {
   if (historyCleanupTimer) return;
   runHistoryCleanup().catch(() => {});
-  historyCleanupTimer = setInterval(() => runHistoryCleanup().catch(() => {}), 24 * 60 * 60 * 1000);
+  historyCleanupTimer = setInterval(() => runHistoryCleanup().catch(() => {}), 24 * 60 * 60 * 1000).unref();
   startEndpointCleanup();
 }
 
@@ -514,7 +525,7 @@ function startEndpointCleanup() {
         FAILED_ENDPOINTS.delete(key);
       }
     }
-  }, 30000);
+  }, 30000).unref();
 }
 
 function trackEndpointKey(url, model) {
@@ -689,7 +700,7 @@ setInterval(() => {
   for (const [jid, entry] of userLangs) {
     if (entry.ts < cutoff) userLangs.delete(jid);
   }
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000).unref();
 
 function detectUserLang(jid, message, userHist) {
   const lastFew = [];
@@ -779,7 +790,7 @@ export function detectGreeting(text) {
 // ─── Main AI ───────────────────────────────────────────────────────────
 
 export async function askAI(jid, message, mode = 1, senderName = null, isGroup = false) {
-  if (!message?.trim()) return '...';
+  if (!message?.trim()) return null;
 
   const clean = sanitizeInput(message);
 
@@ -873,7 +884,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       return null;
     }
 
-    // Language mismatch — silently fix by re-prompting if possible, otherwise just log
+    // Language mismatch detected — log only, no re-prompt (previous re-prompt caused unnatural apologies)
     const replyLang = detectLang(reply);
     const detectedUserLang = (userLangs.get(jid)?.lang) || detectLang(clean);
     if (detectedUserLang === 'id' && replyLang === 'en') {

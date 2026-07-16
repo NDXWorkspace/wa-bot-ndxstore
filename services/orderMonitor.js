@@ -254,7 +254,7 @@ function startReconnectLoop(client) {
   reconnectTimer = setInterval(() => {
     logger.info('OrderMonitor', 'Attempting Realtime reconnect...');
     setupRealtime(client);
-  }, RECONNECT_INTERVAL_MS);
+  }, RECONNECT_INTERVAL_MS).unref();
 }
 
 export async function startOrderMonitor(client, settings) {
@@ -272,6 +272,15 @@ export async function startOrderMonitor(client, settings) {
 
   logger.info('OrderMonitor', 'Supabase Realtime active');
 
+  // Periodic seenOrders cleanup
+  const cleanupTimer = setInterval(() => {
+    const cutoff = Date.now() - SEEN_ORDERS_TTL;
+    for (const [id, entry] of seenOrders) {
+      if (entry.ts < cutoff) seenOrders.delete(id);
+    }
+  }, 60 * 60 * 1000);
+  cleanupTimer.unref();
+
   return {
     cleanup: () => {
       const cutoff = Date.now() - SEEN_ORDERS_TTL;
@@ -280,6 +289,7 @@ export async function startOrderMonitor(client, settings) {
       }
     },
     unsubscribe: () => {
+      if (cleanupTimer) clearInterval(cleanupTimer);
       if (reconnectTimer) {
         clearInterval(reconnectTimer);
         reconnectTimer = null;

@@ -86,7 +86,7 @@ function log(level, label, ...args) {
   const formatted = args.map(formatArg).join(' ');
   const time = ts();
 
-  const paddedLabel = label.padEnd(8).slice(0, 8);
+  const paddedLabel = (label || '').padEnd(8).slice(0, 8);
 
   if (useJson) {
     const entry = JSON.stringify({

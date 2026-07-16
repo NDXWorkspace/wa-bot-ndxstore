@@ -24,7 +24,7 @@ function formatStats(data) {
   let msg = `📊 *STATISTIK NDXSTORE*\n━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📦 *Total Transaksi:* ${s.totalTransactions || 0}\n`;
   msg += `💰 *Total Revenue:* ${formatPrice(s.totalRevenue)}\n`;
-  msg += `⏳ *Pending Payment:* ${s.pendingPayments || 0} (${formatPrice(s.pendingAmount)})\n`;
+  msg += `⏳ *Pending Payment:* ${s.pendingPayments || 0} (${formatPrice(s.pendingAmount ?? 0)})\n`;
   msg += `📋 *Pending Orders:* ${s.pendingOrders || 0}\n━━━━━━━━━━━━━━━━━━━\n`;
   if (s.successToday !== undefined) {
     msg += `📅 *Hari Ini*\n✅ Sukses: ${s.successToday}\n💰 Revenue: ${formatPrice(s.revenueToday)}\n`;

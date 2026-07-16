@@ -17,11 +17,11 @@ async function processQueue() {
       const wait = Math.max(0, MIN_INTERVAL_MS - (now - lastSent));
       if (wait > 0) await new Promise(r => setTimeout(r, wait));
 
+      lastSent = Date.now();
       let success = false;
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
           await item.send();
-          lastSent = Date.now();
           success = true;
           break;
         } catch (e) {
@@ -37,6 +37,7 @@ async function processQueue() {
           }
         }
       }
+      lastSent = Date.now(); // Always update to maintain spacing
       if (!success) {
         throttleLog('warn', 'RateLimit', 'dropped', 'Message dropped after exhausting retries', 60000);
       }

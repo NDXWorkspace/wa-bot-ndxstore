@@ -20,18 +20,47 @@ const PENDING_FILE = './.buffer-pending.json';
 
 const buffers = new Map(); // jid -> { parts: string[], image, timer, latestMsg }
 const bufferChain = new Map(); // jid -> Promise (serialization chain)
+let defaultFlushFn = null;
 
-// Load pending buffers on startup
+export function setDefaultFlushFn(fn) {
+  defaultFlushFn = fn;
+}
+
+// Load pending buffers on startup — restored via setDefaultFlushFn
 try {
   if (fs.existsSync(PENDING_FILE)) {
     const raw = fs.readFileSync(PENDING_FILE, 'utf-8');
     const data = JSON.parse(raw);
     if (Array.isArray(data) && data.length) {
       logger?.info('Buffer', `Loaded ${data.length} pending fragments`);
+      for (const item of data) {
+        if (item.parts?.length) {
+          buffers.set(item.jid, {
+            parts: item.parts,
+            image: item.hasImage ? { data: null, mime: null } : null,
+            timer: null,
+            latestMsg: null,
+          });
+        }
+      }
     }
     fs.unlinkSync(PENDING_FILE);
   }
 } catch {}
+
+export function flushPendingBuffers() {
+  if (!defaultFlushFn) return;
+  const now = Date.now();
+  for (const [jid, entry] of buffers) {
+    if (!entry.timer && entry.parts.length) {
+      buffers.delete(jid);
+      const combined = entry.parts.join('\n').trim();
+      if (combined) {
+        Promise.resolve(defaultFlushFn(jid, combined, entry.image, null)).catch(() => {});
+      }
+    }
+  }
+}
 
 export async function savePendingBuffers() {
   const pending = [];
@@ -77,17 +106,18 @@ export function bufferAiMessage(jid, msg, text, image, flushFn) {
       if (entry.timer) clearTimeout(entry.timer);
       buffers.delete(jid);
       const combined = entry.parts.join('\n').trim();
-      Promise.resolve(flushFn(jid, combined, entry.image, entry.latestMsg)).catch(() => {});
-      return;
+      return Promise.resolve((flushFn || defaultFlushFn)(jid, combined, entry.image, entry.latestMsg)).catch(() => {});
     }
 
     if (entry.timer) clearTimeout(entry.timer);
     const windowMs = pickWindow(entry.parts);
-    entry.timer = setTimeout(() => {
-      buffers.delete(jid);
-      const combined = entry.parts.join('\n').trim();
-      Promise.resolve(flushFn(jid, combined, entry.image, entry.latestMsg)).catch(() => {});
-    }, windowMs);
+    return new Promise(resolve => {
+      entry.timer = setTimeout(() => {
+        buffers.delete(jid);
+        const combined = entry.parts.join('\n').trim();
+        resolve(Promise.resolve((flushFn || defaultFlushFn)(jid, combined, entry.image, entry.latestMsg)).catch(() => {}));
+      }, windowMs);
+    });
   }).catch(() => {});
   bufferChain.set(jid, cur);
 }

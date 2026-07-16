@@ -266,18 +266,21 @@ async function reconnect(oldClient) {
 
         const initPromise = newClient.initialize();
         const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 60000));
-        await Promise.race([initPromise, timeout]).catch(e => {
+        try {
+          await Promise.race([initPromise, timeout]);
+        } catch (e) {
           if (myGen === reconnectGen) {
-            logger.error('WA', `Reconnect init failed:`, e.message);
+            logger.error('WA', `Reconnect init failed:`, e.message?.slice(0, 120));
           }
-        });
+          try { await newClient.destroy().catch(() => {}); } catch {}
+          throw e;
+        }
 
         if (myGen !== reconnectGen) {
           try { await newClient.destroy().catch(() => {}); } catch {}
           return;
         }
 
-        // Jika berhasil reconnect, reset attempt + cooldown
         reconnectAttempt = 0;
         return;
       } catch (e) {

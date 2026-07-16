@@ -95,7 +95,7 @@ async function refreshStoreContext() {
 
 export function startLiveDataRefresh() {
   refreshStoreContext();
-  storeRefreshTimer = setInterval(() => refreshStoreContext().catch(() => {}), STORE_TTL_MS);
+  storeRefreshTimer = setInterval(() => refreshStoreContext().catch(() => {}), STORE_TTL_MS).unref();
 }
 
 export async function getStoreContext() {

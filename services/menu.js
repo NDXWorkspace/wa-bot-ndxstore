@@ -61,7 +61,7 @@ async function loadFromDb() {
 let refreshTimer = null;
 export function startMenuRefresh() {
   loadFromDb();
-  refreshTimer = setInterval(() => loadFromDb().catch(() => {}), 5 * 60 * 1000);
+  refreshTimer = setInterval(() => loadFromDb().catch(() => {}), 5 * 60 * 1000).unref();
 }
 
 export function getMenuText() { return cache.menu_text; }

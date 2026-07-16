@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
 import { logger, throttleLog } from '../utils/logger.js';
-import { setDbAvailable, isDbAvailable, isRetryableError } from '../utils/db.js';
+import { setDbAvailable, isDbAvailable } from '../utils/db.js';
 
 let supabase = null;
 let supabaseRt = null;

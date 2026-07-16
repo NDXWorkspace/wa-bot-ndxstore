@@ -9,7 +9,7 @@ import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
 import { askAI, askAIWithImage, transcribeAudio, clearHistory, clearHistoryExcept, startHistoryCleanup, getAiMetrics } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
-import { bufferAiMessage, savePendingBuffers } from './services/aiBuffer.js';
+import { bufferAiMessage, savePendingBuffers, setDefaultFlushFn, flushPendingBuffers } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
@@ -37,11 +37,13 @@ welcomedCleanupTimer.unref();
 const blockedUsers = new Set();
 const recentContextMap = new Map();
 const lastUserMessage = new Map();
+const LAST_MSG_TTL = 24 * 60 * 60 * 1000;
+const LAST_MSG_MAX = 500;
 let waClient = null;
 let orderMonitorCleanup = null;
 const burstCounts = new Map();
 
-// Periodic cleanup of recentContextMap + burstCounts
+// Periodic cleanup of recentContextMap + burstCounts + lastUserMessage
 setInterval(() => {
   const cutoff = Date.now() - 120000;
   for (const [key, entry] of recentContextMap) {
@@ -58,7 +60,16 @@ setInterval(() => {
     const oldest = burstCounts.keys().next().value;
     burstCounts.delete(oldest);
   }
-}, 60000);
+  // Clean stale lastUserMessage entries
+  const msgCutoff = Date.now() - LAST_MSG_TTL;
+  for (const [jid, entry] of lastUserMessage) {
+    if (entry.ts < msgCutoff) lastUserMessage.delete(jid);
+  }
+  while (lastUserMessage.size > LAST_MSG_MAX) {
+    const oldest = lastUserMessage.keys().next().value;
+    lastUserMessage.delete(oldest);
+  }
+}, 60000).unref();
 
 async function loadBlockedUsers() {
   try {
@@ -283,7 +294,7 @@ async function main() {
     c.on('message_create', async (msg) => {
       try {
         const body = msg.body?.trim() || '';
-        const senderJid = msg.author || msg.from;
+        const senderJid = msg.author || msg.from || '';
         const isAdmin = senderJid.split('@')[0].replace(/^\+/, '').trim() === ADMIN_RAW;
         logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}"`);
 
@@ -457,7 +468,8 @@ async function main() {
 
           // ── History ──
           if (body.startsWith('!history') && isAdmin) {
-            const limit = Math.min(parseInt(body.replace(/[^0-9]/g, '')) || 10, 10);
+            const limitNum = parseInt(body.replace(/[^0-9]/g, ''), 10);
+            const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 10) : 10;
             const history = await getChatHistory(limit);
             if (!history?.length) return await msg.reply('Riwayat chat kosong.');
             let reply = `RIWAYAT CHAT (${history.length})\n━━━━━━━━━━━━━━\n`;
@@ -513,7 +525,7 @@ async function main() {
         if (isAdmin) return;
 
         // ── Welcome new users (DM only, only when AI is off) ──
-        if (!msg.fromMe && !msg.from.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
+        if (!msg.fromMe && !msg.from?.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
           await sendWelcomeIfNew(c, msg);
           return;
         }
@@ -566,7 +578,7 @@ async function main() {
         }
 
         // ── Group / self filters ──
-        const isGroup = msg.from.includes('@g.us');
+        const isGroup = msg.from?.includes('@g.us') ?? false;
         const aiOn = settings.aiMode > 0;
 
         if (msg.fromMe) return;
@@ -628,7 +640,7 @@ async function main() {
         const senderName = isGroup ? senderJid.split('@')[0] : null;
 
         // ── Daily Limit (DM users only) ──
-        if (!msg.from.includes('@g.us') && !isAdmin) {
+        if (!msg.from?.includes('@g.us') && !isAdmin) {
           const limit = await checkDailyLimit(msg.from);
           if (!limit.allowed) {
             await msg.reply(`Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`);
@@ -684,31 +696,29 @@ async function main() {
         // ── !ulang — re-ask AI with last user message (B5) ──
         if (body === '!ulang' || body === '!ulangi') {
           const last = lastUserMessage.get(senderJid);
-          if (last) {
-            body = last;
+          if (last?.body) {
+            body = last.body;
             lastUserMessage.delete(senderJid);
           } else {
             await msg.reply('Gak ada pesan sebelumnya buat diulang.');
             return;
           }
         } else if (!msg.hasMedia) {
-          // Store for !ulang
-          lastUserMessage.set(senderJid, body);
+        } else if (!msg.hasMedia) {
+          lastUserMessage.set(senderJid, { body, ts: Date.now() });
         }
 
         // ── Buffer fragments, answer once the burst settles ──
-        bufferAiMessage(senderJid, msg, body, mediaImage, (jid, text, img, latestMsg) => {
+        const handleBufferFlush = (jid, text, img, latestMsg) => {
           const fn = img ? askAIWithImage : askAI;
           const groupCtx = recentContextMap.get(historyJid)?.text || '';
           const textToSend = groupCtx
             ? `INI PERCAKAPAN GRUP TADI:\n${groupCtx}\n\nPESAN BARU:\n${text}`
             : text;
-          // Typing indicator (E1)
           c.sendPresenceAvailable().catch(() => {});
           return fn(historyJid, textToSend, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
             .then(reply => {
               if (!reply || reply.includes('SKIP')) return;
-              // Random delay to feel more human (E2)
               const delay = 300 + Math.random() * 1200;
               return new Promise(r => setTimeout(r, delay)).then(() => {
                 const stickerMatch = reply.match(/^\[STICKER:(.+?)\]\s*/);
@@ -716,7 +726,6 @@ async function main() {
                 if (textToReply) latestMsg.reply(textToReply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
                 if (stickerMatch) {
                   const desc = stickerMatch[1].trim();
-                  // Skip sticker if desc < 3 words (A8)
                   if (desc.split(/\s+/).length < 2) return;
                   const encoded = encodeURIComponent(desc.slice(0, 200));
                   fetch(`https://image.pollinations.ai/prompt/${encoded}?width=512&height=512&nofeed=true`)
@@ -727,13 +736,14 @@ async function main() {
                       return c.sendMessage(latestMsg.from, media, { sendMediaAsSticker: true });
                     })
                     .catch(() => {
-                      // Sticker error fallback (E4)
                       latestMsg.reply('pengen kirim stiker tapi error njirr').catch(() => {});
                     });
                 }
               });
             });
-        });
+        };
+        setDefaultFlushFn(handleBufferFlush);
+        bufferAiMessage(senderJid, msg, body, mediaImage, handleBufferFlush);
         return;
 
       } catch (e) {
@@ -753,6 +763,7 @@ async function main() {
   waClient.on('ready', async () => {
     try {
       logger.info('Bot', 'Client ready — bot online!');
+      flushPendingBuffers();
       const monitor = await startOrderMonitor(waClient, settings);
       if (monitor) orderMonitorCleanup = monitor;
     } catch (e) {
