@@ -25,7 +25,7 @@ aku bukan bot. bukan ai. bukan asisten. bukan cs. bukan penjual. bukan pegawai t
 
 keseharian? kuliah gap year. gabut scroll tiktok, main game, tiduran.
 
-Inget: lu bukan CS, bukan bot, bukan asisten. Cuma anak 19 tahun biasa.
+Inget: aku bukan CS, bukan bot, bukan asisten. Cuma anak 19 tahun biasa.
 
 cara ngomong: santai aja kayak chat sama temen. pendek doang, gasuka ngerangkai. pake bahasa yang natural, kalo lawan pake logat ya balas logat, kalo baku ya balas baku.
 
@@ -334,7 +334,7 @@ function saveExchange(jid, userMsg, reply, senderName = null, isGroup = false) {
 // ─── Language detection ────────────────────────────────────────────────
 
 const ID_WORDS = new Set('yg,udh,blm,dah,gpp,bang,kak,sih,deh,dong,kok,lah,wkwk,njir,anjir,gila,mantap,asik,cape,gue,lo,lu,gw,gua,elu,nggak,gak,kaga,ga,ngg,enggak,tapi,kalo,kalau,aja,doang,sama,dengan,bisa,gitu,gtw,gatau,gaada,emang,banget,soalnya,krn,dr,yaudah,udah,bapak,ibu,mas,mba,bro,sob,mau,beli,harga,berapa,pesan,pesanan,gimana,bayar,order,saya,aku,kamu,ini,itu,apa,dimana,kapan,tolong,makasih,terima,kasih,nyoh,mbak,buat,lagi,disini,kesini,kesitu,kesana,situ,sana,sini,sudah,sdh,udh,dah,engga,gpp,gk,ga,ngga,misalnya,kayak,kek,kaya,kayanya,soal,masalah,itung,hitung,mungkin,pasti,biar,supaya,bikin,bosen,enak,gabut,gercep,kece,sipp,sip,ok sip,puh,sepuh,slebew,nyinyir'.split(','));
-const EN_WORDS = new Set('the,is,are,am,you,your,my,me,please,how,what,when,where,which,can,could,would,will,want,need,thanks,thank,hello,hi,hey,price,order,buy,payment,pay,account,help,do,does,did,i,we,they,and,for,with,this,that,have,has,about,much,cost,available,status,been,been,was,were,had,has,been,being,get,got,getting,make,made,making,take,took,taking,use,used,using,would,could,should,might,shall,also,just,like,more,some,any,every,each,most,few,both,not,no,nor,only,very,too,really,quite,such,same,other,another,after,before,during,through,against,between,under,over,out,off,up,down,back,away,here,there,where,why,because,if,then,else,than,as,well,now,then,even,still,already,yet,ever,never,always,often,usually,sometimes,maybe,perhaps,probably,certainly,definitely,absolutely,totally,completely,nice,great,wow,awesome,cool,damn,bro,dude,man,guy,friends,sure,sorry,okay,alright,right,correct,wrong,bad,good,better,best,worse,worst,new,old,big,small,large,little,long,short,tall,high,low,fast,slow,easy,hard,difficult,simple,special,common,normal,strange,weird,funny,serious,important,necessary,possible,impossible,true,false,real,fake,whole,full,empty,open,closed,final,ready,late,early,last,first,next,previous,different,similar,own,private,public,single,double,triple'.split(','));
+const EN_WORDS = new Set('the,is,are,am,you,your,my,me,please,how,what,when,where,which,can,could,would,will,want,need,thanks,thank,hello,hi,hey,price,order,buy,payment,pay,account,help,do,does,did,i,we,they,and,for,with,this,that,have,has,about,much,cost,available,status,been,was,were,had,has,being,get,got,getting,make,made,making,take,took,taking,use,used,using,would,could,should,might,shall,also,just,like,more,some,any,every,each,most,few,both,not,no,nor,only,very,too,really,quite,such,same,other,another,after,before,during,through,against,between,under,over,out,off,up,down,back,away,here,there,where,why,because,if,then,else,than,as,well,now,then,even,still,already,yet,ever,never,always,often,usually,sometimes,maybe,perhaps,probably,certainly,definitely,absolutely,totally,completely,nice,great,wow,awesome,cool,damn,bro,dude,man,guy,friends,sure,sorry,okay,alright,right,correct,wrong,bad,good,better,best,worse,worst,new,old,big,small,large,little,long,short,tall,high,low,fast,slow,easy,hard,difficult,simple,special,common,normal,strange,weird,funny,serious,important,necessary,possible,impossible,true,false,real,fake,whole,full,empty,open,closed,final,ready,late,early,last,first,next,previous,different,similar,own,private,public,single,double,triple'.split(','));
 
 const AR_SCRIPT = /[\u0600-\u06FF]/;
 const JP_SCRIPT = /[\u3040-\u309F\u30A0-\u30FF]/;
@@ -610,8 +610,8 @@ const USER_LANG_TTL = 24 * 60 * 60 * 1000;
 
 setInterval(() => {
   const cutoff = Date.now() - USER_LANG_TTL;
-  for (const [jid, ts] of userLangs) {
-    if (ts < cutoff) userLangs.delete(jid);
+  for (const [jid, entry] of userLangs) {
+    if (entry.ts < cutoff) userLangs.delete(jid);
   }
 }, 60 * 60 * 1000);
 
@@ -684,28 +684,6 @@ function pickTemperature(text, mode = 1) {
   const jitter = (Math.random() - 0.5) * 0.1;
   if (mode === 1) return Math.round((isFactual ? 0.4 + jitter : 0.6 + jitter) * 100) / 100;
   return Math.round((isFactual ? 0.2 : 0.45 + jitter) * 100) / 100;
-}
-
-// ─── Tier racing (single model per tier, parallel within tier) ─────────
-
-function raceTier(tier, timeoutMs) {
-  if (!tier.length) return null;
-  const raced = tier.map(async (m) => {
-    const result = await tryFetch(m.url, m.body, m.headers || {}, timeoutMs);
-    if (result) return result;
-    throw new Error('failed');
-  });
-  return Promise.any(raced).catch(() => null);
-}
-
-// ─── Sequential fallback for Pollinations tier ─────────────────────────
-
-async function tryPollinationsSequential(models, timeoutMs) {
-  for (const m of models) {
-    const result = await tryFetch(m.url, m.body, m.headers || {}, timeoutMs);
-    if (result) return result;
-  }
-  return null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────
@@ -841,7 +819,11 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 
   logger.error('AI', 'All endpoints failed for', jid);
   trackMetric(usedModel, elapsed, false);
-  return 'Maaf, lagi error nih. Coba lagi ya ntar.';
+  // Circuit breaker feedback (B2)
+  const hasCircuitOpen = [...FAILED_ENDPOINTS.values()].some(e => e.count >= CB_THRESHOLD);
+  return hasCircuitOpen
+    ? 'Maaf, lagi error nih. Kemungkinan server AI-nya lagi down. Coba lagi nanti ya.'
+    : 'Maaf, lagi error nih. Coba lagi ya ntar.';
 }
 
 // ─── Image AI ──────────────────────────────────────────────────────────
@@ -933,21 +915,19 @@ export async function askAIProactive(order, mode = 1) {
   const groqHeaders = { Authorization: `Bearer ${config.groqKey}` };
   const pollBase = config.aiApiBase.replace(/\/+$/, '');
 
-  const models = [
+  const candidates = [
     ...(config.groqKey?.startsWith('gsk_') ? [
-      { url: groqUrl, body: { model: 'llama-3.3-70b-versatile', ...opts }, headers: groqHeaders },
-      { url: groqUrl, body: { model: 'llama-3.1-8b-instant', ...opts }, headers: groqHeaders },
+      { url: groqUrl, body: { model: 'llama-3.3-70b-versatile', ...opts }, headers: groqHeaders, timeout: 10000 },
+      { url: groqUrl, body: { model: 'llama-3.1-8b-instant', ...opts }, headers: groqHeaders, timeout: 10000 },
     ] : []),
-    { url: `${pollBase}/openai`, body: { model: config.aiModel || 'openai', ...opts } },
-    { url: 'https://text.pollinations.ai/openai', body: { model: 'openai', ...opts } },
+    { url: `${pollBase}/openai`, body: { model: config.aiModel || 'openai', ...opts }, headers: {}, timeout: 10000 },
+    { url: 'https://text.pollinations.ai/openai', body: { model: 'openai', ...opts }, headers: {}, timeout: 10000 },
   ];
 
-  for (const m of models) {
-    const r = await tryFetch(m.url, m.body, m.headers || {}, 10000);
-    if (r) return r;
-  }
+  const raced = candidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout));
+  const result = await Promise.any(raced.map(p => p.then(r => r ? r : Promise.reject()))).catch(() => null);
+  if (result) return result;
 
-  // Fallback: hardcoded message
   return PROACTIVE_FALLBACK[mode] || PROACTIVE_FALLBACK[1];
 }
 

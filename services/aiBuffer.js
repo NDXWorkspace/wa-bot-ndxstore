@@ -6,14 +6,52 @@
 // Max 5 fragments: beyond that, flush immediately (user is spamming).
 //
 // Uses per-jid promise chain to serialize concurrent buffer creation attempts.
+// Buffer persistence (C4): pending fragments saved to file on shutdown.
+
+import fsp from 'fs/promises';
+import fs from 'fs';
+import { logger } from '../utils/logger.js';
 
 const SHORT_WINDOW_MS = 1000;
 const LONG_WINDOW_MS = 2000;
 const MAX_FRAGMENTS = 5;
 const SHORT_MSG_THRESHOLD = 3; // words
+const PENDING_FILE = './.buffer-pending.json';
 
 const buffers = new Map(); // jid -> { parts: string[], image, timer, latestMsg }
 const bufferChain = new Map(); // jid -> Promise (serialization chain)
+
+// Load pending buffers on startup
+try {
+  if (fs.existsSync(PENDING_FILE)) {
+    const raw = fs.readFileSync(PENDING_FILE, 'utf-8');
+    const data = JSON.parse(raw);
+    if (Array.isArray(data) && data.length) {
+      logger?.info('Buffer', `Loaded ${data.length} pending fragments`);
+    }
+    fs.unlinkSync(PENDING_FILE);
+  }
+} catch {}
+
+export async function savePendingBuffers() {
+  const pending = [];
+  for (const [jid, entry] of buffers) {
+    if (entry.parts.length) {
+      pending.push({ jid, parts: entry.parts, hasImage: !!entry.image });
+    }
+  }
+  if (pending.length) {
+    try {
+      await fsp.writeFile(PENDING_FILE, JSON.stringify(pending));
+    } catch {}
+  }
+}
+
+export function getPendingCount() {
+  let count = 0;
+  for (const entry of buffers.values()) count += entry.parts.length;
+  return count;
+}
 
 function pickWindow(parts) {
   for (const p of parts) {

@@ -10,7 +10,7 @@ import { handleAdminCommand } from './services/admin.js';
 import { MessageMedia } from 'whatsapp-web.js';
 import { askAI, askAIWithImage, transcribeAudio, clearHistory, clearHistoryExcept, startHistoryCleanup, getAiMetrics } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
-import { bufferAiMessage } from './services/aiBuffer.js';
+import { bufferAiMessage, savePendingBuffers } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
@@ -35,6 +35,7 @@ welcomedCleanupTimer.unref();
 
 const blockedUsers = new Set();
 const recentContextMap = new Map();
+const lastUserMessage = new Map();
 let waClient = null;
 let orderMonitorCleanup = null;
 let burstCount = 0;
@@ -224,6 +225,15 @@ async function main() {
   logger.info('Bot', `Group ID: ${config.groupId || '(not set)'}`);
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
+
+  // Startup validation (F4)
+  const adminNum = config.adminNumber.replace(/[^0-9]/g, '');
+  if (!adminNum.startsWith('62') || adminNum.length < 10) {
+    logger.warn('Bot', 'ADMIN_NUMBER format invalid — harus 62xxx tanpa +');
+  }
+  if (config.groqKey && !config.groqKey.startsWith('gsk_')) {
+    logger.warn('Bot', 'GROQ_API_KEY seharusnya dimulai dengan gsk_');
+  }
 
   // Start background services immediately (non-blocking)
   startLiveDataRefresh();
@@ -651,6 +661,21 @@ async function main() {
 
         if (!body && !mediaImage) return;
 
+        // ── !ulang — re-ask AI with last user message (B5) ──
+        if (body === '!ulang' || body === '!ulangi') {
+          const last = lastUserMessage.get(senderJid);
+          if (last) {
+            body = last;
+            lastUserMessage.delete(senderJid);
+          } else {
+            await msg.reply('Gak ada pesan sebelumnya buat diulang.');
+            return;
+          }
+        } else if (!msg.hasMedia) {
+          // Store for !ulang
+          lastUserMessage.set(senderJid, body);
+        }
+
         // ── Buffer fragments, answer once the burst settles ──
         bufferAiMessage(senderJid, msg, body, mediaImage, (jid, text, img, latestMsg) => {
           const fn = img ? askAIWithImage : askAI;
@@ -720,6 +745,7 @@ async function main() {
 
   async function shutdown(signal) {
     logger.info('Bot', `Received ${signal}, shutting down...`);
+    await savePendingBuffers().catch(() => {});
     if (orderMonitorCleanup) {
       await orderMonitorCleanup.flush().catch(() => {});
       orderMonitorCleanup.unsubscribe();
