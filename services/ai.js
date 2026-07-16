@@ -849,6 +849,17 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
     headers: {},
     timeout: TIER_TIMEOUTS.pollinations,
   });
+  // Backup API (KeylessAI / custom)
+  const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
+  if (backupBase && backupBase !== pollBase) {
+    candidates.push({
+      model: 'openai-backup',
+      url: `${backupBase}/chat/completions`,
+      body: { model: 'openai-fast', ...opts },
+      headers: {},
+      timeout: TIER_TIMEOUTS.pollinations,
+    });
+  }
 
   // Fire all in parallel, take the first one that resolves
   const raced = candidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout).then(r => ({ reply: r, model: m.model })));
@@ -873,6 +884,19 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       15000,
     );
     if (reply) { usedModel = 'openai-retry'; trackMetric(usedModel, Date.now() - retryStart, true); }
+
+    // Retry backup if Pollinations still failed
+    if (!reply && backupBase && backupBase !== pollBase) {
+      logger.warn('AI', 'Retry with backup API');
+      const retryBak = Date.now();
+      reply = await tryFetch(
+        `${backupBase}/chat/completions`,
+        { model: 'openai-fast', messages: minimalMsgs, max_tokens: 200, temperature: 0.4 },
+        {},
+        15000,
+      );
+      if (reply) { usedModel = 'openai-backup-retry'; trackMetric(usedModel, Date.now() - retryBak, true); }
+    }
   }
 
   const elapsed = Date.now() - startTime;
@@ -957,11 +981,13 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }
   }
 
-  // Pollinations vision endpoints (sequential)
+  // Vision endpoints (sequential — Pollinations, backup)
+  const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
   const visionUrls = [
     `${config.aiApiBase.replace(/\/+$/, '')}/openai`,
     'https://text.pollinations.ai/openai',
   ];
+  if (backupBase) visionUrls.push(`${backupBase}/chat/completions`);
   const seen = new Set();
   for (const url of visionUrls) {
     if (seen.has(url)) continue;
@@ -1013,6 +1039,10 @@ export async function askAIProactive(order, mode = 1) {
     { url: `${pollBase}/openai`, body: { model: config.aiModel || 'openai', ...opts }, headers: {}, timeout: 10000 },
     { url: 'https://text.pollinations.ai/openai', body: { model: 'openai', ...opts }, headers: {}, timeout: 10000 },
   ];
+  const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
+  if (backupBase) {
+    candidates.push({ url: `${backupBase}/chat/completions`, body: { model: 'openai-fast', ...opts }, headers: {}, timeout: 10000 });
+  }
 
   const raced = candidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout));
   const result = await Promise.any(raced.map(p => p.then(r => r ? r : Promise.reject()))).catch(() => null);

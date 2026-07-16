@@ -24,6 +24,7 @@ export const config = {
   groqKey: e('GROQ_API_KEY'),
   groqVisionModel: e('GROQ_VISION_MODEL'),
   groqUrl: e('GROQ_URL') || 'https://api.groq.com/openai/v1/chat/completions',
+  aiApiBackup: e('AI_API_BACKUP') || 'https://keylessai.thryx.workers.dev/v1',
   notifiedPath: e('NOTIFIED_PATH') || './.notified.json',
 };
 
