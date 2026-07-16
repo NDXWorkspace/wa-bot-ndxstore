@@ -8,7 +8,7 @@ import { isHandoverActive, endHandover, startHandover, handleAdminReply, forward
 import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
 import { MessageMedia } from 'whatsapp-web.js';
-import { askAI, askAIWithImage, transcribeAudio, clearHistory, clearHistoryExcept, startHistoryCleanup } from './services/ai.js';
+import { askAI, askAIWithImage, transcribeAudio, clearHistory, clearHistoryExcept, startHistoryCleanup, getAiMetrics } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
 import { bufferAiMessage } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
@@ -37,6 +37,8 @@ const blockedUsers = new Set();
 const recentContextMap = new Map();
 let waClient = null;
 let orderMonitorCleanup = null;
+let burstCount = 0;
+let burstStart = Date.now();
 
 async function loadBlockedUsers() {
   try {
@@ -101,6 +103,21 @@ const healthApp = http.createServer(async (req, res) => {
   }
 
   // Readiness + detailed status (default path and /ready).
+  if (url === '/metrics') {
+    const metrics = getAiMetrics();
+    const avgTime = metrics.responseTimes.length
+      ? Math.round(metrics.responseTimes.reduce((a, b) => a + b, 0) / metrics.responseTimes.length)
+      : 0;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      totalCalls: metrics.calls,
+      totalErrors: metrics.errors,
+      avgResponseTimeMs: avgTime,
+      byModel: metrics.byModel,
+    }));
+    return;
+  }
+
   const waConnected = getCurrentClient()?.info?.wid?.user ? true : false;
   let dbConnected = false;
   try {
@@ -249,7 +266,7 @@ async function main() {
             try {
               const quoted = await msg.getQuotedMessage();
               target = quoted?.author || quoted?.from || null;
-            } catch {}
+            } catch (e) { logger.debug('Bot', 'getQuotedMessage failed:', e.message); }
           }
           if (!target && msg.mentionedIds?.length) {
             target = msg.mentionedIds[0];
@@ -525,6 +542,17 @@ async function main() {
 
         if (msg.fromMe) return;
 
+        // Track burst for group rate limiting (E5)
+        if (isGroup) {
+          if (Date.now() - burstStart > 10000) {
+            burstCount = 0;
+            burstStart = Date.now();
+          }
+          burstCount++;
+          // Skip if >5 msgs in 10 sec window
+          if (burstCount > 5) return;
+        }
+
         if (!aiOn) {
           if (isGroup) return;
           // When AI is off in DM, let menu/CS flow handle it (already processed above)
@@ -540,7 +568,7 @@ async function main() {
             try {
               const quoted = await msg.getQuotedMessage();
               repliedToBot = quoted?.fromMe === true;
-            } catch {}
+            } catch (e) { logger.debug('Bot', 'getQuotedMessage failed:', e.message); }
           }
 
           if (mentioned || repliedToBot) {
@@ -563,7 +591,7 @@ async function main() {
               }
               // Store context for the AI buffer callback to use
               recentContextMap.set(senderJid, lines.reverse().join('\n'));
-            } catch {}
+            } catch (e) { logger.debug('Bot', 'fetchMsgs context failed:', e.message); }
           }
         }
 
@@ -586,6 +614,7 @@ async function main() {
         if (msg.hasMedia && msg.type !== 'sticker') {
           if (msg.type === 'ptt' || msg.type === 'audio') {
             // Voice note / audio → transcribe with Whisper
+            msg.reply('dengerin dulu...').catch(() => {});
             const audio = await msg.downloadMedia().catch(() => null);
             if (audio?.data) {
               const text = await transcribeAudio(audio.data, audio.mimetype);
@@ -629,23 +658,35 @@ async function main() {
           const textToSend = groupCtx
             ? `INI PERCAKAPAN GRUP TADI:\n${groupCtx}\n\nPESAN BARU:\n${text}`
             : text;
+          // Typing indicator (E1)
+          c.sendPresenceAvailable().catch(() => {});
           return fn(historyJid, textToSend, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
             .then(reply => {
               if (!reply || reply.includes('SKIP')) return;
-              const stickerMatch = reply.match(/^\[STICKER:(.+?)\]\s*/);
-              const textToReply = stickerMatch ? reply.slice(stickerMatch[0].length).trim() : reply;
-              if (textToReply) latestMsg.reply(textToReply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
-              if (stickerMatch) {
-                const desc = encodeURIComponent(stickerMatch[1].trim().slice(0, 200));
-                fetch(`https://image.pollinations.ai/prompt/${desc}?width=512&height=512&nofeed=true`)
-                  .then(r => r.arrayBuffer())
-                  .then(buf => {
-                    const base64 = Buffer.from(buf).toString('base64');
-                    const media = new MessageMedia('image/png', base64);
-                    return c.sendMessage(latestMsg.from, media, { sendMediaAsSticker: true });
-                  })
-                  .catch(e => throttleLog('warn', 'Bot', 'sticker-fail', `sticker failed: ${e.message?.slice(0, 80)}`, 10000));
-              }
+              // Random delay to feel more human (E2)
+              const delay = 300 + Math.random() * 1200;
+              return new Promise(r => setTimeout(r, delay)).then(() => {
+                const stickerMatch = reply.match(/^\[STICKER:(.+?)\]\s*/);
+                const textToReply = stickerMatch ? reply.slice(stickerMatch[0].length).trim() : reply;
+                if (textToReply) latestMsg.reply(textToReply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
+                if (stickerMatch) {
+                  const desc = stickerMatch[1].trim();
+                  // Skip sticker if desc < 3 words (A8)
+                  if (desc.split(/\s+/).length < 2) return;
+                  const encoded = encodeURIComponent(desc.slice(0, 200));
+                  fetch(`https://image.pollinations.ai/prompt/${encoded}?width=512&height=512&nofeed=true`)
+                    .then(r => r.arrayBuffer())
+                    .then(buf => {
+                      const base64 = Buffer.from(buf).toString('base64');
+                      const media = new MessageMedia('image/png', base64);
+                      return c.sendMessage(latestMsg.from, media, { sendMediaAsSticker: true });
+                    })
+                    .catch(() => {
+                      // Sticker error fallback (E4)
+                      latestMsg.reply('pengen kirim stiker tapi error njirr').catch(() => {});
+                    });
+                }
+              });
             });
         });
         return;
@@ -696,7 +737,7 @@ async function main() {
   process.on('uncaughtException', (err) => {
     logger.error('Uncaught', err.message);
     logger.error('Uncaught', err.stack?.slice(0, 500));
-    process.exit(1);
+    shutdown('Uncaught').catch(e => logger.error('Shutdown', e.message));
   });
   // Not fatal — most unhandled rejections are harmless fire-and-forget promises.
   // Log with details so we can trace it if something important fails.

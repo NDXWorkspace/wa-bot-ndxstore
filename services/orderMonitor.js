@@ -12,6 +12,7 @@ const NOTIFIED_PATH = config.notifiedPath || './.notified.json';
 const PERSIST_DEBOUNCE_MS = 2000;
 const RECONNECT_INTERVAL_MS = 30000;
 const SEEN_ORDERS_TTL = 24 * 60 * 60 * 1000;
+const NOTIFIED_MAX = 2000;
 
 let notified = new Set();
 let seenOrders = new Map();
@@ -26,7 +27,11 @@ async function loadNotified() {
   try {
     const raw = await fsp.readFile(NOTIFIED_PATH, 'utf-8');
     const arr = JSON.parse(raw);
-    if (Array.isArray(arr)) notified = new Set(arr);
+    if (Array.isArray(arr)) {
+      // Cap to prevent unbounded growth (D4)
+      if (arr.length > NOTIFIED_MAX) arr.splice(0, arr.length - NOTIFIED_MAX);
+      notified = new Set(arr);
+    }
     logger.info('OrderMonitor', `Loaded ${notified.size} notified IDs`);
   } catch {}
 }

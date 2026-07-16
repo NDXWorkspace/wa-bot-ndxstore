@@ -106,6 +106,7 @@ export async function getStoreContext() {
 // ─── Product price cache (per-game, background refresh) ────────────────
 
 const productCache = new Map(); // gameSlug -> { text: string, ts: number }
+const PRODUCT_CACHE_MAX = 20;
 
 async function refreshProducts(game) {
   try {
@@ -121,6 +122,11 @@ async function refreshProducts(game) {
     const shown = items.length > 10 ? `top 10 dari ${items.length}` : `${items.length}`;
     const text = `DAFTAR HARGA ${game.label} (${shown} item):\n${lines.join('\n')}`;
     productCache.set(game.slug, { text, ts: Date.now() });
+    // Cap cache (D5)
+    if (productCache.size > PRODUCT_CACHE_MAX) {
+      const oldest = productCache.keys().next().value;
+      productCache.delete(oldest);
+    }
     return text;
   } catch { return ''; }
 }

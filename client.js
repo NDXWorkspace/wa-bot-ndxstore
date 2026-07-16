@@ -101,14 +101,14 @@ async function getPuppeteerConfig() {
     try {
       await fsp.access(envPath);
       logger.info('Puppeteer', `Using browser (from env): ${envPath}`);
-      return { headless: 'new', executablePath: envPath, args: baseArgs };
+      return { headless: true, executablePath: envPath, args: baseArgs };
     } catch {}
   }
 
   const detected = await detectBrowser();
   if (detected) {
     logger.info('Puppeteer', `Using browser: ${detected}`);
-    return { headless: 'new', executablePath: detected, args: baseArgs };
+    return { headless: true, executablePath: detected, args: baseArgs };
   }
 
   logger.error('Puppeteer', 'Chromium tidak ditemukan. Coba: pkg install chromium && which chromium, lalu set hasilnya di .env sebagai PUPPETEER_EXECUTABLE_PATH');
