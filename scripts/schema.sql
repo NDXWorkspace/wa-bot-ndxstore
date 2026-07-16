@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS wa_bot_config (
 );
 
 INSERT INTO wa_bot_config (key, value) VALUES
-  ('admin_numbers', to_jsonb(ARRAY['6285159898005']::text[])),
+  ('admin_numbers', to_jsonb(ARRAY['CHANGE_ME']::text[])),
   ('max_per_day', to_jsonb(50)),
   ('delay_ms', to_jsonb(3000)),
   ('bot_paused', to_jsonb(false)),

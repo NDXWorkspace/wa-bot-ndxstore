@@ -11,6 +11,7 @@ import { logger, throttleLog } from '../utils/logger.js';
 const NOTIFIED_PATH = config.notifiedPath || './.notified.json';
 const PERSIST_DEBOUNCE_MS = 2000;
 const RECONNECT_INTERVAL_MS = 30000;
+const SEEN_ORDERS_TTL = 24 * 60 * 60 * 1000;
 
 let notified = new Set();
 let seenOrders = new Map();
@@ -161,7 +162,7 @@ function handleOrder(client, order) {
   if (!notified.has(order.id)) {
     const type = isPaymentConfirmed(order) ? 'payment' : 'new';
     sendNotif(client, order, type);
-    seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status });
+    seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status, ts: Date.now() });
     return;
   }
 
@@ -181,7 +182,7 @@ function handleOrder(client, order) {
     }
   }
 
-  seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status });
+  seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status, ts: Date.now() });
 }
 
 async function catchUp(client) {
@@ -267,6 +268,12 @@ export async function startOrderMonitor(client, settings) {
   logger.info('OrderMonitor', 'Supabase Realtime active');
 
   return {
+    cleanup: () => {
+      const cutoff = Date.now() - SEEN_ORDERS_TTL;
+      for (const [id, entry] of seenOrders) {
+        if (entry.ts < cutoff) seenOrders.delete(id);
+      }
+    },
     unsubscribe: () => {
       if (reconnectTimer) {
         clearInterval(reconnectTimer);

@@ -27,6 +27,11 @@ export function isRetryableError(err) {
     || msg.includes('epipe');
 }
 
+export function isRelationError(err) {
+  if (!err?.message) return false;
+  return err.message.includes('relation') && err.message.includes('does not exist');
+}
+
 export async function withRetry(fn, options = {}) {
   const { maxRetries = 3, baseDelay = 500, label = 'DB' } = options;
   let lastErr;

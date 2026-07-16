@@ -63,8 +63,8 @@ let storeCache = { text: '', ts: 0 };
 let storeRefreshTimer = null;
 
 async function refreshStoreContext() {
-  let dana = config.adminNumber;
-  let admin = config.adminNumber;
+  let dana = 'DANA';
+  let admin = 'Admin';
   try {
     const j = await getJson(`${config.apiBase}/api/config`);
     if (j?.data) {
@@ -78,11 +78,11 @@ async function refreshStoreContext() {
   const games = GAMES.map(g => g.label).join(', ');
   const text =
     `INFO TOKO (real-time):\n` +
-    `- Pembayaran DANA: ${dana} a.n NDXStore\n` +
-    `- WA Admin: ${admin}\n` +
+    `- Pembayaran: DANA, GoPay, transfer bank\n` +
     `- Top up Roblox per-game: ${games}\n` +
     `- Juga melayani Mobile Legends (ML)\n` +
-    `- Cek status order: user ketik "cek [username]" atau kasih order ID (TX-xxxx)`;
+    `- Cek status order: user ketik "cek [username]" atau kasih order ID (TX-xxxx)\n` +
+    `- Kalo perlu cs / admin, arahin kirim "cs"`;
 
   if (text !== storeCache.text) {
     storeCache = { text, ts: Date.now() };

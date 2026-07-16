@@ -1,5 +1,6 @@
 node_modules/
 wa-session/
+.env
 .env.local
 .wwebjs_cache/
 wwebjs_cache/

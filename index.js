@@ -8,6 +8,7 @@ import { isHandoverActive, endHandover, startHandover, handleAdminReply, forward
 import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
 import { askAI, askAIWithImage, clearHistory, clearHistoryExcept, startHistoryCleanup } from './services/ai.js';
+import { isRelationError } from './utils/db.js';
 import { bufferAiMessage } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
@@ -32,6 +33,7 @@ const welcomedCleanupTimer = setInterval(() => {
 welcomedCleanupTimer.unref();
 
 const blockedUsers = new Set();
+const recentContextMap = new Map();
 let waClient = null;
 let orderMonitorCleanup = null;
 
@@ -45,7 +47,7 @@ async function loadBlockedUsers() {
       logger.info('Blocklist', `Loaded ${blockedUsers.size} blocked users`);
     }
   } catch (e) {
-    if (!e.message?.includes('relation') && !e.message?.includes('does not exist') && !e.message?.includes('PGRST116')) {
+    if (!isRelationError(e) && !e.message?.includes('PGRST116')) {
       logger.error('Blocklist', 'Load error:', e.message);
     }
   }
@@ -60,7 +62,7 @@ async function saveBlockedUsers() {
       value: [...blockedUsers],
     }, { onConflict: 'key' }), { label: 'Blocklist:save' });
   } catch (e) {
-    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+    if (!isRelationError(e)) {
       logger.error('Blocklist', 'Save error:', e.message);
     }
   }
@@ -553,7 +555,7 @@ async function main() {
                 }
               }
               // Store context for the AI buffer callback to use
-              msg._recentContext = lines.reverse().join('\n');
+              recentContextMap.set(senderJid, lines.reverse().join('\n'));
             } catch {}
           }
         }
@@ -577,7 +579,7 @@ async function main() {
             : msg.type === 'document' ? 'file/dokumen'
             : msg.type === 'video' ? 'video'
             : 'media ini';
-          await msg.reply(`Maaf, aku belum bisa proses ${kind}. Ketik pesan teks aja ya`).catch(() => {});
+          await msg.reply(`Maaf, aku belum bisa proses ${kind}. Ketik pesan teks aja ya`).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `media reply failed: ${e.message?.slice(0, 80)}`, 10000));
           return;
         }
 
@@ -589,13 +591,13 @@ async function main() {
         }
         bufferAiMessage(senderJid, msg, body, image, (jid, text, img, latestMsg) => {
           const fn = img ? askAIWithImage : askAI;
-          const groupCtx = latestMsg._recentContext || '';
+          const groupCtx = recentContextMap.get(senderJid) || '';
           const textToSend = groupCtx
             ? `INI PERCAKAPAN GRUP TADI:\n${groupCtx}\n\nPESAN BARU:\n${text}`
             : text;
           return fn(historyJid, textToSend, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
             .then(reply => {
-              if (reply && !reply.includes('SKIP')) latestMsg.reply(reply).catch(() => {});
+              if (reply && !reply.includes('SKIP')) latestMsg.reply(reply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
             });
         });
         return;

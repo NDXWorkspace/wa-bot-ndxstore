@@ -11,14 +11,12 @@ services:
       - key: ADMIN_NUMBER
         sync: false
       - key: GROUP_ID
-        value: 120363411174055948@g.us
+        sync: false
       - key: API_PASSWORD
         sync: false
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_VISION_MODEL
-        sync: false
-      - key: AI_API_KEY
         sync: false
       - key: AI_API_BASE
         value: https://text.pollinations.ai
@@ -27,7 +25,7 @@ services:
       - key: LOG_LEVEL
         value: info
       - key: API_BASE
-        value: https://ndxstoreid.vercel.app
+        sync: false
     # Persist WhatsApp session across deploys/restarts
     disk:
       name: wa-session

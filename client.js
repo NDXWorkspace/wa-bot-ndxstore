@@ -256,11 +256,11 @@ async function reconnect(oldClient) {
         currentClientRef = newClient;
         if (onNewClient) onNewClient(newClient);
 
-        const initPromise = newClient.initialize().catch(() => {});
+        const initPromise = newClient.initialize();
         const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 60000));
         await Promise.race([initPromise, timeout]).catch(e => {
           if (myGen === reconnectGen) {
-            logger.error('WA', `Reconnect init issue:`, e.message);
+            logger.error('WA', `Reconnect init failed:`, e.message);
           }
         });
 

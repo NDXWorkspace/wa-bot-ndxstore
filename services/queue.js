@@ -1,6 +1,6 @@
 import { getDb } from './supabase.js';
 import { logger } from '../utils/logger.js';
-import { withRetry } from '../utils/db.js';
+import { withRetry, isRelationError } from '../utils/db.js';
 
 const DAILY_LIMIT_DEFAULT = 50;
 const CHAIN_CLEANUP_MS = 3600000;
@@ -67,7 +67,7 @@ async function checkDailyLimitInner(userJid) {
       return { allowed: true, remaining: (data.max_per_day || DAILY_LIMIT_DEFAULT) - data.message_count - 1 };
     }
   } catch (e) {
-    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+    if (!isRelationError(e)) {
       logger.error('Queue', 'Daily limit error:', e.message);
     }
   }

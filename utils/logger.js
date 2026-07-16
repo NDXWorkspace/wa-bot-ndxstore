@@ -15,7 +15,6 @@ const COLORS = {
 const MAX_LINE = 2000;
 const SAMPLE_RATE = 10;
 
-const throttleCache = new Map();
 const sampleCounters = new Map();
 
 let fileTransport = null;

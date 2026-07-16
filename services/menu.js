@@ -4,7 +4,6 @@ import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 
 function getDefaults() {
-  const admin = config.adminNumber;
   return {
     menu_text: `━━━ *NDXSTORE* ━━━
 0 Menu
@@ -18,7 +17,7 @@ function getDefaults() {
 Ketik angka untuk pilih menu`,
     info_produk: `📦 *Produk & Harga*\n\nKunjungi: ${config.apiBase || 'https://ndxstoreid.vercel.app'}`,
     cara_order: `📝 *Cara Order*\n\n1. Kunjungi ${config.apiBase || 'https://ndxstoreid.vercel.app'}\n2. Pilih produk & lakukan pembayaran\n3. Kami akan proses pesananmu`,
-    info_pembayaran: `💳 *Info Pembayaran*\n\nDANA: ${admin} a.n NDXSTORE\n\nWA Admin: ${admin}\n\nKonfirmasi setelah bayar ya!`,
+    info_pembayaran: `💳 *Info Pembayaran*\n\nPembayaran via DANA, GoPay, atau transfer bank.\n\nUntuk info lebih lanjut, kirim "cs" ya!`,
   };
 }
 

@@ -1,5 +1,6 @@
 import { getDb } from './supabase.js';
 import { logger } from '../utils/logger.js';
+import { isRelationError } from '../utils/db.js';
 
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -44,7 +45,7 @@ async function persistSession(userNumber, adminNumber) {
       created_at: new Date().toISOString(),
     }, { onConflict: 'user_number' });
   } catch (e) {
-    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+    if (!isRelationError(e)) {
       logger.error('Handover', 'DB persist error:', e.message?.slice(0, 100));
     }
   }

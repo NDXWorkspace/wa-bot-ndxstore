@@ -1,6 +1,6 @@
 import { getDb } from './supabase.js';
 import { logger } from '../utils/logger.js';
-import { withRetry } from '../utils/db.js';
+import { withRetry, isRelationError } from '../utils/db.js';
 
 const SETTINGS_KEY = 'bot_settings';
 
@@ -33,7 +33,7 @@ export async function loadSettings() {
         logger.info('Settings', 'Loaded from DB:', JSON.stringify(settings));
       }
     } catch (e) {
-      if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+      if (!isRelationError(e)) {
         logger.error('Settings', 'Load error:', e.message);
       }
     }
@@ -51,7 +51,7 @@ async function saveToDb() {
       value: JSON.parse(JSON.stringify(settings)),
     }, { onConflict: 'key' }), { label: 'Settings:save' });
   } catch (e) {
-    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+    if (!isRelationError(e)) {
       logger.error('Settings', 'Save error:', e.message);
     }
   }
