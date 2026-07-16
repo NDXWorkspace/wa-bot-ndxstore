@@ -207,20 +207,26 @@ async function main() {
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
 
-  const browserPath = await detectBrowser().catch(() => null);
-  if (browserPath) {
-    logger.info('Bot', `Browser: ${browserPath}`);
-  } else {
-    logger.warn('Bot', 'Browser tidak ditemukan — pastikan chromium terinstall');
-  }
-
-  await loadSettings();
-  logger.info('Bot', `AI mode: ${['off', 'Bima', 'NDXStore'][settings.aiMode] || 'unknown'}`);
-  await loadBlockedUsers();
+  // Start background services immediately (non-blocking)
   startLiveDataRefresh();
   startMenuRefresh();
   startHistoryCleanup();
-  await initHandover();
+
+  // Parallel init: browser detection + DB calls
+  const [browserPath] = await Promise.all([
+    detectBrowser().catch(() => null),
+    loadSettings(),
+    loadBlockedUsers(),
+    initHandover(),
+  ]);
+
+  if (browserPath) {
+    logger.info('Bot', `Browser: ${browserPath}`);
+  } else {
+    logger.warn('Bot', 'Browser tidak ditemukan - pastikan chromium terinstall');
+  }
+
+  logger.info('Bot', `AI mode: ${['off', 'Bima', 'NDXStore'][settings.aiMode] || 'unknown'}`);
 
   setOnMaxReconnect(() => shutdown('MaxReconnect'));
 

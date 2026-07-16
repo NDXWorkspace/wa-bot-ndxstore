@@ -77,6 +77,7 @@ const pathDirs = (process.env.PATH || '').split(pathSep);
 }
 
 async function getPuppeteerConfig() {
+  const isAndroid = process.platform === 'linux' && process.arch === 'arm64';
   const baseArgs = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -87,7 +88,13 @@ async function getPuppeteerConfig() {
     '--disable-features=LockProfileOnLaunch',
     '--disable-background-networking',
     '--disable-renderer-backgrounding',
-    '--window-size=800,600',
+    '--disable-extensions',
+    '--disable-sync',
+    '--disable-translate',
+    '--mute-audio',
+    '--hide-scrollbars',
+    '--disable-background-timer-throttling',
+    ...(isAndroid ? ['--single-process', '--disable-software-rasterizer'] : []),
   ];
 
   const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -95,14 +102,14 @@ async function getPuppeteerConfig() {
     try {
       await fsp.access(envPath);
       logger.info('Puppeteer', `Using browser (from env): ${envPath}`);
-      return { headless: true, executablePath: envPath, args: baseArgs };
+      return { headless: 'new', executablePath: envPath, args: baseArgs };
     } catch {}
   }
 
   const detected = await detectBrowser();
   if (detected) {
     logger.info('Puppeteer', `Using browser: ${detected}`);
-    return { headless: true, executablePath: detected, args: baseArgs };
+    return { headless: 'new', executablePath: detected, args: baseArgs };
   }
 
   logger.error('Puppeteer', 'Chromium tidak ditemukan. Coba: pkg install chromium && which chromium, lalu set hasilnya di .env sebagai PUPPETEER_EXECUTABLE_PATH');
@@ -171,6 +178,11 @@ function cleanupLockfiles() {
 async function createClientCore() {
   cleanupLockfiles();
   const puppeteerConfig = await getPuppeteerConfig();
+
+  const sessionPath = path.resolve('./wa-session/session');
+  const hasSession = fs.existsSync(sessionPath);
+  logger.info('WA', hasSession ? 'Session tersimpan — auth otomatis' : 'Scan QR code untuk login pertama');
+
   const c = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
     puppeteer: puppeteerConfig,
