@@ -4,18 +4,22 @@ import { getStoreContext, getQueryContext } from './liveData.js';
 import { getStoreCacheVersion } from '../utils/cache.js';
 import { logger, throttleLog } from '../utils/logger.js';
 
-const KNOWLEDGE = `
+function makeKnowledge() {
+  const admin = config.adminNumber;
+  return `
 NDXStore — jual top up game & Roblox:
 - Game: Mobile Legends (ML), Roblox, Free Fire, Valorant, dll
-- Pembayaran: DANA (6285159898005), GoPay, transfer bank
+- Pembayaran: DANA (${admin}), GoPay, transfer bank
 - Cara order: buka ndxstoreid.vercel.app, transfer, konfirmasi
 - Cek status: ketik "cek [username]"
 - CS: ketik "cs" atau "4"
-- Admin WA: 6285159898005
+- Admin WA: ${admin}
 - Proses biasanya 5-30 menit setelah bayar
 `.trim();
+}
 
-const BIMA_PROMPT = `lu bima. 19 tahun. asli sidoarjo. manusia. lagi chat whatsapp beneran.
+function makeBimaPrompt() {
+  return `lu bima. 19 tahun. asli sidoarjo. manusia. lagi chat whatsapp beneran.
 
 lu bukan bot. bukan ai. bukan asisten. bukan cs. bukan penjual. bukan pegawai toko. lu cuma orang biasa. kadang bantuin temen jaga toko top up doang, itu pun kalo lagi gak males.
 
@@ -28,8 +32,11 @@ kalo gatau ya "gatau wkwk". kalo males ya "heh". kalo bingung ya "maksudmu?". ka
 KALO DI GRUP: baca dulu INI PERCAKAPAN GRUP TADI yang ada di atas. pahamin obrolannya, siapa aja yang ngomong, lagi bahas apa. baru lo mutusin: kalo lo rasa pesan baru ini butuh lo atau emang lo bisa bantu, jawab normally. kalo ternyata ini cuma obrolan orang lain atau lo gak ada hubungannya, jawab "SKIP" aja.
 
 singkat: baca, paham, baru jawab. kalo gak nyambung sama lo, skip. gausa maksa.`;
+}
 
-const NDXSTORE_PROMPT = `Lo adalah Customer Service NDXStore — toko top up game & Roblox yang udah berjalan 2 tahun. Profesional, ramah, dan helpful.
+function makeNdxstorePrompt() {
+  const admin = config.adminNumber;
+  return `Lo adalah Customer Service NDXStore — toko top up game & Roblox yang udah berjalan 2 tahun. Profesional, ramah, dan helpful.
 
 IDENTITAS:
 - CS NDXStore — kerja dari jam 08.00-22.00 WIB
@@ -45,11 +52,11 @@ CARA NGOMONG:
 
 YANG LO BANTU:
 1. Cara order: buka ndxstoreid.vercel.app, pilih produk, bayar, tunggu 5-30 menit
-2. Info pembayaran: DANA 6285159898005 (atas nama NDXStore), GoPay, transfer bank
-3. Cek status order: suruh "cek [username]"
-4. Info produk: kalo user nanya harga game tertentu, cek data real-time
-5. Keluhan: dengerin dulu, minta maaf, bantu cek, arahin ke admin kalo perlu
-6. CS (customer service): kalo user minta CS, arahin ke WA admin 6285159898005
+ 2. Info pembayaran: DANA ${admin} (atas nama NDXStore), GoPay, transfer bank
+ 3. Cek status order: suruh "cek [username]"
+ 4. Info produk: kalo user nanya harga game tertentu, cek data real-time
+ 5. Keluhan: dengerin dulu, minta maaf, bantu cek, arahin ke admin kalo perlu
+ 6. CS (customer service): kalo user minta CS, arahin ke WA admin ${admin}
 
 ATURAN PENTING:
 1. JANGAN pernah ngaku AI atau bot
@@ -72,14 +79,15 @@ CS: Sama-sama kak, kalo ada masalah hubungi kami lagi ya.
 Pelanggan: GILA! order gua ga dateng-dateng!!
 CS: Maaf banget kak atas ketidaknyamanannya. Boleh saya cek ID order-nya? nanti kami bantu lacak.
 Pelanggan: lama banget sih
-CS: Mohon maaf kak, lagi antrean. Biasanya 5-30 menit ya. Kalo udah lewat 1 jam, boleh hubungi WA admin 6285159898005.
+CS: Mohon maaf kak, lagi antrean. Biasanya 5-30 menit ya. Kalo udah lewat 1 jam, boleh hubungi WA admin ${admin}.
 
 PENGETAHUAN TOKO:
-${KNOWLEDGE}
+${makeKnowledge()}
 
 INGAT — lo CS yang baik. Bantu pelanggan dengan sabar dan profesional.`;
+}
 
-const PROMPTS = { 1: BIMA_PROMPT, 2: NDXSTORE_PROMPT };
+const PROMPTS = { 1: makeBimaPrompt(), 2: makeNdxstorePrompt() };
 
 // ─── Fast-path responses (no API call) ─────────────────────────────────
 
@@ -185,17 +193,31 @@ export function startHistoryCleanup() {
   startEndpointCleanup();
 }
 
+async function withTimeout(promise, timeoutMs = 5000) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('DB timeout')), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function persistToDb(jid, role, content) {
   try {
     const db = getDb();
     if (!db) return;
-    await db.from('wa_chat_history').insert({
+    await withTimeout(db.from('wa_chat_history').insert({
       user_number: jid,
       role,
       content: content.slice(0, 2000),
-    });
+    }), 10000);
   } catch (e) {
-    if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
+    if (e.message?.includes('DB timeout')) {
+      throttleLog('warn', 'AI', 'db-timeout', 'persistToDb timed out after 10s', 30000);
+    } else if (!e.message?.includes('relation') && !e.message?.includes('does not exist')) {
       logger.error('AI', 'DB persist error:', e.message?.slice(0, 100));
     }
   }
@@ -205,12 +227,12 @@ async function loadHistoryFromDb(jid) {
   try {
     const db = getDb();
     if (!db) return [];
-    const { data } = await db
+    const { data } = await withTimeout(db
       .from('wa_chat_history')
       .select('role, content')
       .eq('user_number', jid)
       .order('created_at', { ascending: false })
-      .limit(MAX_HISTORY);
+      .limit(MAX_HISTORY), 5000);
     if (!data?.length) return [];
     const hist = data.reverse().map(m => ({ role: m.role, content: m.content }));
     setHistory(jid, hist);
@@ -332,7 +354,7 @@ function setCache(text, mode, reply) {
 
 const FAILED_ENDPOINTS = new Map();
 const FAILED_ENDPOINTS_MAX = 100;
-const CB_THRESHOLD = 2;
+const CB_THRESHOLD = 5;
 const CB_BASE_COOLDOWN = 60000;
 const CB_MAX_COOLDOWN = 600000;
 
@@ -482,12 +504,10 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
     markEndpointSuccess(key);
     return content;
   } catch (e) {
-    logger.debug('AI', `${url} (${model}) error:`, e.message?.slice(0, 80));
-    if (e.name === 'AbortError') {
-      markEndpointFailure(key);
-    } else {
-      markEndpointFailure(key);
-    }
+    const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout') || e.message?.includes('ETIMEDOUT');
+    const label = isTimeout ? 'TIMEOUT' : 'ERROR';
+    throttleLog('warn', 'AI', `fetch-err-${model}`, `${url} (${model}) ${label}: ${e.message?.slice(0, 100)}`, 10000);
+    markEndpointFailure(key);
     return null;
   }
 }
@@ -751,7 +771,7 @@ const PROACTIVE_FALLBACK = {
 };
 
 export async function askAIProactive(order, mode = 1) {
-  const prompt = mode === 1 ? BIMA_PROMPT : NDXSTORE_PROMPT;
+  const prompt = mode === 1 ? makeBimaPrompt() : makeNdxstorePrompt();
   const userMsg = `(Ada pelanggan baru order: ${order.product_name || 'produk'}, username: ${order.username || '-'}, harga: ${order.price_idr ? 'Rp' + Number(order.price_idr).toLocaleString('id-ID') : '-'}). Kirim pesan sapaan singkat 1-2 kalimat.`;
   const msgs = [
     { role: 'system', content: `${prompt}\n\nSekarang kirim pesan LANGSUNG ke pelanggan baru. JANGAN pake tanda kutip, JANGAN ngenalin diri. 1 kalimat doang.` },

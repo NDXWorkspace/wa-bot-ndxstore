@@ -63,8 +63,8 @@ let storeCache = { text: '', ts: 0 };
 let storeRefreshTimer = null;
 
 async function refreshStoreContext() {
-  let dana = '6285159898005';
-  let admin = '6285159898005';
+  let dana = config.adminNumber;
+  let admin = config.adminNumber;
   try {
     const j = await getJson(`${config.apiBase}/api/config`);
     if (j?.data) {

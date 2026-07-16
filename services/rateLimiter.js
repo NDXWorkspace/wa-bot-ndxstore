@@ -30,12 +30,10 @@ async function processQueue() {
           const retryable = isRateLimit || isNetwork;
           if (!retryable || attempt >= MAX_RETRIES) {
             logger.error('RateLimit', `Send failed (${attempt}/${MAX_RETRIES}):`, e.message?.slice(0, 120));
-            if (isRateLimit) {
-              await new Promise(r => setTimeout(r, 5000 * attempt));
-            }
           } else {
+            const waitMs = isRateLimit ? 5000 * attempt : 2000 * attempt;
             throttleLog('warn', 'RateLimit', `retry-${item.send?.name || ''}`, `Retry ${attempt}/${MAX_RETRIES}: ${e.message?.slice(0, 80)}`, 5000);
-            await new Promise(r => setTimeout(r, 2000 * attempt));
+            await new Promise(r => setTimeout(r, waitMs));
           }
         }
       }

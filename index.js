@@ -17,7 +17,20 @@ import { startLiveDataRefresh } from './services/liveData.js';
 import { logger, setLogLevel, getLogLevel } from './utils/logger.js';
 
 
-const WELCOMED_USERS = new Set();
+const WELCOMED_USERS = new Map();
+
+// Periodic cleanup of welcomed users older than 24h to avoid memory leaks
+const welcomedCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  for (const [jid, ts] of WELCOMED_USERS.entries()) {
+    if (now - ts > ONE_DAY) {
+      WELCOMED_USERS.delete(jid);
+    }
+  }
+}, 3600000);
+welcomedCleanupTimer.unref();
+
 const blockedUsers = new Set();
 let waClient = null;
 let orderMonitorCleanup = null;
@@ -167,7 +180,7 @@ async function sendWelcomeIfNew(client, msg) {
   const jid = msg.from;
   if (jid.includes('@g.us')) return;
   if (WELCOMED_USERS.has(jid)) return;
-  WELCOMED_USERS.add(jid);
+  WELCOMED_USERS.set(jid, Date.now());
   await msg.reply(
     `Halo!\n\nSelamat datang di *NDXStore* — tempat top up game & Roblox!\n\nKetik *Menu* untuk lihat pilihan.`
   );
@@ -389,7 +402,7 @@ async function main() {
 
           // ── History ──
           if (body.startsWith('!history') && isAdmin) {
-            const limit = parseInt(body.slice(8).trim()) || 20;
+            const limit = Math.min(parseInt(body.replace(/[^0-9]/g, '')) || 10, 10);
             const history = await getChatHistory(limit);
             if (!history?.length) return await msg.reply('Riwayat chat kosong.');
             let reply = `RIWAYAT CHAT (${history.length})\n━━━━━━━━━━━━━━\n`;
@@ -405,16 +418,24 @@ async function main() {
             if (handled) return;
           }
 
-          // !reply
-          if (body.startsWith('!reply ') && config.adminNumber) {
+          // !reply (admin only)
+          if (body.startsWith('!reply ') && isAdmin) {
             const rest = body.slice(7).trim();
             const spaceIdx = rest.indexOf(' ');
             if (spaceIdx <= 0 || !rest.slice(spaceIdx + 1).trim()) {
-              await msg.reply('Format: !reply [nomor] [pesan]\nContoh: !reply 6285159898005 Halo kak');
+              await msg.reply('Format: !reply [nomor] [pesan]\nContoh: !reply 628xxxxxxxxx Halo kak');
               return;
             }
             const rawNumber = rest.slice(0, spaceIdx).trim();
             const replyText = rest.slice(spaceIdx + 1).trim();
+            if (replyText.length < 5) {
+              await msg.reply('Pesan terlalu pendek (min. 5 karakter).');
+              return;
+            }
+            if (rawNumber === config.adminNumber.replace(/[^0-9]/g, '')) {
+              await msg.reply('Tidak bisa !reply ke nomor sendiri.');
+              return;
+            }
             const target = formatWaNumber(rawNumber);
             if (!target) {
               await msg.reply('Nomor tujuan tidak valid. Format: 628xxx');

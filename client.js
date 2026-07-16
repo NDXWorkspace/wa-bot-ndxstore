@@ -15,6 +15,7 @@ let client = null;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
 let isReconnecting = false;
+let activeReconnectPromise = null;
 let reconnectGen = 0;
 let onNewClient = null;
 let onMaxReconnect = null;
@@ -115,6 +116,45 @@ function calcDelay(attempt) {
 
 function cleanupLockfiles() {
   const sessionDir = path.resolve('./wa-session/session');
+
+  // 1. Kill orphaned processes on Linux by reading SingletonLock first
+  if (process.platform === 'linux') {
+    const killPidFromLock = (lockPath) => {
+      try {
+        if (fs.existsSync(lockPath)) {
+          const stats = fs.lstatSync(lockPath);
+          let pid = null;
+          if (stats.isSymbolicLink()) {
+            const target = fs.readlinkSync(lockPath);
+            const parts = target.split('-');
+            pid = parseInt(parts[parts.length - 1], 10);
+          } else {
+            const content = fs.readFileSync(lockPath, 'utf8').trim();
+            const parts = content.split('\n')[0].split(' ');
+            pid = parseInt(parts[0], 10);
+          }
+          if (pid && !isNaN(pid) && pid > 0) {
+            execSync(`kill -9 ${pid} 2>/dev/null`);
+            logger.info('WA', `Killed orphaned Chrome process (PID: ${pid})`);
+            return true;
+          }
+        }
+      } catch {}
+      return false;
+    };
+
+    const killedRoot = killPidFromLock(path.join(sessionDir, 'SingletonLock'));
+    const killedDef = killPidFromLock(path.join(sessionDir, 'Default', 'SingletonLock'));
+
+    // Fallback: safe pkill -f matching wa-session
+    if (!killedRoot && !killedDef) {
+      try {
+        execSync('pkill -f "chrome.*wa-session" 2>/dev/null; pkill -f "chromium.*wa-session" 2>/dev/null');
+      } catch {}
+    }
+  }
+
+  // 2. Clean lock files
   const files = ['lockfile', 'SingletonLock', 'SingletonSocket', 'DevToolsActivePort'];
   for (const f of files) {
     const fp = path.join(sessionDir, f);
@@ -125,12 +165,6 @@ function cleanupLockfiles() {
   for (const f of ['LOCK', 'SingletonLock', 'SingletonSocket', 'DevToolsActivePort']) {
     const fp = path.join(defDir, f);
     try { if (fs.existsSync(fp)) { fs.unlinkSync(fp); logger.info('WA', `Cleaned stale: Default/${f}`); } } catch {}
-  }
-  // Kill orphaned Chrome/chromium processes on Linux
-  if (process.platform === 'linux') {
-    for (const name of ['chrome','chromium','chromium-browser','google-chrome','google-chrome-stable']) {
-      try { execSync(`pkill -9 ${name} 2>/dev/null`); } catch {}
-    }
   }
 }
 
@@ -190,63 +224,71 @@ async function createClientCore() {
 }
 
 async function reconnect(oldClient) {
-  if (isReconnecting) return;
-  isReconnecting = true;
+  if (activeReconnectPromise) return activeReconnectPromise;
 
-  reconnectGen++;
-  const myGen = reconnectGen;
+  activeReconnectPromise = (async () => {
+    isReconnecting = true;
+    reconnectGen++;
+    const myGen = reconnectGen;
 
-  try { await oldClient.destroy().catch(() => {}); } catch {}
+    try { await oldClient.destroy().catch(() => {}); } catch {}
 
-  while (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
-    if (myGen !== reconnectGen) return;
-
-    reconnectAttempt++;
-    const delay = calcDelay(reconnectAttempt);
-    logger.warn('WA', `Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`);
-
-    await new Promise(resolve => { reconnectTimer = setTimeout(resolve, delay); });
-
-    if (myGen !== reconnectGen) return;
-
-    try {
-      const newClient = await createClientCore();
-
-      if (myGen !== reconnectGen) {
-        try { await newClient.destroy().catch(() => {}); } catch {}
-        return;
-      }
-
-      client = newClient;
-      currentClientRef = newClient;
-      if (onNewClient) onNewClient(newClient);
-
-      const initPromise = newClient.initialize().catch(() => {});
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 45000));
-      await Promise.race([initPromise, timeout]).catch(e => {
-        if (myGen === reconnectGen) {
-          logger.error('WA', `Reconnect init issue:`, e.message);
-        }
-      });
-
-      if (myGen !== reconnectGen) {
-        try { await newClient.destroy().catch(() => {}); } catch {}
-        return;
-      }
-
-      isReconnecting = false;
-      return;
-    } catch (e) {
+    while (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
       if (myGen !== reconnectGen) return;
-      logger.error('WA', `Reconnect attempt ${reconnectAttempt} failed:`, e.message);
-    }
-  }
 
-  logger.error('WA', `Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached.`);
-  if (typeof onMaxReconnect === 'function') {
-    onMaxReconnect();
-  } else {
-    process.exit(1);
+      reconnectAttempt++;
+      const delay = calcDelay(reconnectAttempt);
+      logger.warn('WA', `Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`);
+
+      await new Promise(resolve => { reconnectTimer = setTimeout(resolve, delay); });
+
+      if (myGen !== reconnectGen) return;
+
+      try {
+        const newClient = await createClientCore();
+
+        if (myGen !== reconnectGen) {
+          try { await newClient.destroy().catch(() => {}); } catch {}
+          return;
+        }
+
+        client = newClient;
+        currentClientRef = newClient;
+        if (onNewClient) onNewClient(newClient);
+
+        const initPromise = newClient.initialize().catch(() => {});
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 60000));
+        await Promise.race([initPromise, timeout]).catch(e => {
+          if (myGen === reconnectGen) {
+            logger.error('WA', `Reconnect init issue:`, e.message);
+          }
+        });
+
+        if (myGen !== reconnectGen) {
+          try { await newClient.destroy().catch(() => {}); } catch {}
+          return;
+        }
+
+        return;
+      } catch (e) {
+        if (myGen !== reconnectGen) return;
+        logger.error('WA', `Reconnect attempt ${reconnectAttempt} failed:`, e.message);
+      }
+    }
+
+    logger.error('WA', `Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached.`);
+    if (typeof onMaxReconnect === 'function') {
+      onMaxReconnect();
+    } else {
+      process.exit(1);
+    }
+  })();
+
+  try {
+    await activeReconnectPromise;
+  } finally {
+    activeReconnectPromise = null;
+    isReconnecting = false;
   }
 }
 

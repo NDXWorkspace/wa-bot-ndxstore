@@ -5,8 +5,7 @@ const e = (key) => (process.env[key] || '').trim();
 const REQUIRED = ['SUPABASE_URL', 'SUPABASE_KEY', 'ADMIN_NUMBER'];
 const missing = REQUIRED.filter(k => !e(k));
 if (missing.length > 0) {
-  console.error(`[Config] Missing required env vars: ${missing.join(', ')}`);
-  process.exit(1);
+  throw new Error(`Missing required env vars: ${missing.join(', ')}`);
 }
 
 export const config = {
@@ -25,6 +24,7 @@ export const config = {
   groqKey: e('GROQ_API_KEY'),
   groqVisionModel: e('GROQ_VISION_MODEL'),
   groqUrl: e('GROQ_URL') || 'https://api.groq.com/openai/v1/chat/completions',
+  notifiedPath: e('NOTIFIED_PATH') || './.notified.json',
 };
 
 if (process.env.LOG_CONSOLE !== 'false') {

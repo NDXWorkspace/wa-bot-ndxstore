@@ -8,7 +8,7 @@ import { pick } from '../utils/fieldResolver.js';
 import { PAYMENT_OK_STATUSES as PAYMENT_OK } from '../utils/constants.js';
 import { logger, throttleLog } from '../utils/logger.js';
 
-const NOTIFIED_FILE = './.notified.json';
+const NOTIFIED_PATH = config.notifiedPath || './.notified.json';
 const PERSIST_DEBOUNCE_MS = 2000;
 const RECONNECT_INTERVAL_MS = 30000;
 
@@ -23,7 +23,7 @@ let _settings = { jawabDuluan: false, aiMode: 0 };
 
 async function loadNotified() {
   try {
-    const raw = await fsp.readFile(NOTIFIED_FILE, 'utf-8');
+    const raw = await fsp.readFile(NOTIFIED_PATH, 'utf-8');
     const arr = JSON.parse(raw);
     if (Array.isArray(arr)) notified = new Set(arr);
     logger.info('OrderMonitor', `Loaded ${notified.size} notified IDs`);
@@ -34,9 +34,9 @@ async function persistNotified() {
   if (persistLock) return;
   persistLock = true;
   try {
-    const tmp = NOTIFIED_FILE + '.tmp';
+    const tmp = NOTIFIED_PATH + '.tmp';
     await fsp.writeFile(tmp, JSON.stringify([...notified]));
-    await fsp.rename(tmp, NOTIFIED_FILE);
+    await fsp.rename(tmp, NOTIFIED_PATH);
   } catch (e) {
     logger.error('OrderMonitor', 'Persist error:', e.message);
   } finally {
