@@ -7,6 +7,7 @@ import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuR
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
 import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
+import { MessageMedia } from 'whatsapp-web.js';
 import { askAI, askAIWithImage, transcribeAudio, clearHistory, clearHistoryExcept, startHistoryCleanup } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
 import { bufferAiMessage } from './services/aiBuffer.js';
@@ -630,7 +631,21 @@ async function main() {
             : text;
           return fn(historyJid, textToSend, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
             .then(reply => {
-              if (reply && !reply.includes('SKIP')) latestMsg.reply(reply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
+              if (!reply || reply.includes('SKIP')) return;
+              const stickerMatch = reply.match(/^\[STICKER:(.+?)\]\s*/);
+              const textToReply = stickerMatch ? reply.slice(stickerMatch[0].length).trim() : reply;
+              if (textToReply) latestMsg.reply(textToReply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
+              if (stickerMatch) {
+                const desc = encodeURIComponent(stickerMatch[1].trim().slice(0, 200));
+                fetch(`https://image.pollinations.ai/prompt/${desc}?width=512&height=512&nofeed=true`)
+                  .then(r => r.arrayBuffer())
+                  .then(buf => {
+                    const base64 = Buffer.from(buf).toString('base64');
+                    const media = new MessageMedia('image/png', base64);
+                    return c.sendMessage(latestMsg.from, media, { sendMediaAsSticker: true });
+                  })
+                  .catch(e => throttleLog('warn', 'Bot', 'sticker-fail', `sticker failed: ${e.message?.slice(0, 80)}`, 10000));
+              }
             });
         });
         return;
