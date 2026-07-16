@@ -93,7 +93,8 @@ async function getPuppeteerConfig() {
     '--mute-audio',
     '--hide-scrollbars',
     '--disable-background-timer-throttling',
-    ...(isAndroid ? ['--single-process', '--disable-software-rasterizer'] : []),
+    '--enable-features=NetworkService,NetworkServiceInProcess',
+    ...(isAndroid ? ['--single-process', '--disable-software-rasterizer', '--disable-features=PartitionConnections'] : []),
   ];
 
   const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
