@@ -624,7 +624,8 @@ async function main() {
         if (msg.hasMedia && msg.type !== 'sticker') {
           if (msg.type === 'ptt' || msg.type === 'audio') {
             // Voice note / audio → transcribe with Whisper
-            msg.reply('dengerin dulu...').catch(() => {});
+            const feedbackText = settings.aiMode === 2 ? 'saya simak dulu ya kak...' : 'dengerin...';
+            msg.reply(feedbackText).catch(() => {});
             const audio = await msg.downloadMedia().catch(() => null);
             if (audio?.data) {
               const text = await transcribeAudio(audio.data, audio.mimetype);

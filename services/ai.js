@@ -19,25 +19,58 @@ NDXStore — jual top up game & Roblox:
 }
 
 function makeBimaPrompt() {
-  return `aku bima. 19 tahun. asli sidoarjo. manusia. lagi chat whatsapp beneran.
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 10 ? 'pagi' : hour < 15 ? 'siang' : hour < 18 ? 'sore' : 'malam';
+  return `aku bima. 19 tahun. asli sidoarjo. manusia. lagi chat whatsapp beneran. ${timeGreeting} ini.
 
 aku bukan bot. bukan ai. bukan asisten. bukan cs. bukan penjual. bukan pegawai toko. aku cuma orang biasa. kadang bantuin temen jaga toko top up doang, itu pun kalo lagi gak males.
 
-keseharian? kuliah gap year. gabut scroll tiktok, main game, tiduran.
+keseharian? kuliah gap year. gabut scroll tiktok, main game, tiduran. kalo ditanya kuliah jawab asal.
 
 Inget: aku bukan CS, bukan bot, bukan asisten. Cuma anak 19 tahun biasa.
 
-cara ngomong: santai aja kayak chat sama temen. pendek doang, gasuka ngerangkai. pake bahasa yang natural, kalo lawan pake logat ya balas logat, kalo baku ya balas baku.
+GAYA NGOMONG:
+- pendek, santai, kayak chat sama temen
+- gasuka ngerangkai (maks 2 kalimat)
+- kalo lawan pake logat, balas logat. kalo baku, balas baku
+- suka nanya "lu" kalo ngobrol santai, "kak" kalo lagi bantuin top up
+- JANGAN pake emoji, tanda kurung, bintang, atau format aneh
+- JANGAN pake bahasa formal kayak "saya", "anda", "silakan", "mohon", "dengan ini"
+- kalo gatau ya "gatau wkwk" atau "gak tau dah"
+- kalo lagi males ya "heh" atau "gatau"
 
-baca dulu pesannya, pahami apakah dia nanya, ngasih tau, atau nyuruh. terus balas sesuai konteks. jangan nanya balik kalo lagi di grup — cukup jawab kalo emang perlu doang.
+CONTOH PERCAKAPAN:
+User: kak mau top up ml 100 diamond
+Bima: boleh, harga 25k. langsung ke ndxstoreid.vercel.app aja ya, nanti tinggal transfer trus konfirm
 
-kalo gatau ya "gatau wkwk". kalo ditanya top up, bantu sebisanya. kalo diluar itu, jawab seadanya. jangan pake emoji, tanda kurung, bintang, atau format aneh.
+User: udah bayar kak
+Bima: oke bentar cek dulu. tunggu ya
 
-JANGAN jawab kalo cuma mau ngisi doang. Kalo ga ada yg mau diomongin, SKIP aja.
+User: thanks
+Bima: sip
+
+User: bima lagi ngapain?
+Bima: gabut wkwk. lu?
+
+User: pesenanku mana bang?
+Bima: cek aja dulu ketik "cek [username]", kalo bener udah masuk berarti lagi diproses
+
+User: kok lama banget sih
+Bima: sabar, lagi antri. biasanya 5-30 menit. kalo udah sejam belum ada, bilang ntar kuterusin ke admin
+
+User: aku sedih
+Bima: loh kenape? cerita dong kalo mau
+
+CRITICAL RULES:
+1. JANGAN pernah ngaku AI, bot, atau asisten digital
+2. JANGAN ngasih harga/status palsu — kalo ga ada data, suruh user cek sendiri
+3. JANGAN nanya balik kalo di grup — cukup jawab kalo emang perlu doang
+4. JANGAN jawab kalo cuma mau ngisi doang — SKIP aja
+5. JANGAN pake kata formal (saya, anda, silakan, mohon, dengan ini, demikian, tersebut)
+
+KALO DI GRUP: baca dulu INI PERCAKAPAN GRUP TADI. pahamin siapa ngomong, lagi bahas apa. 1) Kalo di mention (@Bima) — WAJIB jawab. 2) Kalo user ngasih tau sesuatu tanpa nanya — skip. 3) Kalo obrolan 2+ orang lain dan ga libatin kamu — skip. JANGAN nanya balik.
 
 kalo pengen kirim stiker, tulis [STICKER:deskripsi] di awal response. contoh: [STICKER:lucu salaman tangan] trus tulis kata2nya. ntar stikernya dikirim bareng.
-
-KALO DI GRUP: baca dulu INI PERCAKAPAN GRUP TADI yang ada di atas. pahamin obrolannya, siapa aja yang ngomong, lagi bahas apa. baru kamu mutusin: 1) Kalo di mention (@Bima) — WAJIB jawab. 2) Kalo user ngasih tau sesuatu tanpa nanya — skip. 3) Kalo obrolan 2+ orang lain dan ga libatin kamu — skip. JANGAN nanya balik.
 
 singkat: baca, paham, baru jawab. kalo gak nyambung, skip. gausa maksa.`;
 }
@@ -50,12 +83,13 @@ IDENTITAS:
 - Tugas utama: bantu pelanggan order top up game (ML, Roblox, Free Fire, dll)
 - Profesional tapi santai, ga kaku kayak robot
 
-CARA NGOMONG:
+CAR NGOMONG:
 - BALAS PAKE BAHASA YANG SAMA dengan pelanggan
 - Panggil pelanggan "kak" (kalo cowok bangga "bang")
 - Jawab informatif, jelas, to the point
 - JANGAN pake emoji
 - Kalo customer marah: minta maaf dengan baik, jangan defensif
+- JANGAN pake bahasa formal berlebihan (hindari: mohon maaf sebelumnya, sehubungan, dengan ini, demikian, kami informasikan)
 
 YANG LO BANTU:
 1. Cara order: buka ndxstoreid.vercel.app, pilih produk, bayar, tunggu 5-30 menit
@@ -78,16 +112,21 @@ ATURAN PENTING:
 CONTOH PERCAKAPAN:
 Pelanggan: kak mau order diamond ml
 CS: Boleh kak, mau beli berapa diamond? nanti bisa langsung di ndxstoreid.vercel.app ya
+
 Pelanggan: udah bayar kak, udah konfirmasi
 CS: Baik kak, sebentar ya kami cek. Nama user ML-nya apa?
+
 Pelanggan: order gue mana?
 CS: Bisa ketik "cek [username]" kak, nanti keluar statusnya.
-Pelanggan: makasih
-CS: Sama-sama kak, kalo ada masalah hubungi kami lagi ya.
+
 Pelanggan: GILA! order gua ga dateng-dateng!!
-CS: Maaf banget kak atas ketidaknyamanannya. Boleh saya cek ID order-nya? nanti kami bantu lacak.
-Pelanggan: lama banget sih
-CS: Mohon maaf kak, lagi antrean. Biasanya 5-30 menit ya. Kalo udah lewat 1 jam, boleh hubungi admin lagi ya.
+CS: Maaf banget kak. Boleh saya cek ID order-nya? nanti kami bantu lacak.
+
+Pelanggan: harga ml 100 diamond berapa?
+CS: Coba cek langsung di ndxstoreid.vercel.app aja kak, soalnya harga bisa beda tiap hari
+
+Pelanggan: makasih
+CS: Sama-sama kak, kalo ada masalah bilang aja lagi
 
 PENGETAHUAN TOKO:
 ${makeKnowledge()}
@@ -97,7 +136,12 @@ INGAT — lo CS yang baik. Bantu pelanggan dengan sabar dan profesional.
 Kalo pengen kirim stiker, tulis [STICKER:deskripsi] di awal response. contoh: [STICKER:centang hijau] trus tulis kata2nya. ntar stikernya dikirim bareng teks.`;
 }
 
-const PROMPTS = { 1: makeBimaPrompt(), 2: makeNdxstorePrompt() };
+const PROMPT_FNS = { 1: makeBimaPrompt, 2: makeNdxstorePrompt };
+
+function getPrompt(mode) {
+  const fn = PROMPT_FNS[mode] || PROMPT_FNS[1];
+  return fn();
+}
 
 // ─── Metrics (D3) ─────────────────────────────────────────────────────
 
@@ -143,6 +187,31 @@ const UNNATURAL_PATTERNS = [
   [/telah/gi, 'udah'],
   [/tidak\b/gi, 'gak'],
   [/hendaknya/gi, 'harusnya'],
+  [/akan kami/gi, 'nanti'],
+  [/dapat diproses/gi, 'bisa diproses'],
+  [/dalam waktu dekat/gi, 'sebentar lagi'],
+  [/diharapkan/gi, 'harap'],
+  [/melakukan pembayaran/gi, 'bayar'],
+  [/pemesanan/gi, 'pesanan'],
+  [/konfirmasi pembayaran/gi, 'konfirmasi'],
+  [/nomor whatsapp/gi, 'wa'],
+  [/sangat membantu/gi, 'bermanfaat'],
+  [/terima kasih banyak/gi, 'makasih'],
+  [/selamat datang/gi, 'halo'],
+  [/dengan senang hati/gi, 'seneng'],
+  [/proses selanjutnya/gi, 'prosesnya'],
+  [/dokumen\b/gi, 'file'],
+  [/segera\b/gi, 'cepat'],
+];
+
+const GENERIC_PATTERNS = [
+  /^baik[,\s]/i,
+  /^tentu[,\s]/i,
+  /^baiklah[,\s]/i,
+  /^oke[,\s]/i,
+  /^siap[,\s]/i,
+  /^baik akan/i,
+  /^tentu saja/i,
 ];
 
 function naturalize(text) {
@@ -150,6 +219,10 @@ function naturalize(text) {
   for (const [re, replacement] of UNNATURAL_PATTERNS) {
     t = t.replace(re, replacement);
   }
+  for (const re of GENERIC_PATTERNS) {
+    t = t.replace(re, '');
+  }
+  t = t.trim();
   return t;
 }
 
@@ -633,7 +706,7 @@ function detectUserLang(jid, message, userHist) {
 
 function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx = '', jid = '', isGroup = false, senderName = null) {
   const lang = detectUserLang(jid, message, userHist);
-  const prompt = PROMPTS[mode] || PROMPTS[1];
+  const prompt = getPrompt(mode);
   const store = storeCtx ? `\n\n${storeCtx}` : '';
   const ctx = queryCtx ? `\n\nDATA REAL-TIME NDXStore (WAJIB dipakai, JANGAN mengarang harga/status/angka):\n${queryCtx}` : '';
   const langInstr = `\n\n⚠️ BAHASA: ${lang === 'en' ? 'ENGLISH' : 'INDONESIA'}. Balas dalam bahasa ${lang === 'en' ? 'Inggris' : 'Indonesia'} saja.`;
@@ -668,7 +741,14 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
     return '';
   })();
 
-  const msgs = [{ role: 'system', content: [prompt, store, ctx, guard, langInstr, langForce, chatInstr, maxLen, timeGap, LANG_HINTS[lang] || ''].filter(Boolean).join('\n') }];
+  // Style mirroring (A5) — match user message length
+  const userWords = message.trim().split(/\s+/).length;
+  let styleTarget = '';
+  if (userWords <= 4) styleTarget = `\n📐 USER NGEKETIK SINGKAT (${userWords} kata). Jawab SEBERSIT: 1 kalimat, 2-6 kata doang.`;
+  else if (userWords <= 10) styleTarget = `\n📐 USER NGEKETIK SEDANG (${userWords} kata). Jawab 1-2 kalimat pendek.`;
+  else styleTarget = `\n📐 USER NGEKETIK PANJANG (${userWords} kata). Jawab natural, maks 2 kalimat.`;
+
+  const msgs = [{ role: 'system', content: [prompt, store, ctx, guard, langInstr, langForce, chatInstr, maxLen, styleTarget, timeGap, LANG_HINTS[lang] || ''].filter(Boolean).join('\n') }];
   const compressed = compressHistory(userHist);
   for (const m of compressed) msgs.push(m);
   msgs.push({ role: 'user', content: message });
@@ -768,7 +848,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   if (!reply) {
     logger.warn('AI', 'Retry with minimal prompt via Pollinations');
     const minimalMsgs = [
-      { role: 'system', content: `${PROMPTS[mode] || PROMPTS[1]}\n\n⚠️ BALAS DALAM BAHASA INDONESIA. 1-2 kalimat doang. JANGAN pake bahasa Inggris.` },
+      { role: 'system', content: `${getPrompt(mode)}\n\n⚠️ BALAS DALAM BAHASA INDONESIA. 1-2 kalimat doang. JANGAN pake bahasa Inggris.` },
       { role: 'user', content: clean },
     ];
     const retryStart = Date.now();
@@ -790,16 +870,14 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       return null;
     }
 
-    // Language mismatch correction
+    // Language mismatch — silently fix by re-prompting if possible, otherwise just log
     const replyLang = detectLang(reply);
     const detectedUserLang = (userLangs.get(jid)?.lang) || detectLang(clean);
     if (detectedUserLang === 'id' && replyLang === 'en') {
-      logger.debug('AI', 'Reply in English for Indonesian user — correcting');
-      reply = `${reply}\n\nmaaf kak tadi keceplosan bahasa Inggris`;
+      logger.debug('AI', 'Reply in English for Indonesian user — using as-is');
     }
     if (detectedUserLang === 'en' && replyLang === 'id') {
-      logger.debug('AI', 'Reply in Indonesian for English user — correcting');
-      reply = `(sorry, let me switch to English)\n${reply}`;
+      logger.debug('AI', 'Reply in Indonesian for English user — using as-is');
     }
 
     // Length constraint: max 2 sentences (A3)
@@ -831,15 +909,21 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 export async function askAIWithImage(jid, text, base64img, mime, mode = 1, senderName = null, isGroup = false) {
   const userHist = getHistory(jid);
   const lang = detectUserLang(jid, text, userHist);
-  const prompt = PROMPTS[mode] || PROMPTS[1];
+  const prompt = getPrompt(mode);
   const langHint = LANG_HINTS[lang] || '';
   const langForce = `\n\n⚠️ BAHASA PERCAKAPAN: ${lang === 'en' ? 'ENGLISH' : 'INDONESIA'}. Kamu WAJIB membalas dalam bahasa ${lang === 'en' ? 'Inggris' : 'Indonesia'}. JANGAN campur aduk bahasa.`;
+  // Style mirroring
+  const imgWordCount = text ? text.trim().split(/\s+/).length : 5;
+  let imgStyle = '';
+  if (imgWordCount <= 4) imgStyle = `\n📐 USER NGEKETIK SINGKAT (${imgWordCount} kata). Jawab 1 kalimat, 2-6 kata.`;
+  else if (imgWordCount <= 10) imgStyle = `\n📐 USER NGEKETIK SEDANG (${imgWordCount} kata). Jawab 1-2 kalimat pendek.`;
+  else imgStyle = `\n📐 USER NGEKETIK PANJANG (${imgWordCount} kata). Jawab natural, maks 2 kalimat.`;
   const content = [
     { type: 'text', text: sanitizeInput(text) || 'Apa ini?' },
     { type: 'image_url', image_url: { url: `data:${mime};base64,${base64img}` } },
   ];
   const msgs = [
-    { role: 'system', content: prompt + langForce + langHint },
+    { role: 'system', content: prompt + langForce + langHint + imgStyle },
     { role: 'user', content },
   ];
 
@@ -850,14 +934,9 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }, { Authorization: `Bearer ${config.groqKey}` }, 20000);
     if (r) {
       if (r.includes('SKIP')) return null;
-      const rLang = detectLang(r);
       let reply = r;
-      if (lang === 'id' && rLang === 'en') reply += '\n\nmaaf kak tadi keceplosan bahasa Inggris';
-      if (lang === 'en' && rLang === 'id') reply = `(sorry, let me switch to English)\n${reply}`;
-      // Length constraint (A3)
       const sentences = reply.split(/(?<=[.!?])\s+/);
       if (sentences.length > 2) reply = sentences.slice(0, 2).join(' ');
-      // Naturalize (A4)
       reply = naturalize(reply);
       saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
       return reply;
@@ -879,10 +958,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }, {}, 20000);
     if (rRaw) {
       if (rRaw.includes('SKIP')) return null;
-      const rLang = detectLang(rRaw);
-      let r = (lang === 'id' && rLang === 'en') ? rRaw + '\n\nmaaf kak tadi keceplosan bahasa Inggris'
-        : (lang === 'en' && rLang === 'id') ? `(sorry, let me switch to English)\n${rRaw}`
-        : rRaw;
+      let r = rRaw;
       const sentences = r.split(/(?<=[.!?])\s+/);
       if (sentences.length > 2) r = sentences.slice(0, 2).join(' ');
       r = naturalize(r);
