@@ -818,3 +818,34 @@ export async function askAIProactive(order, mode = 1) {
   // Fallback: hardcoded message
   return PROACTIVE_FALLBACK[mode] || PROACTIVE_FALLBACK[1];
 }
+
+// ─── Audio Transcription ────────────────────────────────────────────────
+
+export async function transcribeAudio(base64Data, mimeType) {
+  if (!config.groqKey?.startsWith('gsk_')) return null;
+  try {
+    const buf = Buffer.from(base64Data, 'base64');
+    const ext = mimeType?.includes('ogg') ? 'ogg' : mimeType?.includes('mp4') ? 'm4a' : 'webm';
+    const form = new FormData();
+    form.append('model', 'whisper-large-v3');
+    form.append('file', new Blob([buf], { type: mimeType || 'audio/ogg' }), `audio.${ext}`);
+    const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${config.groqKey}` },
+      body: form,
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!resp.ok) {
+      const err = await resp.text().catch(() => '');
+      logger.error('AI', 'Whisper error:', err.slice(0, 120));
+      return null;
+    }
+    const data = await resp.json();
+    const text = data.text?.trim();
+    if (text) logger.info('AI', `Transcribed (${text.length} chars): ${text.slice(0, 80)}`);
+    return text || null;
+  } catch (e) {
+    logger.error('AI', 'Transcription error:', e.message?.slice(0, 120));
+    return null;
+  }
+}

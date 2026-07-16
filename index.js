@@ -7,7 +7,7 @@ import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuR
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
 import { checkDailyLimit } from './services/queue.js';
 import { handleAdminCommand } from './services/admin.js';
-import { askAI, askAIWithImage, clearHistory, clearHistoryExcept, startHistoryCleanup } from './services/ai.js';
+import { askAI, askAIWithImage, transcribeAudio, clearHistory, clearHistoryExcept, startHistoryCleanup } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
 import { bufferAiMessage } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
@@ -578,24 +578,51 @@ async function main() {
           }
         }
 
-        // ── Non-image media without a caption: we can't read it, respond gracefully ──
-        if (msg.hasMedia && msg.type !== 'image' && !body) {
-          if (msg.type === 'sticker') return;
-          const kind = (msg.type === 'ptt' || msg.type === 'audio') ? 'voice note'
-            : msg.type === 'document' ? 'file/dokumen'
-            : msg.type === 'video' ? 'video'
-            : 'media ini';
-          await msg.reply(`Maaf, aku belum bisa proses ${kind}. Ketik pesan teks aja ya`).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `media reply failed: ${e.message?.slice(0, 80)}`, 10000));
-          return;
+        // ── Media handling ──
+        let mediaImage = null;
+        let mediaTranscribed = null;
+
+        if (msg.hasMedia && msg.type !== 'sticker') {
+          if (msg.type === 'ptt' || msg.type === 'audio') {
+            // Voice note / audio → transcribe with Whisper
+            const audio = await msg.downloadMedia().catch(() => null);
+            if (audio?.data) {
+              const text = await transcribeAudio(audio.data, audio.mimetype);
+              if (text) {
+                mediaTranscribed = text;
+                body = body ? `${body}\n\n[Transkripsi audio: ${text}]` : `[Transkripsi audio: ${text}]`;
+              }
+            }
+          } else if (msg.type === 'video') {
+            const video = await msg.downloadMedia().catch(() => null);
+            if (video?.data) {
+              const text = await transcribeAudio(video.data, video.mimetype);
+              if (text) {
+                mediaTranscribed = text;
+                body = body ? `${body}\n\n[Transkripsi video: ${text}]` : `[Transkripsi video: ${text}]`;
+              } else {
+                body = body ? `${body}\n\n[User mengirim video]` : '[User mengirim video]';
+              }
+            }
+          } else if (msg.type === 'document') {
+            const doc = await msg.downloadMedia().catch(() => null);
+            if (doc) {
+              const docName = doc.filename || 'file';
+              body = body ? `${body}\n\n[User mengirim file: ${docName}]` : `[User mengirim file: ${docName}]`;
+            }
+          }
         }
 
-        // ── Buffer fragments, answer once the burst settles ──
-        let image = null;
-        if (msg.hasMedia && msg.type === 'image') {
+        // Sticker & image → prepare for vision AI
+        if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker')) {
           const media = await msg.downloadMedia().catch(() => null);
-          if (media) image = { data: media.data, mime: media.mimetype };
+          if (media) mediaImage = { data: media.data, mime: media.mimetype };
         }
-        bufferAiMessage(senderJid, msg, body, image, (jid, text, img, latestMsg) => {
+
+        if (!body && !mediaImage) return;
+
+        // ── Buffer fragments, answer once the burst settles ──
+        bufferAiMessage(senderJid, msg, body, mediaImage, (jid, text, img, latestMsg) => {
           const fn = img ? askAIWithImage : askAI;
           const groupCtx = recentContextMap.get(senderJid) || '';
           const textToSend = groupCtx
