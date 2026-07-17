@@ -110,7 +110,6 @@ async function refreshProducts(game) {
     const shown = items.length > 10 ? `top 10 dari ${items.length}` : `${items.length}`;
     const text = `DAFTAR HARGA ${game.label} (${shown} item):\n${lines.join('\n')}`;
     productCache.set(game.slug, { text, ts: Date.now() });
-    // Cap cache (D5)
     if (productCache.size > PRODUCT_CACHE_MAX) {
       const oldest = productCache.keys().next().value;
       productCache.delete(oldest);

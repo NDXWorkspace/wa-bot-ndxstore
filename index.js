@@ -43,7 +43,22 @@ let waClient = null;
 let orderMonitorCleanup = null;
 const burstCounts = new Map();
 
-// Periodic cleanup of recentContextMap + burstCounts + lastUserMessage
+function touchMap(map, key) {
+  const val = map.get(key);
+  if (val !== undefined) {
+    map.delete(key);
+    map.set(key, val);
+  }
+  return val;
+}
+
+function evictLRU(map, maxSize) {
+  while (map.size > maxSize) {
+    const oldest = map.keys().next().value;
+    map.delete(oldest);
+  }
+}
+
 setInterval(() => {
   const cutoff = Date.now() - 120000;
   for (const [key, entry] of recentContextMap) {
@@ -52,23 +67,13 @@ setInterval(() => {
   for (const [key, entry] of burstCounts) {
     if (entry.ts < cutoff) burstCounts.delete(key);
   }
-  if (recentContextMap.size > 500) {
-    const oldest = recentContextMap.keys().next().value;
-    recentContextMap.delete(oldest);
-  }
-  if (burstCounts.size > 200) {
-    const oldest = burstCounts.keys().next().value;
-    burstCounts.delete(oldest);
-  }
-  // Clean stale lastUserMessage entries
+  evictLRU(recentContextMap, 500);
+  evictLRU(burstCounts, 200);
   const msgCutoff = Date.now() - LAST_MSG_TTL;
   for (const [jid, entry] of lastUserMessage) {
     if (entry.ts < msgCutoff) lastUserMessage.delete(jid);
   }
-  while (lastUserMessage.size > LAST_MSG_MAX) {
-    const oldest = lastUserMessage.keys().next().value;
-    lastUserMessage.delete(oldest);
-  }
+  evictLRU(lastUserMessage, LAST_MSG_MAX);
 }, 60000).unref();
 
 async function loadBlockedUsers() {
@@ -401,17 +406,15 @@ async function main() {
               // Fetch with fromMe filter when available, fallback to batch
               let botMsgs = [];
               try {
-                botMsgs = await chat.fetchMessages({ limit: num, fromMe: true });
-              } catch {
-                // Fallback: fetch in batches
-                let total = Math.min(num * 2, 100);
-                while (botMsgs.length < num && total <= 200) {
-                  const msgs = await chat.fetchMessages({ limit: total });
-                  botMsgs = msgs.filter(m => m.fromMe).slice(0, num);
-                  if (botMsgs.length < num) total = Math.min(total + 50, 200);
-                  else break;
+                  botMsgs = await chat.fetchMessages({ limit: num, fromMe: true });
+                } catch {
+                  let total = 100;
+                  while (botMsgs.length < num && total <= 200) {
+                    const msgs = await chat.fetchMessages({ limit: total });
+                    botMsgs = msgs.filter(m => m.fromMe).slice(0, num);
+                    total += 50;
+                  }
                 }
-              }
               if (!botMsgs.length) { await msg.reply('Gak ada pesan bot.'); return; }
               let ok = 0, fail = 0, old = 0;
               for (const m of botMsgs) {
@@ -759,7 +762,7 @@ async function main() {
         return;
 
       } catch (e) {
-        const errMsg = e?.message || String(e) || '';
+        const errMsg = e?.message || String(e);
         logger.error('Bot', 'Handler error:', errMsg.slice(0, 200));
         if (errMsg.includes('window.require') || errMsg.includes('require') || errMsg.includes('evaluation')) {
           logger.warn('Bot', 'Page injection failed — kemungkinan Chromium versi baru. Coba restart bot.');
