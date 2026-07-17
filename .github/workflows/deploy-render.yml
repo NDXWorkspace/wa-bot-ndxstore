@@ -1,0 +1,16 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger Render deploy
+        if: secrets.RENDER_DEPLOY_HOOK
+        run: |
+          curl -sfX POST "${{ secrets.RENDER_DEPLOY_HOOK }}" || echo 'No deploy hook set — skipping'

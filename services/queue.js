@@ -56,15 +56,15 @@ async function checkDailyLimitInner(userJid) {
           message_count: 1,
           last_reset_date: today,
         }).eq('user_number', userJid), { label: 'Queue:update' });
-        return { allowed: true, remaining: (data.max_per_day || DAILY_LIMIT_DEFAULT) - 1 };
+        return { allowed: true, remaining: (data.max_per_day ?? DAILY_LIMIT_DEFAULT) - 1 };
       }
-      if (data.message_count >= (data.max_per_day || DAILY_LIMIT_DEFAULT)) {
+      if (data.message_count >= (data.max_per_day ?? DAILY_LIMIT_DEFAULT)) {
         return { allowed: false, remaining: 0 };
       }
       await withRetry(() => db.from('wa_user_limits').update({
         message_count: data.message_count + 1,
       }).eq('user_number', userJid), { label: 'Queue:update' });
-      return { allowed: true, remaining: (data.max_per_day || DAILY_LIMIT_DEFAULT) - data.message_count - 1 };
+      return { allowed: true, remaining: (data.max_per_day ?? DAILY_LIMIT_DEFAULT) - data.message_count - 1 };
     }
   } catch (e) {
     if (!isRelationError(e)) {

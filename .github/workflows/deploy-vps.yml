@@ -1,0 +1,55 @@
+name: Deploy to VPS (Docker)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: secrets.SSH_HOST
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write .env from secrets
+        run: |
+          cat > .env << 'EOF'
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+          ADMIN_NUMBER=${{ secrets.ADMIN_NUMBER }}
+          GROUP_ID=${{ secrets.GROUP_ID }}
+          API_BASE=${{ secrets.API_BASE }}
+          API_PASSWORD=${{ secrets.API_PASSWORD }}
+          GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+          GROQ_URL=${{ secrets.GROQ_URL }}
+          AI_API_BASE=${{ secrets.AI_API_BASE }}
+          AI_MODEL=${{ secrets.AI_MODEL }}
+          LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+          LOG_ALERT_WEBHOOK=${{ secrets.LOG_ALERT_WEBHOOK }}
+          PORT=3000
+          LOG_CONSOLE=false
+          NODE_ENV=production
+          EOF
+
+      - name: Deploy via SSH
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: ".,!node_modules,!wa-session,!logs"
+          target: /opt/wa-bot
+          strip_components: 0
+
+      - name: Docker Compose up
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /opt/wa-bot
+            docker compose build --pull
+            docker compose up -d --remove-orphans
+            docker system prune -f

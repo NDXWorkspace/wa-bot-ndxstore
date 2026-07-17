@@ -63,18 +63,6 @@ let storeCache = { text: '', ts: 0 };
 let storeRefreshTimer = null;
 
 async function refreshStoreContext() {
-  let dana = 'DANA';
-  let admin = 'Admin';
-  try {
-    const j = await getJson(`${config.apiBase}/api/config`);
-    if (j?.data) {
-      dana = j.data.danaNumber || dana;
-      admin = j.data.waNumber || j.data.adminWa || admin;
-    }
-  } catch (e) {
-    throttleLog('debug', 'LiveData', 'config-fetch', `config fetch failed: ${e.message}`, 30000);
-  }
-
   const games = GAMES.map(g => g.label).join(', ');
   const text =
     `INFO TOKO (real-time):\n` +
@@ -94,7 +82,7 @@ async function refreshStoreContext() {
 }
 
 export function startLiveDataRefresh() {
-  refreshStoreContext();
+  refreshStoreContext().catch(() => {});
   storeRefreshTimer = setInterval(() => refreshStoreContext().catch(() => {}), STORE_TTL_MS).unref();
 }
 

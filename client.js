@@ -3,7 +3,6 @@ import qrcode from 'qrcode-terminal';
 import fsp from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 import { logger } from './utils/logger.js';
 const { Client, LocalAuth } = ww;
 
@@ -18,6 +17,7 @@ let reconnectTimer = null;
 let activeReconnectPromise = null;
 let reconnectGen = 0;
 let onNewClient = null;
+let onReadyCallback = null;
 let onMaxReconnect = null;
 let currentClientRef = null;
 let latestQr = null;
@@ -64,11 +64,11 @@ export async function detectBrowser() {
     try { await fsp.access(c); return c; } catch {}
   }
   const pathSep = process.platform === 'win32' ? ';' : ':';
-const pathDirs = (process.env.PATH || '').split(pathSep);
+  const pathDirs = (process.env.PATH || '').split(pathSep);
   for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
     for (const dir of pathDirs) {
       if (!dir) continue;
-      const full = `${dir}/${name}`;
+      const full = path.join(dir, name);
       try { await fsp.access(full); return full; } catch {}
     }
   }
@@ -139,8 +139,8 @@ function cleanupLockfiles() {
             const parts = content.split('\n')[0].split(' ');
             pid = parseInt(parts[0], 10);
           }
-          if (pid && !isNaN(pid) && pid > 0) {
-            execSync(`kill -9 ${pid} 2>/dev/null`);
+          if (Number.isInteger(pid) && pid > 0) {
+            try { process.kill(pid, 'SIGKILL'); } catch {}
             logger.info('WA', `Killed orphaned Chrome process (PID: ${pid})`);
             return true;
           }
@@ -210,6 +210,7 @@ async function createClientCore() {
       reconnectTimer = null;
     }
     logger.info('WA', 'Client ready');
+    if (onReadyCallback) onReadyCallback(c);
   });
 
   c.on('auth_failure', (msg) => {
@@ -322,6 +323,10 @@ export function getCurrentClient() {
 
 export function setOnMaxReconnect(fn) {
   onMaxReconnect = fn;
+}
+
+export function setOnReady(fn) {
+  onReadyCallback = fn;
 }
 
 export function getConnectionState() {

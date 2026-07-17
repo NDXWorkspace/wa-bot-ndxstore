@@ -26,7 +26,6 @@ export function setDefaultFlushFn(fn) {
   defaultFlushFn = fn;
 }
 
-// Load pending buffers on startup — restored via setDefaultFlushFn
 try {
   if (fs.existsSync(PENDING_FILE)) {
     const raw = fs.readFileSync(PENDING_FILE, 'utf-8');
@@ -37,7 +36,7 @@ try {
         if (item.parts?.length) {
           buffers.set(item.jid, {
             parts: item.parts,
-            image: item.hasImage ? { data: null, mime: null } : null,
+            image: item.image?.data ? { data: item.image.data, mime: (item.image.mime || 'image/png') } : null,
             timer: null,
             latestMsg: null,
           });
@@ -46,7 +45,9 @@ try {
     }
     fs.unlinkSync(PENDING_FILE);
   }
-} catch {}
+} catch {
+  try { fs.unlinkSync(PENDING_FILE); } catch {}
+}
 
 export function flushPendingBuffers() {
   if (!defaultFlushFn) return;
@@ -66,7 +67,7 @@ export async function savePendingBuffers() {
   const pending = [];
   for (const [jid, entry] of buffers) {
     if (entry.parts.length) {
-      pending.push({ jid, parts: entry.parts, hasImage: !!entry.image });
+      pending.push({ jid, parts: entry.parts, image: entry.image ? { data: entry.image.data, mime: entry.image.mime } : null });
     }
   }
   if (pending.length) {

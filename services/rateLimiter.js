@@ -25,7 +25,7 @@ async function processQueue() {
           success = true;
           break;
         } catch (e) {
-          const isRateLimit = e.message?.includes('rate') || e.message?.includes('429') || e.message?.includes('too many');
+          const isRateLimit = /\brate\b/i.test(e.message || '') || e.message?.includes('429') || e.message?.includes('too many');
           const isNetwork = e.message?.includes('timeout') || e.message?.includes('ETIMEDOUT') || e.message?.includes('ECONN');
           const retryable = isRateLimit || isNetwork;
           if (!retryable || attempt >= MAX_RETRIES) {

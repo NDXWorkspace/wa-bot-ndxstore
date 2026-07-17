@@ -29,5 +29,5 @@ export const config = {
 };
 
 if (process.env.LOG_CONSOLE !== 'false') {
-  console.log('Config OK. Admin:', config.adminNumber.replace(/.(?=.{4})/g, '*'));
+  console.log('Config OK. Admin:', config.adminNumber.replace(/\d(?=\d{4})/g, '*'));
 }

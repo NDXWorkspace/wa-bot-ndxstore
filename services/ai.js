@@ -465,7 +465,7 @@ function detectLang(text) {
     if (words[1] && EN_WORDS.has(words[1])) return 'en';
     // Check ending patterns common in English
     const last = words[0];
-    if (/^(ing|ed|ly|tion|sion|ment|ness|ful|less|able|ible|al|ial|ical|ous|eous|ious|ive|ative)$/.test(last)) return 'en';
+    if (/(ing|ed|ly|tion|sion|ment|ness|ful|less|able|ible|al|ial|ical|ous|eous|ious|ive|ative)$/.test(last)) return 'en';
     return 'id';
   }
 
@@ -746,9 +746,8 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
 
   // Time gap (C2) — check if last exchange was > 30 min ago
   const timeGap = (() => {
-    const hist = getHistory(jid);
-    if (!hist?.length) return '';
-    const lastTs = hist._lastTimestamp || 0;
+    if (!userHist?.length) return '';
+    const lastTs = userHist._lastTimestamp || 0;
     if (!lastTs) return '';
     const gapMin = (Date.now() - lastTs) / 60000;
     if (gapMin > 30) return `\n⏰ (obrolan semalaman — user chat lagi setelah ${Math.round(gapMin)} menit)`;
@@ -818,7 +817,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   const groqUrl = config.groqUrl;
   const groqHeaders = { Authorization: `Bearer ${config.groqKey}` };
   const opts = { messages: msgs, max_tokens: maxTokens, temperature: temp };
-  const pollBase = config.aiApiBase.replace(/\/+$/, '');
+  const pollBase = (config.aiApiBase || '').replace(/\/+$/, '');
 
   let reply = null;
   let usedModel = 'unknown';
@@ -902,7 +901,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   const elapsed = Date.now() - startTime;
 
   if (reply) {
-    if (reply.includes('SKIP')) {
+    if (/^SKIP\b/.test(reply)) {
       logger.debug('AI', 'Skipping — not relevant');
       trackMetric(usedModel, elapsed, true);
       return null;
@@ -984,7 +983,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
   // Vision endpoints (sequential — Pollinations, backup)
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
   const visionUrls = [
-    `${config.aiApiBase.replace(/\/+$/, '')}/openai`,
+    `${(config.aiApiBase || '').replace(/\/+$/, '')}/openai`,
     'https://text.pollinations.ai/openai',
   ];
   if (backupBase) visionUrls.push(`${backupBase}/chat/completions`);
@@ -1029,7 +1028,7 @@ export async function askAIProactive(order, mode = 1) {
   const opts = { messages: msgs, max_tokens: maxTokens, temperature: 0.5 };
   const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
   const groqHeaders = { Authorization: `Bearer ${config.groqKey}` };
-  const pollBase = config.aiApiBase.replace(/\/+$/, '');
+  const pollBase = (config.aiApiBase || '').replace(/\/+$/, '');
 
   const candidates = [
     ...(config.groqKey?.startsWith('gsk_') ? [

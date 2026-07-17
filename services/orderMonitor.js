@@ -33,7 +33,10 @@ async function loadNotified() {
       notified = new Set(arr);
     }
     logger.info('OrderMonitor', `Loaded ${notified.size} notified IDs`);
-  } catch {}
+  } catch (e) {
+    logger.warn('OrderMonitor', `Failed to load notified (starting fresh): ${e.message}`);
+    notified = new Set();
+  }
 }
 
 async function persistNotified() {
@@ -59,8 +62,9 @@ function schedulePersist() {
 }
 
 function sendNotif(client, order, type) {
-  if (notified.has(order.id)) return;
-  notified.add(order.id);
+  const key = `${order.id}_${type}`;
+  if (notified.has(key)) return;
+  notified.add(key);
   schedulePersist();
 
   if (config.groupId) {
@@ -68,7 +72,8 @@ function sendNotif(client, order, type) {
     enqueueSend(() => client.sendMessage(config.groupId, msg));
   }
 
-  const userJid = formatWaNumber(pick(order, 'waNumber', 'wa_number'));
+  const wa = pick(order, 'waNumber', 'wa_number');
+  const userJid = wa ? formatWaNumber(wa) : null;
   if (userJid) {
     if (_settings.jawabDuluan) {
       sendAIProactive(client, order, type, userJid);
@@ -89,7 +94,7 @@ function sendNotif(client, order, type) {
 
 async function sendAIProactive(client, order, type, userJid) {
   try {
-    const aiMsg = await askAIProactive(order, _settings.aiMode || 1);
+    const aiMsg = await askAIProactive(order, _settings.aiMode ?? 1);
     if (aiMsg) {
       enqueueSend(() => client.sendMessage(userJid, aiMsg));
     }
@@ -207,6 +212,7 @@ async function catchUp(client) {
 
     logger.info('OrderMonitor', `Catch-up: ${data.length} order(s)`);
     for (const order of data) {
+      seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status, ts: Date.now() });
       handleOrder(client, order);
     }
   } catch (e) {

@@ -1,7 +1,7 @@
 import http from 'http';
 import os from 'os';
 import { config } from './config.js';
-import { createClient, getCurrentClient, getLatestQr, detectBrowser, setOnMaxReconnect, initWithRetry, startConnectionMonitor, getConnectionState } from './client.js';
+import { createClient, getCurrentClient, getLatestQr, detectBrowser, setOnMaxReconnect, setOnReady, initWithRetry, startConnectionMonitor, getConnectionState } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
@@ -15,7 +15,7 @@ import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
 import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
 import { startLiveDataRefresh } from './services/liveData.js';
-import { logger, setLogLevel, getLogLevel } from './utils/logger.js';
+import { logger, setLogLevel, getLogLevel, createLogger } from './utils/logger.js';
 
 import ww from 'whatsapp-web.js';
 const { MessageMedia } = ww;
@@ -102,7 +102,7 @@ async function saveBlockedUsers() {
   }
 }
 let botStartedAt = Date.now();
-const ADMIN_RAW = config.adminNumber.replace(/^\+/, '').trim();
+const ADMIN_RAW = config.adminNumber.replace(/[^0-9]/g, '');
 
 // ─── Health Check ──────────────────────────────────────────────────────
 
@@ -250,11 +250,15 @@ function parseAiMode(body) {
 // ─── Main ─────────────────────────────────────────────────────────────
 
 async function main() {
+  logger.printBanner();
   logger.info('Bot', '=== WA Bot NDXStore ===');
   logger.info('Bot', `Supabase: ${config.supabase.key ? '✓' : '✗'}`);
   logger.info('Bot', `Group ID: ${config.groupId || '(not set)'}`);
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
+
+  const heartbeatMs = parseInt(process.env.LOG_HEARTBEAT_MS || '300000', 10);
+  if (heartbeatMs > 0) logger.startHeartbeat(heartbeatMs);
 
   // Startup validation (F4)
   const adminNum = config.adminNumber.replace(/[^0-9]/g, '');
@@ -388,7 +392,7 @@ async function main() {
           }
 
           // !clear — batch fetch & delete bot messages
-          const clearMatch = body.match(/^!clear\s+(\d+)/i);
+          const clearMatch = body.match(/^!clear\s+(\d+)$/i);
           if (clearMatch) {
             const num = parseInt(clearMatch[1]);
             if (num < 1 || num > 50) { await msg.reply('Jumlah: 1-50'); return; }
@@ -515,9 +519,15 @@ async function main() {
 
           // Admin reply via quoted message
           if (isAdmin && msg.hasQuotedMsg) {
-            const forwarded = await handleAdminReply(c, msg);
-            if (forwarded) {
-              await msg.reply('Balasan terkirim ke user.');
+            try {
+              const forwarded = await handleAdminReply(c, msg);
+              if (forwarded) {
+                await msg.reply('Balasan terkirim ke user.');
+                return;
+              }
+            } catch (e) {
+              logger.error('AdminReply', 'Gagal reply:', e.message);
+              await msg.reply('Gagal mengirim balasan. Coba lagi.');
               return;
             }
           }
@@ -572,8 +582,13 @@ async function main() {
             await c.sendMessage(config.adminNumber, `Sesi CS selesai\nUser: ${msg.from}`);
             return;
           }
-          await forwardToAdmin(c, msg.from, body, config.adminNumber);
+          try {
+            await forwardToAdmin(c, msg.from, body, config.adminNumber);
             await msg.reply('Pesan diteruskan ke admin.');
+          } catch (e) {
+            logger.error('Forward', 'Gagal forward ke admin:', e.message);
+            await msg.reply('Maaf, pesan gagal diteruskan ke admin. Coba lagi.');
+          }
           return;
         }
 
@@ -650,7 +665,6 @@ async function main() {
 
         // ── Media handling ──
         let mediaImage = null;
-        let mediaTranscribed = null;
 
         if (msg.hasMedia && msg.type !== 'sticker') {
           if (msg.type === 'ptt' || msg.type === 'audio') {
@@ -704,7 +718,6 @@ async function main() {
             return;
           }
         } else if (!msg.hasMedia) {
-        } else if (!msg.hasMedia) {
           lastUserMessage.set(senderJid, { body, ts: Date.now() });
         }
 
@@ -742,7 +755,6 @@ async function main() {
               });
             });
         };
-        setDefaultFlushFn(handleBufferFlush);
         bufferAiMessage(senderJid, msg, body, mediaImage, handleBufferFlush);
         return;
 
@@ -760,12 +772,15 @@ async function main() {
   waClient = await createClient(setupMessageHandler);
   setupMessageHandler(waClient);
 
-  waClient.on('ready', async () => {
+  setOnReady(async () => {
     try {
       logger.info('Bot', 'Client ready — bot online!');
       flushPendingBuffers();
-      const monitor = await startOrderMonitor(waClient, settings);
-      if (monitor) orderMonitorCleanup = monitor;
+      const client = getCurrentClient();
+      if (client) {
+        const monitor = await startOrderMonitor(client, settings);
+        if (monitor) orderMonitorCleanup = monitor;
+      }
     } catch (e) {
       logger.error('Bot', 'Ready handler error:', e.message);
     }
@@ -809,25 +824,6 @@ async function main() {
       : String(reason).slice(0, 600);
     logger.warn('unhandledRejection', detail);
   });
-
-  const MEM_WARN_MB = 300;
-  let memWarned = false;
-  let lastMemLog = 0;
-  const memTimer = setInterval(() => {
-    const usage = process.memoryUsage();
-    const rssMB = Math.round(usage.rss / 1024 / 1024);
-    const heapMB = Math.round(usage.heapUsed / 1024 / 1024);
-    if (rssMB > MEM_WARN_MB && !memWarned) {
-      logger.warn('Mem', `${rssMB}MB > ${MEM_WARN_MB}MB`);
-      memWarned = true;
-    }
-    if (rssMB <= MEM_WARN_MB) memWarned = false;
-    if (rssMB > 200 || Date.now() - lastMemLog > 1800000) {
-      logger.info('Mem', `${rssMB}MB`);
-      lastMemLog = Date.now();
-    }
-  }, 5 * 60 * 1000);
-  memTimer.unref();
 
   logger.info('Bot', 'Starting WhatsApp client...');
 }

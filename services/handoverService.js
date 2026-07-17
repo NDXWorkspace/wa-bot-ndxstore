@@ -29,7 +29,9 @@ async function loadSessionsFromDb() {
       });
     }
     logger.info('Handover', `Loaded ${data.length} active sessions`);
-  } catch {}
+  } catch (e) {
+    logger.warn('Handover', `Failed to load sessions from DB: ${e.message}`);
+  }
 }
 
 async function persistSession(userNumber, adminNumber) {
@@ -41,7 +43,6 @@ async function persistSession(userNumber, adminNumber) {
       admin_number: adminNumber,
       active: true,
       last_activity: new Date().toISOString(),
-      created_at: new Date().toISOString(),
     }, { onConflict: 'user_number' });
   } catch (e) {
     if (!isRelationError(e)) {
@@ -102,7 +103,7 @@ function touchSession(userNumber) {
   const session = handoverSessions.get(userNumber);
   if (session) {
     session.lastActivity = Date.now();
-    touchSessionDb(userNumber);
+    touchSessionDb(userNumber).catch(() => {});
   }
 }
 
