@@ -35,7 +35,6 @@ const welcomedCleanupTimer = setInterval(() => {
 welcomedCleanupTimer.unref();
 
 const blockedUsers = new Set();
-const recentContextMap = new Map();
 const lastUserMessage = new Map();
 const LAST_MSG_TTL = 24 * 60 * 60 * 1000;
 const LAST_MSG_MAX = 500;
@@ -61,13 +60,9 @@ function evictLRU(map, maxSize) {
 
 setInterval(() => {
   const cutoff = Date.now() - 120000;
-  for (const [key, entry] of recentContextMap) {
-    if (entry.ts < cutoff) recentContextMap.delete(key);
-  }
   for (const [key, entry] of burstCounts) {
     if (entry.ts < cutoff) burstCounts.delete(key);
   }
-  evictLRU(recentContextMap, 500);
   evictLRU(burstCounts, 200);
   const msgCutoff = Date.now() - LAST_MSG_TTL;
   for (const [jid, entry] of lastUserMessage) {
@@ -619,6 +614,7 @@ async function main() {
         }
 
         // ── Group: scan conversation flow ──
+        let isGroupDirect = false;
         if (isGroup) {
           const botUser = c.info?.wid?.user;
           const mentioned = botUser ? msg.mentionedIds?.some(id => id.includes(botUser)) : false;
@@ -631,26 +627,9 @@ async function main() {
           }
 
           if (mentioned || repliedToBot) {
-            // Mentioned/replied → respond
+            isGroupDirect = true;
           } else if (settings.ungroup) {
-            return; // strict mode: only on mention/reply
-          } else {
-            // Fetch recent chat context for the AI to scan
-            try {
-              const chat = await c.getChatById(msg.from);
-              const recentMsgs = await chat.fetchMessages({ limit: 6 });
-              const lines = [];
-              for (const m of recentMsgs) {
-                if (m.fromMe) {
-                  lines.push(`Bima: ${(m.body || '(media)').slice(0, 100)}`);
-                } else {
-                  const name = (m.author || m.from).split('@')[0];
-                  lines.push(`${name}: ${(m.body || '(media)').slice(0, 100)}`);
-                }
-              }
-              // Store context per-group for the AI buffer callback to use
-              recentContextMap.set(msg.from, { text: lines.reverse().join('\n'), ts: Date.now() });
-            } catch (e) { logger.debug('Bot', 'fetchMsgs context failed:', e.message); }
+            return;
           }
         }
 
@@ -678,7 +657,6 @@ async function main() {
             if (audio?.data) {
               const text = await transcribeAudio(audio.data, audio.mimetype);
               if (text) {
-                mediaTranscribed = text;
                 body = body ? `${body}\n\n[Transkripsi audio: ${text}]` : `[Transkripsi audio: ${text}]`;
               }
             }
@@ -687,7 +665,6 @@ async function main() {
             if (video?.data) {
               const text = await transcribeAudio(video.data, video.mimetype);
               if (text) {
-                mediaTranscribed = text;
                 body = body ? `${body}\n\n[Transkripsi video: ${text}]` : `[Transkripsi video: ${text}]`;
               } else {
                 body = body ? `${body}\n\n[User mengirim video]` : '[User mengirim video]';
@@ -724,18 +701,17 @@ async function main() {
           lastUserMessage.set(senderJid, { body, ts: Date.now() });
         }
 
-        // ── Buffer fragments, answer once the burst settles ──
-        const handleBufferFlush = (jid, text, img, latestMsg) => {
+        // ── Reply helper ──
+        const doReply = (text, img, latestMsg) => {
           const fn = img ? askAIWithImage : askAI;
-          const groupCtx = recentContextMap.get(historyJid)?.text || '';
-          const textToSend = groupCtx
-            ? `INI PERCAKAPAN GRUP TADI:\n${groupCtx}\n\nPESAN BARU:\n${text}`
+          const msgForAI = isGroup
+            ? `Di grup, ${senderName || 'seseorang'} bilang: ${text}`
             : text;
           c.sendPresenceAvailable().catch(() => {});
-          return fn(historyJid, textToSend, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
+          return fn(historyJid, msgForAI, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
             .then(reply => {
-              if (!reply || reply.includes('SKIP')) return;
-              const delay = 300 + Math.random() * 1200;
+              if (!reply || /^SKIP\b/.test(reply)) return;
+              const delay = isGroup ? 200 + Math.random() * 500 : 300 + Math.random() * 1200;
               return new Promise(r => setTimeout(r, delay)).then(() => {
                 const stickerMatch = reply.match(/^\[STICKER:(.+?)\]\s*/);
                 const textToReply = stickerMatch ? reply.slice(stickerMatch[0].length).trim() : reply;
@@ -758,7 +734,12 @@ async function main() {
               });
             });
         };
-        bufferAiMessage(senderJid, msg, body, mediaImage, handleBufferFlush);
+
+        if (isGroupDirect) {
+          doReply(body, mediaImage, msg);
+        } else {
+          bufferAiMessage(senderJid, msg, body, mediaImage, doReply);
+        }
         return;
 
       } catch (e) {
