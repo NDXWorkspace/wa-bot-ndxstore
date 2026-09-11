@@ -188,7 +188,9 @@ async function createClientCore() {
 
   const sessionPath = path.resolve('./wa-session/session');
   const hasSession = fs.existsSync(sessionPath);
-  logger.info('WA', hasSession ? 'Session tersimpan — auth otomatis' : 'Scan QR code untuk login pertama');
+  logger.info('WA', hasSession ? 'Session tersimpan — auth otomatis'
+    : config.pairingNumber ? 'Login pertama via kode pairing (lihat terminal / /qr / panel /admin)'
+    : 'Scan QR code untuk login pertama');
 
   const c = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
@@ -214,7 +216,7 @@ async function createClientCore() {
     latestPairingCode = code;
     latestPairingCodeTs = Date.now();
     const pretty = String(code).replace(/(.{4})(.{4})/, '$1-$2');
-    logger.info('WA', `Pairing code: ${pretty} — masukkan di WA → Perangkat Tertaut → Tautkan dgn nomor telepon (atau buka /qr)`);
+    logger.info('WA', `Pairing code: ${pretty} — masukkan di WA → Perangkat Tertaut → Tautkan dgn nomor telepon (atau buka /qr / panel /admin)`);
   });
 
   c.on('authenticated', () => {

@@ -135,15 +135,29 @@ const healthApp = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     if (connected) {
       res.end('<h2>✅ WhatsApp sudah terhubung.</h2>');
-    } else if (pairing) {
-      const pretty = String(pairing.code).replace(/(.{4})(.{4})/, '$1-$2');
-      res.end(`<html><body style="text-align:center;font-family:sans-serif"><h2>Kode Pairing WhatsApp</h2><p style="font-size:48px;letter-spacing:8px;font-weight:bold">${pretty}</p><p>WA → Perangkat Tertaut → Tautkan dengan nomor telepon → masukkan kode di atas.<br>Kode refresh otomatis tiap ±3 menit. Halaman auto-refresh 20 detik.</p><script>setTimeout(()=>location.reload(),20000)</script></body></html>`);
-    } else if (qr) {
-      const img = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qr)}`;
-      res.end(`<html><body style="text-align:center;font-family:sans-serif"><h2>Scan di WhatsApp → Perangkat Tertaut</h2><img src="${img}" alt="QR"><p>Auto-refresh 20 detik.</p><script>setTimeout(()=>location.reload(),20000)</script></body></html>`);
-    } else {
-      res.end('<h2>⏳ QR belum siap, tunggu &amp; refresh…</h2><script>setTimeout(()=>location.reload(),5000)</script>');
+      return;
     }
+    // Mode login aktif: pairing (PAIRING_NUMBER diisi) atau QR.
+    // Di mode pairing, WA Web tidak menerbitkan QR sama sekali — jadi yang
+    // tampil di sini memang kode pairing. Kosongkan PAIRING_NUMBER + restart
+    // untuk login via scan QR.
+    const modeNote = config.pairingNumber
+      ? '<p><i>Mode pairing aktif (PAIRING_NUMBER diisi). Kosongkan PAIRING_NUMBER di .env lalu restart bot untuk login via scan QR.</i></p>'
+      : '<p><i>Mode scan QR aktif. Isi PAIRING_NUMBER di .env lalu restart untuk login via kode pairing.</i></p>';
+    let body = `<html><body style="text-align:center;font-family:sans-serif">`;
+    if (qr) {
+      const img = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qr)}`;
+      body += `<h2>Scan di WhatsApp → Perangkat Tertaut</h2><img src="${img}" alt="QR">`;
+    }
+    if (pairing) {
+      const pretty = String(pairing.code).replace(/(.{4})(.{4})/, '$1-$2');
+      body += `<h2>Kode Pairing WhatsApp</h2><p style="font-size:48px;letter-spacing:8px;font-weight:bold">${pretty}</p><p>WA → Perangkat Tertaut → Tautkan dengan nomor telepon → masukkan kode di atas.<br>Kode refresh otomatis tiap ±3 menit. Kode yang sama juga tampil di panel <a href="/admin">/admin</a>.</p>`;
+    }
+    if (!qr && !pairing) {
+      body += `<h2>⏳ QR/kode belum siap, tunggu &amp; refresh…</h2>`;
+    }
+    body += `${modeNote}<script>setTimeout(()=>location.reload(),20000)</script></body></html>`;
+    res.end(body);
     return;
   }
 
