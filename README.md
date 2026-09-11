@@ -135,7 +135,7 @@ Server HTTP bind ke `HOST` (default `127.0.0.1` = hanya dari PC ini). Kalau `HOS
 
 Admin tetap bisa **reply** pesan handover yang diteruskan bot (quote pesan forward) untuk membalas user langsung dari WA.
 
-**Fitur Toko butuh sesi Google:** endpoint `/api/admin/*` wajib login Google owner (NextAuth) — password header saja ditolak (401). Isi `NDX_SESSION` di `.env` dengan cookie browser yang sudah login (cara lengkap ada di komentar `.env`), lalu restart bot. Kalau panel Toko error 401 lagi berarti cookie expired — ulangi ambil cookie.
+**Fitur Toko pakai bot-token (tanpa expiry):** endpoint `/api/admin/*` menerima header `x-bot-token` sejajar sesi Google owner. Isi `NDX_BOT_TOKEN` di `.env` dengan nilai yang **sama** seperti `BOT_API_TOKEN` di Vercel (lalu redeploy API + restart bot). Detail: `ndxstoreid/docs/bot-auth.md`. Tidak perlu refresh cookie/session manual lagi.
 
 ## Health Check
 

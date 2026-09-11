@@ -6,9 +6,13 @@ export async function apiCall(method, path, body = null) {
   if (config.apiPassword) {
     headers['x-admin-password'] = config.apiPassword;
   }
-  // API admin sekarang wajib sesi login Google owner (NextAuth).
-  // Isi NDX_SESSION di .env dengan cookie dari browser yang sudah login
-  // (lihat README). Cookie dikirim apa adanya.
+  // Auth utama admin API: x-bot-token (statis, tanpa expiry, sejajar sesi
+  // Google owner di sisi server). Isi NDX_BOT_TOKEN di .env = BOT_API_TOKEN
+  // di Vercel. Lihat ndxstoreid/docs/bot-auth.md.
+  if (config.botToken) {
+    headers['x-bot-token'] = config.botToken;
+  }
+  // Fallback: cookie browser (kalau ada sesi cookie di masa depan).
   if (config.ndxSession) {
     headers['Cookie'] = config.ndxSession;
   }
@@ -19,8 +23,14 @@ export async function apiCall(method, path, body = null) {
     const text = await resp.text().catch(() => '');
     if (resp.status === 401) {
       throw new Error(
-        'Sesi admin Google kedaluwarsa/ditolak. Login ulang di ndxstoreid.vercel.app ' +
-        'dengan akun owner, update NDX_SESSION di .env, lalu restart bot. ' +
+        'Admin API menolak auth. Cek: (1) NDX_BOT_TOKEN di .env sama dengan ' +
+        'BOT_API_TOKEN di Vercel (sudah redeploy?), (2) token min 16 karakter. ' +
+        `(${text.slice(0, 100)})`
+      );
+    }
+    if (resp.status === 500 && text.includes('belum dikonfigurasi')) {
+      throw new Error(
+        'BOT_API_TOKEN belum dipasang di server (Vercel). Pasang env + redeploy. ' +
         `(${text.slice(0, 100)})`
       );
     }

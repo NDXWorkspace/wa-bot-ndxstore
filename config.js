@@ -27,6 +27,9 @@ export const config = {
   // Kosong = login via scan QR seperti biasa.
   pairingNumber: e('PAIRING_NUMBER').replace(/[^0-9]/g, ''),
   apiPassword: e('API_PASSWORD'),
+  // Token bot untuk /api/admin/* (header x-bot-token). Nilainya HARUS SAMA
+  // dengan BOT_API_TOKEN di Vercel. Lihat ndxstoreid/docs/bot-auth.md.
+  botToken: e('NDX_BOT_TOKEN'),
   // Cookie sesi login Google owner untuk /api/admin/* (NextAuth).
   // Contoh isi: "next-auth.session-token=AAA...; __Secure-next-auth.session-token=AAA..."
   // Cara ambil: login di ndxstoreid.vercel.app via Chrome → F12 → Application →
