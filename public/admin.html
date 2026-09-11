@@ -46,6 +46,11 @@
 
 <div class="grid">
   <div class="card">
+    <h2>Login WhatsApp</h2>
+    <div id="loginBox"><div class="stat"><span>Memuat…</span></div></div>
+  </div>
+
+  <div class="card">
     <h2>Status</h2>
     <div id="status"><div class="stat"><span>Memuat…</span></div></div>
     <div class="row"><button id="btnRefresh">Refresh</button></div>
@@ -171,6 +176,7 @@ async function loadStatus() {
     draft = { aiMode: s.aiMode, jawabDuluan: s.jawabDuluan, ungroup: s.ungroup };
     paintCfg();
     say('msgStatus', true, '');
+    loadLogin(s);
   } catch (e) { say('msgStatus', false, e.message); }
 }
 function stat(k, v) { return `<div class="stat"><span>${k}</span><span>${v}</span></div>`; }
@@ -187,6 +193,38 @@ $('btnSaveCfg').onclick = async () => {
   catch (e) { say('msgCfg', false, e.message); }
 };
 $('btnRefresh').onclick = loadStatus;
+
+// Login WhatsApp — pairing code tampil di sini (auto-refresh).
+// Hanya render ulang kalau state berubah (biar iframe QR tidak reload terus).
+let loginKey = '';
+async function loadLogin(s) {
+  const box = $('loginBox');
+  if (s.wa === 'connected') {
+    if (loginKey === 'connected') return;
+    loginKey = 'connected';
+    box.innerHTML = `<div class="stat"><span class="dot on"></span><span>Terhubung${s.waNumber ? ' (' + esc(s.waNumber) + ')' : ''}</span></div>`;
+    return;
+  }
+  try {
+    const r = await api('/code');
+    if (r.code) {
+      const key = 'code:' + r.code;
+      if (loginKey === key) return;
+      loginKey = key;
+      const pretty = esc(String(r.code).replace(/(.{4})(.{4})/, '$1-$2'));
+      box.innerHTML = `<div style="text-align:center;padding:8px 0">` +
+        `<div style="font-size:42px;letter-spacing:8px;font-weight:bold">${pretty}</div>` +
+        `<div class="sub" style="margin:8px 0 0">WA → Perangkat Tertaut → Tautkan dengan nomor telepon → masukkan kode.<br>Kode refresh otomatis, halaman ini ikut update sendiri.</div></div>`;
+    } else {
+      if (loginKey === 'qr') return;
+      loginKey = 'qr';
+      box.innerHTML = `<div class="sub">Mode scan QR — tampilkan di bawah (atau buka <a href="/qr" target="_blank">/qr</a>):</div>` +
+        `<iframe src="/qr" style="width:100%;height:420px;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>`;
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="msg fail">' + esc(e.message) + '</div>';
+  }
+}
 
 $('btnSend').onclick = async () => {
   try {
