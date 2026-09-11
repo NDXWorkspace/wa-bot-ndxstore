@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NDXStore Bot — Panel</title>
+<style>
+  :root { --bg:#0f1115; --card:#181c24; --line:#262c38; --txt:#e8ecf3; --dim:#9aa3b2; --acc:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:15px; margin:0 0 10px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+  .stat { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px dashed var(--line); font-size:14px; }
+  .stat:last-child { border-bottom:none; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  .on { background:var(--acc); } .off { background:var(--err); } .mid { background:var(--warn); }
+  input,select,textarea,button { font-size:14px; border-radius:8px; border:1px solid var(--line); background:#0c0e12; color:var(--txt); padding:8px 10px; }
+  input,select,textarea { width:100%; }
+  textarea { min-height:64px; resize:vertical; }
+  button { cursor:pointer; background:#223; border-color:#334; }
+  button.primary { background:#166534; border-color:#166534; color:#fff; }
+  button.danger { background:#7f1d1d; border-color:#7f1d1d; color:#fff; }
+  button:disabled { opacity:.5; cursor:default; }
+  label { font-size:13px; color:var(--dim); display:block; margin:8px 0 4px; }
+  .seg { display:flex; gap:6px; }
+  .seg button { flex:1; }
+  .seg button.active { background:#166534; border-color:#22c55e; color:#fff; }
+  .switch { display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:14px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:600; }
+  .mono { font-family:ui-monospace,Consolas,monospace; font-size:12px; word-break:break-all; }
+  .msg { font-size:13px; margin-top:8px; min-height:18px; }
+  .ok { color:var(--acc); } .fail { color:var(--err); }
+  a { color:#60a5fa; }
+  .tok { display:flex; gap:8px; }
+</style>
+</head>
+<body>
+<h1>NDXStore Bot — Panel Konfigurasi</h1>
+<div class="sub">Localhost only. Semua konfigurasi bot lewat sini, bukan via chat. <a href="/qr" target="_blank">Login WA (/qr)</a></div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Status</h2>
+    <div id="status"><div class="stat"><span>Memuat…</span></div></div>
+    <div class="row"><button id="btnRefresh">Refresh</button></div>
+    <div class="msg" id="msgStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>Mode AI</h2>
+    <div class="seg" id="segMode">
+      <button data-m="0">OFF</button>
+      <button data-m="1">Bima</button>
+      <button data-m="2">CS</button>
+    </div>
+    <div class="switch"><span>Jawab duluan (grup, tanpa mention)</span><button id="tglJd">OFF</button></div>
+    <div class="switch"><span>Ungroup (grup: hanya mention/reply)</span><button id="tglUn">OFF</button></div>
+    <div class="row"><button class="primary" id="btnSaveCfg">Simpan</button></div>
+    <div class="msg" id="msgCfg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Kirim Pesan WA</h2>
+    <label>Nomor tujuan (628xxx / 08xxx)</label>
+    <input id="sendTo" placeholder="6285159898005">
+    <label>Pesan</label>
+    <textarea id="sendText" placeholder="Tulis pesan…"></textarea>
+    <div class="row"><button class="primary" id="btnSend">Kirim</button></div>
+    <div class="msg" id="msgSend"></div>
+  </div>
+
+  <div class="card">
+    <h2>Blokir User</h2>
+    <div class="tok"><input id="blockNum" placeholder="628xxx"><button id="btnBlock">Blokir</button></div>
+    <div id="blockList" style="margin-top:8px"></div>
+    <div class="msg" id="msgBlock"></div>
+  </div>
+
+  <div class="card">
+    <h2>Toko — Statistik</h2>
+    <div id="storeStats"><div class="stat"><span>Memuat…</span></div></div>
+    <div class="row"><button id="btnStats">Muat ulang</button></div>
+    <div class="msg" id="msgStats"></div>
+  </div>
+
+  <div class="card">
+    <h2>Toko — Order Pending</h2>
+    <div class="row"><input id="pendingGame" placeholder="Filter game (opsional)" style="flex:1"><button id="btnPending">Cek</button></div>
+    <div id="pendingList" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Toko — Cari &amp; Update Order</h2>
+    <div class="row"><input id="orderId" placeholder="NDX-XXXX" style="flex:1"><button id="btnOrder">Cari</button></div>
+    <div id="orderDetail" style="margin-top:8px"></div>
+    <div class="row" id="orderActions" style="display:none">
+      <select id="orderStatus" style="flex:1"></select>
+      <button class="primary" id="btnSetStatus">Update</button>
+    </div>
+    <div class="msg" id="msgOrder"></div>
+  </div>
+
+  <div class="card">
+    <h2>AI Metrics</h2>
+    <div id="metrics"><div class="stat"><span>Memuat…</span></div></div>
+    <div class="row"><button id="btnMetrics">Muat ulang</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Riwayat Chat</h2>
+    <div class="row"><button id="btnHistory">Muat 20 terakhir</button></div>
+    <div id="historyList" style="margin-top:8px"></div>
+    <label>Reset history per nomor (628xxx)</label>
+    <div class="tok"><input id="resetJid" placeholder="628xxx"><button id="btnResetHist">Reset</button></div>
+    <div class="msg" id="msgHist"></div>
+  </div>
+
+  <div class="card">
+    <h2>Log Level</h2>
+    <div class="row"><select id="logLevel"><option>error</option><option>warn</option><option>info</option><option>debug</option></select><button class="primary" id="btnLog">Set</button></div>
+    <div class="msg" id="msgLog"></div>
+  </div>
+
+  <div class="card">
+    <h2>Grup WA (pengganti !groupid)</h2>
+    <div class="row"><button id="btnGroups">Muat daftar grup</button></div>
+    <div id="groupList" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<script>
+let TOKEN = localStorage.getItem('ndx_token') || '';
+async function api(path, opts = {}) {
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (TOKEN) headers['x-admin-token'] = TOKEN;
+  const res = await fetch(path, Object.assign({}, opts, { headers }));
+  if (res.status === 401) {
+    const t = prompt('Panel butuh token admin (ADMIN_TOKEN):');
+    if (t) { TOKEN = t; localStorage.setItem('ndx_token', t); return api(path, opts); }
+    throw new Error('Unauthorized');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function say(id, ok, text) { const e = $(id); e.className = 'msg ' + (ok ? 'ok' : 'fail'); e.textContent = text; }
+function fmtRp(n) { return n == null ? '-' : 'Rp' + Number(n).toLocaleString('id-ID'); }
+function fmtT(s) { if (!s) return '-'; try { return new Date(s).toLocaleString('id-ID'); } catch { return s; } }
+
+let draft = { aiMode: 0, jawabDuluan: false, ungroup: false };
+async function loadStatus() {
+  try {
+    const s = await api('/api/status');
+    const waDot = s.wa === 'connected' ? 'on' : 'off';
+    const dbDot = s.db === 'connected' ? 'on' : 'off';
+    $('status').innerHTML =
+      stat('WhatsApp', `<span class="dot ${waDot}"></span>${esc(s.wa)}${s.waNumber ? ' (' + esc(s.waNumber) + ')' : ''}`) +
+      stat('Database', `<span class="dot ${dbDot}"></span>${esc(s.db)}`) +
+      stat('Bot uptime', esc(Math.floor(s.botUptime / 60)) + ' mnt') +
+      stat('Mode AI', s.aiMode === 0 ? 'OFF' : s.aiMode === 1 ? 'Bima' : 'CS') +
+      stat('Diblokir', esc(s.blockedCount) + ' user') +
+      stat('Log level', esc(s.logLevel || '-'));
+    draft = { aiMode: s.aiMode, jawabDuluan: s.jawabDuluan, ungroup: s.ungroup };
+    paintCfg();
+    say('msgStatus', true, '');
+  } catch (e) { say('msgStatus', false, e.message); }
+}
+function stat(k, v) { return `<div class="stat"><span>${k}</span><span>${v}</span></div>`; }
+function paintCfg() {
+  document.querySelectorAll('#segMode button').forEach(b => b.classList.toggle('active', Number(b.dataset.m) === draft.aiMode));
+  $('tglJd').textContent = draft.jawabDuluan ? 'ON' : 'OFF';
+  $('tglUn').textContent = draft.ungroup ? 'ON' : 'OFF';
+}
+document.querySelectorAll('#segMode button').forEach(b => b.onclick = () => { draft.aiMode = Number(b.dataset.m); paintCfg(); });
+$('tglJd').onclick = () => { draft.jawabDuluan = !draft.jawabDuluan; paintCfg(); };
+$('tglUn').onclick = () => { draft.ungroup = !draft.ungroup; paintCfg(); };
+$('btnSaveCfg').onclick = async () => {
+  try { await api('/api/settings', { method: 'POST', body: JSON.stringify(draft) }); say('msgCfg', true, 'Tersimpan.'); loadStatus(); }
+  catch (e) { say('msgCfg', false, e.message); }
+};
+$('btnRefresh').onclick = loadStatus;
+
+$('btnSend').onclick = async () => {
+  try {
+    const r = await api('/api/send', { method: 'POST', body: JSON.stringify({ to: $('sendTo').value, text: $('sendText').value }) });
+    say('msgSend', true, 'Terkirim ke ' + r.to); $('sendText').value = '';
+  } catch (e) { say('msgSend', false, e.message); }
+};
+
+async function loadBlocked() {
+  try {
+    const r = await api('/api/blocked');
+    $('blockList').innerHTML = r.blocked.length
+      ? '<table>' + r.blocked.map(j => `<tr><td class="mono">${esc(j)}</td><td style="text-align:right"><button data-un="${esc(j)}">Unblock</button></td></tr>`).join('') + '</table>'
+      : '<div class="sub">Tidak ada user diblokir.</div>';
+    document.querySelectorAll('[data-un]').forEach(b => b.onclick = async () => {
+      try { await api('/api/unblock', { method: 'POST', body: JSON.stringify({ jid: b.dataset.un }) }); loadBlocked(); loadStatus(); }
+      catch (e) { say('msgBlock', false, e.message); }
+    });
+  } catch (e) { say('msgBlock', false, e.message); }
+}
+$('btnBlock').onclick = async () => {
+  try { await api('/api/block', { method: 'POST', body: JSON.stringify({ jid: $('blockNum').value }) }); $('blockNum').value = ''; loadBlocked(); loadStatus(); say('msgBlock', true, 'Diblokir.'); }
+  catch (e) { say('msgBlock', false, e.message); }
+};
+
+$('btnStats').onclick = async () => {
+  try {
+    const r = await api('/api/store/stats');
+    const s = r.stats || {};
+    $('storeStats').innerHTML =
+      stat('Total transaksi', esc(s.totalTransactions ?? '-')) +
+      stat('Total revenue', fmtRp(s.totalRevenue)) +
+      stat('Pending payment', esc(s.pendingPayments ?? '-') + ' (' + fmtRp(s.pendingAmount) + ')') +
+      stat('Pending orders', esc(s.pendingOrders ?? '-')) +
+      stat('Sukses hari ini', esc(s.successToday ?? '-') + ' / ' + fmtRp(s.revenueToday));
+  } catch (e) { say('msgStats', false, e.message); }
+};
+function orderTable(list) {
+  if (!list.length) return '<div class="sub">(Tidak ada)</div>';
+  return '<table><tr><th>ID</th><th>Produk</th><th>Status</th></tr>' + list.slice(0, 10).map(o =>
+    `<tr><td class="mono">${esc(o.id)}</td><td>${esc(o.productName || o.product_name || '-')}<br><span class="mono">${fmtRp(o.priceIdr ?? o.price_idr)}</span></td><td>${esc(o.orderStatus || o.order_status || o.paymentStatus || '-')}</td></tr>`
+  ).join('') + '</table>';
+}
+$('btnPending').onclick = async () => {
+  try {
+    const r = await api('/api/store/pending?game=' + encodeURIComponent($('pendingGame').value.trim()));
+    $('pendingList').innerHTML = orderTable(r.transactions || []);
+  } catch (e) { $('pendingList').innerHTML = '<div class="msg fail">' + esc(e.message) + '</div>'; }
+};
+let statusOpts = [];
+async function loadStatuses() {
+  try { const r = await api('/api/store/statuses'); statusOpts = r.statuses || []; $('orderStatus').innerHTML = statusOpts.map(s => `<option>${s}</option>`).join(''); } catch {}
+}
+$('btnOrder').onclick = async () => {
+  try {
+    const r = await api('/api/store/order?id=' + encodeURIComponent($('orderId').value.trim()));
+    const t = r.transaction || {};
+    const rows = [['ID', t.id], ['User', t.username], ['Game', t.gameName || t.game_name], ['Produk', t.productName || t.product_name],
+      ['Harga', fmtRp(t.priceIdr ?? t.price_idr)], ['Bayar', t.paymentMethod || t.payment_method],
+      ['Status order', t.orderStatus || t.order_status], ['Status payment', t.paymentStatus || t.payment_status],
+      ['WA', t.waNumber || t.wa_number], ['Dibuat', fmtT(t.createdAt || t.created_at)]];
+    $('orderDetail').innerHTML = '<table>' + rows.map(([k, v]) => `<tr><th>${k}</th><td>${esc(v ?? '-')}</td></tr>`).join('') + '</table>';
+    $('orderActions').style.display = 'flex';
+    say('msgOrder', true, '');
+  } catch (e) { say('msgOrder', false, e.message); $('orderActions').style.display = 'none'; }
+};
+$('btnSetStatus').onclick = async () => {
+  try {
+    const r = await api('/api/store/status', { method: 'POST', body: JSON.stringify({ id: $('orderId').value.trim(), status: $('orderStatus').value }) });
+    say('msgOrder', true, `Update: Order ${r.orderStatus}, Payment ${r.paymentStatus}`);
+  } catch (e) { say('msgOrder', false, e.message); }
+};
+
+$('btnMetrics').onclick = async () => {
+  try {
+    const m = await api('/api/metrics');
+    let h = stat('Total calls', m.totalCalls) + stat('Errors', m.totalErrors) + stat('Avg response', m.avgResponseTimeMs + ' ms') +
+      stat('Prompt tokens', m.promptTokens) + stat('Completion tokens', m.completionTokens);
+    for (const [k, v] of Object.entries(m.byModel || {})) h += stat('Model ' + esc(k), `${v.calls} calls, ${v.errors} err`);
+    $('metrics').innerHTML = h;
+  } catch (e) { $('metrics').innerHTML = '<div class="msg fail">' + esc(e.message) + '</div>'; }
+};
+$('btnHistory').onclick = async () => {
+  try {
+    const r = await api('/api/history?limit=20');
+    $('historyList').innerHTML = r.history.length
+      ? '<table>' + r.history.map(h => `<tr><td class="mono">${esc((h.user_number || '').replace(/@.*/, ''))}<br>${fmtT(h.created_at)}</td><td>${esc((h.content || '').slice(0, 80))}</td></tr>`).join('') + '</table>'
+      : '<div class="sub">Kosong.</div>';
+  } catch (e) { say('msgHist', false, e.message); }
+};
+$('btnResetHist').onclick = async () => {
+  try { await api('/api/history/clear', { method: 'POST', body: JSON.stringify({ jid: $('resetJid').value }) }); say('msgHist', true, 'History direset.'); }
+  catch (e) { say('msgHist', false, e.message); }
+};
+$('btnLog').onclick = async () => {
+  try { await api('/api/loglevel', { method: 'POST', body: JSON.stringify({ level: $('logLevel').value }) }); say('msgLog', true, 'Log level → ' + $('logLevel').value); }
+  catch (e) { say('msgLog', false, e.message); }
+};
+$('btnGroups').onclick = async () => {
+  try {
+    const r = await api('/api/groups');
+    $('groupList').innerHTML = r.groups.length
+      ? '<table>' + r.groups.map(g => `<tr><td class="mono">${esc(g)}</td></tr>`).join('') + '</table><div class="sub">Copy ID grup ke GROUP_ID di .env.</div>'
+      : '<div class="sub">Belum ada grup tercatat. Bot harus terima pesan dari grup dulu.</div>';
+  } catch (e) { $('groupList').innerHTML = '<div class="msg fail">' + esc(e.message) + '</div>'; }
+};
+
+loadStatus(); loadBlocked(); loadStatuses();
+$('btnStats').click(); $('btnMetrics').click();
+setInterval(loadStatus, 10000);
+</script>
+</body>
+</html>

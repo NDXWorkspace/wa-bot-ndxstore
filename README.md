@@ -108,38 +108,32 @@ pm2 save && pm2 startup
 
 Tersedia juga `Dockerfile` (node 22 + Chrome, dijalankan via `pm2-runtime`) dan `render.yaml` untuk deploy ke Render.
 
-## Command Admin
+## Panel Admin (localhost)
 
-Semua command admin pakai prefix `!` dan hanya jalan untuk `ADMIN_NUMBER` (atau pesan dari akun bot sendiri).
+Semua konfigurasi bot lewat panel web, **bukan via chat**. Buka setelah bot jalan:
 
-### Kontrol bot & AI
+```
+http://localhost:<PORT>/admin
+```
 
-| Command | Fungsi |
-|---------|--------|
-| `!help` | Daftar command API admin |
-| `!aimode` | Lihat mode AI sekarang |
-| `!aimode 0` \| `1` \| `2` | Set mode AI (nonaktif / Bima / NDXStore CS) |
-| `!aireset` | Reset riwayat chat percakapan aktif |
-| `!clear <n>` | Hapus `n` pesan terakhir yang dikirim bot di chat ini (1–50) |
-| `!history [n]` | Lihat `n` riwayat chat terakhir (default 20) |
-| `!block` / `!unblock` | Blokir / buka blokir user (kirim di chat user, atau di grup) |
-| `!aimodesetting` | Lihat setting `jawab duluan` & `ungroup` |
-| `!aimodesetting jd` | Toggle *jawab duluan* (AI sapa customer duluan saat ada order baru) |
-| `!aimodesetting uningroup` | Toggle mode grup: hanya balas kalau di-mention/di-reply |
-| `!groupid` | Tampilkan Group ID (kirim di dalam grup) |
-| `!reply 628xxx <pesan>` | Kirim pesan langsung ke nomor user |
+Yang bisa dilakukan dari panel:
 
-Admin juga bisa **reply** pesan handover yang diteruskan bot untuk membalas user tanpa command.
+| Fitur | Keterangan |
+|-------|------------|
+| Status | WA (terhubung/tidak + nomor), DB, uptime, mode AI (auto-refresh 10 detik) |
+| Mode AI | OFF / Bima / CS + toggle jawab-duluan & ungroup |
+| Kirim pesan | Kirim WA langsung ke nomor (`628xxx`/`08xxx`) |
+| Blokir | Daftar + blokir/unblock user per nomor |
+| Toko — statistik | Total transaksi, revenue, pending |
+| Toko — pending | Order pending + filter game |
+| Toko — order | Cari `NDX-XXXX` + update status |
+| AI metrics | Calls, errors, avg response, token per model |
+| Riwayat | 20 chat terakhir + reset history per nomor |
+| Log level | error / warn / info / debug |
 
-### Command API NDXStore (butuh `API_PASSWORD`)
+Server HTTP bind ke `HOST` (default `127.0.0.1` = hanya dari PC ini). Kalau `HOST=0.0.0.0` (mis. di Render), **wajib** isi `ADMIN_TOKEN` — panel & `/api/*` butuh header `x-admin-token` (panel otomatis minta token & simpan di browser).
 
-| Command | Fungsi |
-|---------|--------|
-| `!stats` | Statistik transaksi |
-| `!orders` | 5 order terbaru |
-| `!pending [game]` | Order pending (opsional filter per game) |
-| `!detail NDX-XXXX` | Detail satu order |
-| `!status NDX-XXXX <STATUS>` | Update status order (`SUCCESS`, `PROCESSING`, `REJECTED`, `PENDING`, `WAITING_PAYMENT`) |
+Admin tetap bisa **reply** pesan handover yang diteruskan bot (quote pesan forward) untuk membalas user langsung dari WA.
 
 ## Health Check
 

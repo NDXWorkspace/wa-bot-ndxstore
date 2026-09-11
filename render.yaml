@@ -28,6 +28,13 @@ services:
         value: info
       - key: API_BASE
         sync: false
+      # Panel admin bind localhost by default — di Render harus 0.0.0.0
+      # supaya healthcheck bisa dijangkau. ADMIN_TOKEN wajib diisi di
+      # dashboard Render (sync: false) karena panel ikut ke-expose.
+      - key: HOST
+        value: 0.0.0.0
+      - key: ADMIN_TOKEN
+        sync: false
     # Persist WhatsApp session across deploys/restarts
     disk:
       name: wa-session

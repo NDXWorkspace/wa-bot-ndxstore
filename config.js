@@ -10,6 +10,12 @@ if (missing.length > 0) {
 
 export const config = {
   port: Number(e('PORT')) || 3000,
+  // Bind HTTP server (panel + health). Default localhost-only.
+  // Isi 0.0.0.0 kalau perlu diakses dari luar (wajib pasang ADMIN_TOKEN).
+  host: e('HOST') || '127.0.0.1',
+  // Token panel admin (header x-admin-token / ?token=). Kosong = tanpa auth
+  // (aman selama HOST localhost). Wajib diisi kalau HOST=0.0.0.0.
+  adminToken: e('ADMIN_TOKEN'),
   logDir: e('LOG_DIR') || './logs',
   supabase: {
     url: e('SUPABASE_URL'),

@@ -6,17 +6,17 @@ import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
 import { checkDailyLimit } from './services/queue.js';
-import { handleAdminCommand } from './services/admin.js';
-import { askAI, askAIWithImage, transcribeAudio, clearHistory, clearHistoryExcept, startHistoryCleanup, getAiMetrics } from './services/ai.js';
+import { initDashboard, handleDashboardRequest } from './services/dashboard.js';
+import { askAI, askAIWithImage, transcribeAudio, startHistoryCleanup, getAiMetrics } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
 import { bufferAiMessage, savePendingBuffers, setDefaultFlushFn, flushPendingBuffers } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
-import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
+import { formatPrice, formatTime } from './utils/format.js';
 import { isViewOnceMessage, saveViewOnceMedia } from './utils/viewOnce.js';
 import { startLiveDataRefresh } from './services/liveData.js';
-import { logger, setLogLevel, getLogLevel, createLogger } from './utils/logger.js';
+import { logger, createLogger } from './utils/logger.js';
 
 import ww from 'whatsapp-web.js';
 const { MessageMedia } = ww;
@@ -147,6 +147,12 @@ const healthApp = http.createServer(async (req, res) => {
     return;
   }
 
+  // Admin dashboard + API — konfigurasi bot lewat localhost, bukan via chat.
+  // /admin = panel UI, /api/* = JSON API (token kalau ADMIN_TOKEN diisi).
+  if (url === '/admin' || url.startsWith('/api/')) {
+    if (await handleDashboardRequest(req, res)) return;
+  }
+
   // Readiness + detailed status (default path and /ready).
   if (url === '/metrics') {
     const metrics = getAiMetrics();
@@ -195,8 +201,8 @@ healthApp.on('error', (err) => {
   logger.error('Health', `Failed to start on ${PORT}:`, err.message);
   process.exit(1);
 });
-healthApp.listen(PORT, () => {
-  logger.info('Health', `HTTP server on port ${PORT}`);
+healthApp.listen(PORT, config.host, () => {
+  logger.info('Health', `HTTP server on ${config.host}:${PORT}`);
 });
 
 // ─── Check Orders ─────────────────────────────────────────────────────
@@ -269,21 +275,6 @@ async function autoResolveCek(msg, query) {
   }
 }
 
-// ─── Chat History ──────────────────────────────────────────────────────
-
-async function getChatHistory(limit = 20) {
-  try {
-    const db = getDb();
-    if (!db) return [];
-    const { data } = await db
-      .from('wa_chat_history')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(Math.min(limit, 50));
-    return data || [];
-  } catch { return []; }
-}
-
 // ─── Welcome Message ──────────────────────────────────────────────────
 
 async function sendWelcomeIfNew(client, msg) {
@@ -294,16 +285,6 @@ async function sendWelcomeIfNew(client, msg) {
   await msg.reply(
     `Halo!\n\nSelamat datang di *NDXStore* — tempat top up game & Roblox!\n\nKetik *Menu* untuk lihat pilihan.`
   );
-}
-
-// ─── AI Mode Parsing ──────────────────────────────────────────────────
-
-function parseAiMode(body) {
-  const lower = body.toLowerCase().replace(/\s+/g, ' ').trim();
-  if (lower === '!aimode 0' || lower === '!aimode off' || lower === '!aimode0' || lower === '!aimodeoff') return 0;
-  if (lower === '!aimode 1' || lower === '!aimode1' || lower === '!aimode on') return 1;
-  if (lower === '!aimode 2' || lower === '!aimode2') return 2;
-  return null;
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────
@@ -350,6 +331,19 @@ async function main() {
 
   logger.info('Bot', `AI mode: ${['off', 'Bima', 'NDXStore'][settings.aiMode] || 'unknown'}`);
 
+  // Dashboard localhost — inject akses blocklist + kirim pesan WA.
+  initDashboard({
+    getBlocked: () => [...blockedUsers],
+    setBlocked: (jid, on) => { if (on) blockedUsers.add(jid); else blockedUsers.delete(jid); },
+    saveBlocked: () => saveBlockedUsers(),
+    sendWaMessage: (jid, text) => {
+      const cl = getCurrentClient();
+      if (!cl?.info?.wid) throw new Error('WhatsApp belum terhubung');
+      return cl.sendMessage(jid, text);
+    },
+  });
+  logger.info('Bot', `Panel admin: http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${PORT}/admin`);
+
   setOnMaxReconnect(() => shutdown('MaxReconnect'));
 
   function setupMessageHandler(c) {
@@ -389,208 +383,21 @@ async function main() {
         // ── Blocked Users ──
         if (!isAdmin && blockedUsers.has(senderJid)) return;
 
-        // ── Admin Commands ──
-        if (msg.fromMe || isAdmin) {
-          // Comprehensive help listing all commands
-          if (body === '!help' || body === '!helpall') {
-            await msg.reply(
-              `📋 *BOT COMMANDS*\n━━━━━━━━━━━━━━━━━━━\n` +
-              `*AI & Chat*\n` +
-              `!aimode — lihat mode\n` +
-              `!aimode 0|1|2 — set mode\n` +
-              `!aireset — reset history\n` +
-              `!aimodesetting — lihat setting\n` +
-              `!aimodesetting jd — toggle jawab duluan\n` +
-              `!aimodesetting unigroup — toggle ungroup\n` +
-               `!history [n] — riwayat chat\n` +
-               `!clear <n> — hapus n pesan bot\n` +
-               `!loglevel [level] — lihat/set log level\n` +
-               `*Security*\n` +
-               `!block — blokir user\n` +
-               `!unblock — buka blokir\n` +
-               `*Messaging*\n` +
-               `!reply 628xxx <pesan> — kirim pesan\n` +
-               `!groupid — tampilkan ID grup\n` +
-               `*API NDXStore*\n` +
-               `!help — lihat command API\n` +
-               `!stats — statistik\n` +
-               `!orders — 5 order terbaru\n` +
-               `!pending [game] — order pending\n` +
-               `!detail NDX-xxxx — detail order\n` +
-               `!status NDX-xxxx STATUS — update status\n` +
-               `━━━━━━━━━━━━━━━━━━━`
-            );
-            return;
-          }
-          // Aimode with flexible parsing
-          const aimodeVal = parseAiMode(body);
-          if (aimodeVal !== null) {
-            settings.aiMode = aimodeVal;
-            if (aimodeVal === 0) {
-              clearHistoryExcept(senderJid);
-              await msg.reply('Nonaktif');
-            } else {
-              clearHistoryExcept(senderJid);
-              await msg.reply(aimodeVal === 1 ? 'Bima aktif' : 'NDXStore AI aktif');
-            }
-            await flushSettings();
-            return;
-          }
-
-          if (body === '!aimode') {
-            await msg.reply(
-              `Mode skrg: ${settings.aiMode === 0 ? 'Nonaktif' : settings.aiMode === 1 ? 'Bima (1)' : 'NDXStore (2)'}\n` +
-              `Gunakan: !aimode 1 (Bima), !aimode 2 (NDXStore), !aimode 0 (nonaktif)`
-            );
-            return;
-          }
-
-          if (body === '!aireset') {
-            clearHistory(senderJid);
-            await msg.reply('Riwayat chat direset');
-            return;
-          }
-
-          // !clear — batch fetch & delete bot messages
-          const clearMatch = body.match(/^!clear\s+(\d+)$/i);
-          if (clearMatch) {
-            const num = parseInt(clearMatch[1]);
-            if (num < 1 || num > 50) { await msg.reply('Jumlah: 1-50'); return; }
-            try {
-              const chat = await c.getChatById(msg.from);
-              // Fetch with fromMe filter when available, fallback to batch
-              let botMsgs = [];
-              try {
-                  botMsgs = await chat.fetchMessages({ limit: num, fromMe: true });
-                } catch {
-                  let total = 100;
-                  while (botMsgs.length < num && total <= 200) {
-                    const msgs = await chat.fetchMessages({ limit: total });
-                    botMsgs = msgs.filter(m => m.fromMe).slice(0, num);
-                    total += 50;
-                  }
-                }
-              if (!botMsgs.length) { await msg.reply('Gak ada pesan bot.'); return; }
-              let ok = 0, fail = 0, old = 0;
-              for (const m of botMsgs) {
-                try {
-                  await m.delete(true);
-                  ok++;
-                } catch {
-                  // Retry: delete for myself only (older messages)
-                  try { await m.delete(false); ok++; old++; }
-                  catch { fail++; }
-                }
-              }
-              let summary = `🧹 ${ok} terhapus`;
-              if (old) summary += ` (${old} lokal)`;
-              if (fail) summary += `, ${fail} gagal`;
-              await msg.reply(summary);
-            } catch (e) {
-              await msg.reply('Gagal membersihkan pesan');
-            }
-            return;
-          }
-
-          // Settings
-          if (body.startsWith('!loglevel')) {
-            const level = body.slice(9).trim();
-            if (!level) {
-              await msg.reply(`Log level saat ini: ${getLogLevel()}. Opsi: error, warn, info, debug`);
+        // ── Admin → user relay (handover CS) ──
+        // Konfigurasi bot HANYA via panel localhost (/admin), bukan via chat.
+        if ((isAdmin || msg.fromMe) && msg.hasQuotedMsg) {
+          try {
+            const forwarded = await handleAdminReply(c, msg);
+            if (forwarded) {
+              await msg.reply('Balasan terkirim ke user.');
               return;
             }
-            if (setLogLevel(level)) {
-              await msg.reply(`Log level → ${level}`);
-            } else {
-              await msg.reply(`Level invalid. Opsi: error, warn, info, debug`);
-            }
+          } catch (e) {
+            logger.error('AdminReply', 'Gagal reply:', e.message);
+            await msg.reply('Gagal mengirim balasan. Coba lagi.');
             return;
-          }
-
-          if (body === '!aimodesetting') {
-            await msg.reply(
-              `Jawab duluan: ${settings.jawabDuluan ? 'ON' : 'OFF'} | ` +
-              `Ungroup: ${settings.ungroup ? 'ON (hanya di mention/reply)' : 'OFF (bales semua pesan grup)'}\n` +
-              `Gunakan: !aimodesetting jd, !aimodesetting unigroup`
-            );
-            return;
-          }
-          if (body === '!aimodesetting jd') {
-            settings.jawabDuluan = !settings.jawabDuluan;
-            await flushSettings();
-            await msg.reply(`Jawab duluan ${settings.jawabDuluan ? 'ON' : 'OFF'}`);
-            return;
-          }
-          if (body === '!aimodesetting ungroup' || body === '!aimodesetting unigroup' || body === '!aimodesetting uningroup') {
-            settings.ungroup = !settings.ungroup;
-            await flushSettings();
-            await msg.reply(`Ungroup ${settings.ungroup ? 'ON — bales kalo di mention/di-reply aja' : 'OFF — bales semua pesan grup'}`);
-            return;
-          }
-
-          // ── History ──
-          if (body.startsWith('!history') && isAdmin) {
-            const limitNum = parseInt(body.replace(/[^0-9]/g, ''), 10);
-            const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 10) : 10;
-            const history = await getChatHistory(limit);
-            if (!history?.length) return await msg.reply('Riwayat chat kosong.');
-            let reply = `RIWAYAT CHAT (${history.length})\n━━━━━━━━━━━━━━\n`;
-            for (const h of history.slice(0, 10)) {
-              reply += `\nUser: ${h.user_number?.replace(/@.*/, '')}\nPesan: ${(h.content || '').slice(0, 50)}${h.content?.length > 50 ? '...' : ''}\nWaktu: ${formatTime(h.created_at)}\n━━━━━━━━━━━━━━`;
-            }
-            await msg.reply(reply);
-            return;
-          }
-
-          if (body.startsWith('!')) {
-            const handled = await handleAdminCommand(c, msg, body);
-            if (handled) return;
-          }
-
-          // !reply (admin only)
-          if (body.startsWith('!reply ') && isAdmin) {
-            const rest = body.slice(7).trim();
-            const spaceIdx = rest.indexOf(' ');
-            if (spaceIdx <= 0 || !rest.slice(spaceIdx + 1).trim()) {
-              await msg.reply('Format: !reply [nomor] [pesan]\nContoh: !reply 628xxxxxxxxx Halo kak');
-              return;
-            }
-            const rawNumber = rest.slice(0, spaceIdx).trim();
-            const replyText = rest.slice(spaceIdx + 1).trim();
-            if (replyText.length < 5) {
-              await msg.reply('Pesan terlalu pendek (min. 5 karakter).');
-              return;
-            }
-            if (rawNumber === config.adminNumber.replace(/[^0-9]/g, '')) {
-              await msg.reply('Tidak bisa !reply ke nomor sendiri.');
-              return;
-            }
-            const target = formatWaNumber(rawNumber);
-            if (!target) {
-              await msg.reply('Nomor tujuan tidak valid. Format: 628xxx');
-              return;
-            }
-            await c.sendMessage(target, `Pesan dari Admin:\n\n${replyText}`);
-            await msg.reply('Pesan terkirim.');
-            return;
-          }
-
-          // Admin reply via quoted message
-          if (isAdmin && msg.hasQuotedMsg) {
-            try {
-              const forwarded = await handleAdminReply(c, msg);
-              if (forwarded) {
-                await msg.reply('Balasan terkirim ke user.');
-                return;
-              }
-            } catch (e) {
-              logger.error('AdminReply', 'Gagal reply:', e.message);
-              await msg.reply('Gagal mengirim balasan. Coba lagi.');
-              return;
-            }
           }
         }
-        if (isAdmin) return;
 
         // ── Welcome new users (DM only, only when AI is off) ──
         if (!msg.fromMe && !msg.from?.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
