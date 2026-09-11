@@ -1,7 +1,7 @@
 import http from 'http';
 import os from 'os';
 import { config } from './config.js';
-import { createClient, getCurrentClient, getLatestQr, detectBrowser, setOnMaxReconnect, setOnReady, initWithRetry, startConnectionMonitor, getConnectionState } from './client.js';
+import { createClient, getCurrentClient, getLatestQr, getLatestPairingCode, detectBrowser, setOnMaxReconnect, setOnReady, initWithRetry, startConnectionMonitor, getConnectionState } from './client.js';
 import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
@@ -14,6 +14,7 @@ import { settings, loadSettings, saveSettings, flushSettings } from './services/
 import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
 import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
+import { isViewOnceMessage, saveViewOnceMedia } from './utils/viewOnce.js';
 import { startLiveDataRefresh } from './services/liveData.js';
 import { logger, setLogLevel, getLogLevel, createLogger } from './utils/logger.js';
 
@@ -117,13 +118,26 @@ const healthApp = http.createServer(async (req, res) => {
     return;
   }
 
-  // First-run login on a headless host — scan the pending QR from a browser.
+  // First-run login on a headless host — scan QR atau pakai pairing code dari browser.
+  if (url === '/code') {
+    const pairing = getLatestPairingCode();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(pairing
+      ? { code: pairing.code, generatedAt: pairing.generatedAt }
+      : { code: null, hint: 'Belum ada kode. Isi PAIRING_NUMBER di .env lalu restart, atau login via QR di /qr.' }));
+    return;
+  }
+
   if (url === '/qr') {
+    const pairing = getLatestPairingCode();
     const qr = getLatestQr();
     const connected = getCurrentClient()?.info?.wid?.user ? true : false;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     if (connected) {
       res.end('<h2>✅ WhatsApp sudah terhubung.</h2>');
+    } else if (pairing) {
+      const pretty = String(pairing.code).replace(/(.{4})(.{4})/, '$1-$2');
+      res.end(`<html><body style="text-align:center;font-family:sans-serif"><h2>Kode Pairing WhatsApp</h2><p style="font-size:48px;letter-spacing:8px;font-weight:bold">${pretty}</p><p>WA → Perangkat Tertaut → Tautkan dengan nomor telepon → masukkan kode di atas.<br>Kode refresh otomatis tiap ±3 menit. Halaman auto-refresh 20 detik.</p><script>setTimeout(()=>location.reload(),20000)</script></body></html>`);
     } else if (qr) {
       const img = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qr)}`;
       res.end(`<html><body style="text-align:center;font-family:sans-serif"><h2>Scan di WhatsApp → Perangkat Tertaut</h2><img src="${img}" alt="QR"><p>Auto-refresh 20 detik.</p><script>setTimeout(()=>location.reload(),20000)</script></body></html>`);
@@ -144,6 +158,8 @@ const healthApp = http.createServer(async (req, res) => {
       totalCalls: metrics.calls,
       totalErrors: metrics.errors,
       avgResponseTimeMs: avgTime,
+      promptTokens: metrics.promptTokens || 0,
+      completionTokens: metrics.completionTokens || 0,
       byModel: metrics.byModel,
     }));
     return;
@@ -210,6 +226,49 @@ async function checkOrders(msg, username) {
   }
 }
 
+// ─── Auto-resolve cek (tanpa AI, hemat kuota) ────────────────────────────
+// Dipanggil saat AI mode AKTIF dan user ketik "cek [username]" atau
+// "cek [TX-/NDX-xxxx]". Jawaban diformat langsung dari API NDXStore —
+// nol API call ke AI. Return true = sudah ditangani, skip AI.
+async function autoResolveCek(msg, query) {
+  const q = (query || '').trim();
+  if (!q) return false;
+  try {
+    const idMatch = q.match(/^(?:TX|TXN|NDX)-[A-Z0-9]+$/i);
+    if (idMatch) {
+      const orderId = idMatch[0].toUpperCase();
+      const resp = await fetch(`${config.apiBase}/api/transaction/${encodeURIComponent(orderId)}`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!resp.ok) {
+        await msg.reply(`Order *${orderId}* tidak ditemukan kak. Cek lagi ID-nya ya.`);
+        return true;
+      }
+      const data = await resp.json();
+      const t = data?.transaction;
+      if (!t) {
+        await msg.reply(`Order *${orderId}* tidak ditemukan kak.`);
+        return true;
+      }
+      const status = t.orderStatus || t.order_status || t.paymentStatus || t.payment_status || '-';
+      await msg.reply(
+        `Order ${t.id}\n━━━━━━━━━━━━━━\n` +
+        `Produk: ${t.productName || t.product_name || '-'}\n` +
+        `Harga: ${formatPrice(t.priceIdr ?? t.price_idr)}\n` +
+        `Status: ${status}\n` +
+        `Waktu: ${formatTime(t.createdAt || t.created_at)}`
+      );
+      return true;
+    }
+    await checkOrders(msg, q);
+    return true;
+  } catch (e) {
+    logger.error('AutoCek', e.message?.slice(0, 120));
+    await msg.reply('Gagal cek order kak, coba lagi sebentar ya.');
+    return true;
+  }
+}
+
 // ─── Chat History ──────────────────────────────────────────────────────
 
 async function getChatHistory(limit = 20) {
@@ -256,6 +315,7 @@ async function main() {
   logger.info('Bot', `Group ID: ${config.groupId || '(not set)'}`);
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
+  logger.info('Bot', config.pairingNumber ? `Login: pairing code (${config.pairingNumber})` : 'Login: scan QR');
 
   const heartbeatMs = parseInt(process.env.LOG_HEARTBEAT_MS || '300000', 10);
   if (heartbeatMs > 0) logger.startHeartbeat(heartbeatMs);
@@ -633,6 +693,14 @@ async function main() {
           }
         }
 
+        // ── Auto-resolve: "cek [username/id]" dijawab langsung dari API ──
+        // (nol API call ke AI). Di grup ungroup-mode, hanya jika mention/reply.
+        const cekArg = body.match(/^cek\s+(.+)$/i)?.[1]?.trim();
+        if (cekArg && (!isGroup || isGroupDirect || !settings.ungroup)) {
+          await autoResolveCek(msg, cekArg);
+          return;
+        }
+
         const historyJid = isGroup ? msg.from : senderJid;
         const senderName = isGroup ? senderJid.split('@')[0] : null;
 
@@ -647,8 +715,36 @@ async function main() {
 
         // ── Media handling ──
         let mediaImage = null;
+        let mediaHandled = false;
 
-        if (msg.hasMedia && msg.type !== 'sticker') {
+        // View-once (gambar/video sekali lihat): unduh TEPAT SEKALI (akses
+        // hangus setelah dibuka), simpan ke ./downloads, teruskan ke AI.
+        if (msg.hasMedia && isViewOnceMessage(msg) && msg.type !== 'sticker') {
+          mediaHandled = true;
+          const voMedia = await msg.downloadMedia().catch(() => null);
+          if (voMedia?.data) {
+            const savedPath = await saveViewOnceMedia(voMedia, senderJid);
+            logger.info('ViewOnce', `Downloaded ${voMedia.mimetype} from ${senderJid}${savedPath ? ` → ${savedPath}` : ''}`);
+            const mime = voMedia.mimetype || '';
+            const caption = body ? ` ${body}` : '';
+            if (mime.startsWith('image/')) {
+              mediaImage = { data: voMedia.data, mime };
+              body = `[Gambar sekali lihat]${caption}`;
+            } else if (mime.startsWith('video/')) {
+              const vtext = await transcribeAudio(voMedia.data, mime);
+              body = vtext
+                ? `[Video sekali lihat]${caption}\n\n[Transkripsi: ${vtext}]`
+                : `[Video sekali lihat]${caption}\n\n(Tidak ada audio/transkripsi)`;
+            } else {
+              body = `[File sekali lihat: ${mime || 'unknown'}]${caption}`;
+            }
+          } else {
+            body = body || '[Media sekali lihat sudah dibuka / tidak bisa diunduh]';
+            logger.warn('ViewOnce', `Download failed (sudah dibuka?) from ${senderJid}`);
+          }
+        }
+
+        if (msg.hasMedia && msg.type !== 'sticker' && !mediaHandled) {
           if (msg.type === 'ptt' || msg.type === 'audio') {
             // Voice note / audio → transcribe with Whisper
             const feedbackText = settings.aiMode === 2 ? 'saya simak dulu ya kak...' : 'dengerin...';
@@ -680,7 +776,8 @@ async function main() {
         }
 
         // Sticker & image → prepare for vision AI
-        if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker')) {
+        // (skip kalau view-once sudah diunduh di atas — unduhan kedua pasti gagal)
+        if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker') && !mediaHandled) {
           const media = await msg.downloadMedia().catch(() => null);
           if (media) mediaImage = { data: media.data, mime: media.mimetype };
         }

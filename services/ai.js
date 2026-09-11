@@ -145,7 +145,7 @@ function getPrompt(mode) {
 
 // ─── Metrics (D3) ─────────────────────────────────────────────────────
 
-const AI_METRICS = { calls: 0, errors: 0, byModel: {}, responseTimes: [] };
+const AI_METRICS = { calls: 0, errors: 0, promptTokens: 0, completionTokens: 0, byModel: {}, responseTimes: [] };
 
 export function getAiMetrics() {
   return AI_METRICS;
@@ -159,6 +159,21 @@ function trackMetric(model, elapsedMs, ok) {
   if (!ok) AI_METRICS.byModel[model].errors++;
   AI_METRICS.responseTimes.push(elapsedMs);
   if (AI_METRICS.responseTimes.length > 1000) AI_METRICS.responseTimes.shift();
+}
+
+// Token usage accounting — Groq/OpenAI-compatible endpoints return `usage`
+// ({prompt_tokens, completion_tokens}). Pollinations tidak selalu kasih.
+function trackUsage(model, usage) {
+  if (!usage) return;
+  const p = Number(usage.prompt_tokens) || 0;
+  const c = Number(usage.completion_tokens) || 0;
+  if (!p && !c) return;
+  AI_METRICS.promptTokens += p;
+  AI_METRICS.completionTokens += c;
+  if (!AI_METRICS.byModel[model]) AI_METRICS.byModel[model] = { calls: 0, errors: 0 };
+  const m = AI_METRICS.byModel[model];
+  m.promptTokens = (m.promptTokens || 0) + p;
+  m.completionTokens = (m.completionTokens || 0) + c;
 }
 
 // ─── Unnatural word filter (A4) ────────────────────────────────────────
@@ -228,12 +243,46 @@ function naturalize(text) {
 
 // ─── Fast-path responses (no API call) ─────────────────────────────────
 
-// Ultra-fast test commands only — everything else goes through AI for human-like replies
+// Ultra-fast filler words — dijawab instan tanpa API call.
+// Netral untuk kedua persona (Bima & CS).
 const FAST_REPLIES = new Map([
   ['p', 'p'],
   ['test', 'ok'],
   ['ping', 'pong'],
   ['tes', 'ok'],
+  // acknowledgement
+  ['ok', 'sip'],
+  ['oke', 'sip'],
+  ['okey', 'sip'],
+  ['okay', 'sip'],
+  ['okee', 'sip'],
+  ['okke', 'sip'],
+  ['okei', 'sip'],
+  ['sip', 'sip'],
+  ['sipp', 'sip'],
+  ['siap', 'siap'],
+  // laughter
+  ['hehe', 'wkwk'],
+  ['haha', 'wkwk'],
+  ['hihi', 'wkwk'],
+  ['huhu', 'wkwk'],
+  ['wkwk', 'wkwk'],
+  ['wkwkwk', 'wkwk'],
+  // thanks
+  ['makasih', 'sama-sama'],
+  ['makasi', 'sama-sama'],
+  ['thanks', 'sama-sama'],
+  ['thankyou', 'sama-sama'],
+  ['thx', 'sama-sama'],
+  ['trims', 'sama-sama'],
+  // confused ack — user butuh prompt lanjutan
+  ['oh', 'ya?'],
+  ['ohh', 'ya?'],
+  ['ohhh', 'ya?'],
+  ['ooh', 'ya?'],
+  ['nah', 'ya?'],
+  ['hmm', 'ya?'],
+  ['hmmm', 'ya?'],
 ]);
 
 // ─── Conversation history ──────────────────────────────────────────────
@@ -479,6 +528,140 @@ function sanitizeInput(text) {
   return (text || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').slice(0, 4000);
 }
 
+// ─── Duplicate suppression — redelivery WA / spam pesan identik ──────────
+
+const recentInputs = new Map(); // jid -> { text, ts }
+const DEDUP_WINDOW_MS = 15000;
+const DEDUP_MAX = 500;
+
+setInterval(() => {
+  const cutoff = Date.now() - DEDUP_WINDOW_MS;
+  for (const [jid, entry] of recentInputs) {
+    if (entry.ts < cutoff) recentInputs.delete(jid);
+  }
+  while (recentInputs.size > DEDUP_MAX) {
+    const oldest = recentInputs.keys().next().value;
+    recentInputs.delete(oldest);
+  }
+}, 30000).unref();
+
+export function isDuplicate(jid, text) {
+  const norm = (text || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  if (!norm) return false;
+  const prev = recentInputs.get(jid);
+  const now = Date.now();
+  if (prev && prev.text === norm && now - prev.ts < DEDUP_WINDOW_MS) return true;
+  recentInputs.set(jid, { text: norm, ts: now });
+  return false;
+}
+
+// ─── Gibberish filter — hemat kuota API untuk pesan tanpa makna ───────────
+
+export function isIgnorable(text) {
+  const t = (text || '').trim();
+  if (!t) return true;
+  if (t.length === 1) return true;
+  // Buang emoji + tanda baca; kalau tak ada huruf/angka tersisa → ignorable
+  const stripped = t
+    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\u200D\u2640\u2642\u2690-\u2691]/gu, '')
+    .replace(/[^a-zA-Z0-9\u00C0-\u024F\u1E00-\u1EFF\u0600-\u06FF\u3040-\u30FF\uAC00-\uD7AF\u0E00-\u0E7F\u4E00-\u9FFF\u0400-\u04FF]/g, '')
+    .trim();
+  if (!stripped) return true;
+  // Satu karakter diulang >60% (mis. "wkwkwkwk"→ w dominan? tidak — cek proporsi)
+  const counts = Object.create(null);
+  const lower = stripped.toLowerCase();
+  for (const ch of lower) counts[ch] = (counts[ch] || 0) + 1;
+  const top = Math.max(...Object.values(counts));
+  if (lower.length >= 4 && top / lower.length > 0.6) return true;
+  return false;
+}
+
+// ─── Sentiment escalation — user marah diarahkan ke CS manusia ────────────
+// Pesan marah PERTAMA tetap ditangani AI (minta maaf natural). Kalau user
+// marah 2x dalam 10 menit → langsung arahkan ke CS, tanpa bakar API call.
+
+const ANGRY_KW = /\b(marah|kesal|kesel|emosi|gila|parah|tipu|scam|penipu|bohong|komplain|kecewa|refund|kembaliin|lapor|polisi|viral|jelek|buruk|bodoh|tolol|goblok|anjing|bangsat|kampret|bajingan|brengsek|lama banget|gak jelas|ga jelas|nggak jelas|nyebelin|nyesel|kapok|ogah|batalin|batal aja|sampah|payah|lelet|lemot)\b/i;
+
+const angryTrack = new Map(); // jid -> { count, windowStart }
+const ANGRY_WINDOW_MS = 10 * 60 * 1000;
+const ANGRY_THRESHOLD = 2;
+const ANGRY_MAX = 500;
+
+setInterval(() => {
+  const cutoff = Date.now() - ANGRY_WINDOW_MS;
+  for (const [jid, entry] of angryTrack) {
+    if (entry.windowStart < cutoff) angryTrack.delete(jid);
+  }
+}, 60000).unref();
+
+export function detectAngry(text) {
+  return ANGRY_KW.test(text || '');
+}
+
+function trackAngry(jid) {
+  const now = Date.now();
+  let e = angryTrack.get(jid);
+  if (!e || now - e.windowStart > ANGRY_WINDOW_MS) e = { count: 0, windowStart: now };
+  e.count++;
+  angryTrack.set(jid, e);
+  while (angryTrack.size > ANGRY_MAX) {
+    const oldest = angryTrack.keys().next().value;
+    angryTrack.delete(oldest);
+  }
+  return e.count;
+}
+
+function escalationReply(mode = 1) {
+  return mode === 2
+    ? 'Mohon maaf banget kak atas pengalamannya. Biar langsung ditangani, ketik "cs" ya kak — admin kami akan bantu.'
+    : 'wah kayaknya ini mending langsung ke admin aja. ketik "cs" ya, ntar disambungin.';
+}
+
+// ─── Context-aware fallback — semua endpoint AI down ─────────────────────
+// Tetap kasih jawaban berguna sesuai intent, bukan sekadar "lagi error".
+
+const FALLBACK_ORDER_KW = /\b(cek|order|pesanan|status|transaksi|kapan|mana|sampe|sampai|nyampe|pending|refund|bayar|transfer|proses|diamond|robux)\b/i;
+const FALLBACK_PRICE_KW = /\b(harga|price|berapa|brp|list|katalog|produk|joki|beli|murah)\b/i;
+const FALLBACK_HUMAN_KW = /\b(cs|admin|manusia|orang|komplain|bantu|tolong)\b/i;
+
+export function getFallbackReply(text, mode = 1) {
+  const cs = mode === 2;
+  if (FALLBACK_HUMAN_KW.test(text)) {
+    return cs
+      ? 'Mohon maaf kak, sistem kami sedang gangguan. Ketik "cs" ya kak untuk langsung dibantu admin.'
+      : 'duh lagi error nih. ketik "cs" aja ya, biar admin yang bantu langsung.';
+  }
+  // PRICE dicek dulu: "berapa harga diamond" adalah intent harga, bukan status.
+  if (FALLBACK_PRICE_KW.test(text)) {
+    return cs
+      ? 'Mohon maaf kak, sistem sedang gangguan. Harga terbaru bisa dicek di ndxstoreid.vercel.app ya kak.'
+      : 'duh lagi error. harga terbaru cek di ndxstoreid.vercel.app aja ya.';
+  }
+  if (FALLBACK_ORDER_KW.test(text)) {
+    return cs
+      ? 'Mohon maaf kak, sistem sedang gangguan. Untuk cek status, ketik "cek [username]" ya kak.'
+      : 'duh lagi error. coba ketik "cek [username]" aja dulu buat liat status order.';
+  }
+  return cs
+    ? 'Mohon maaf kak, sistem kami sedang gangguan. Coba lagi sebentar ya, atau ketik "cs" untuk dibantu admin.'
+    : 'Maaf, lagi error nih. Coba lagi ya ntar.';
+}
+
+// ─── Time grounding — hari/tanggal/jam WIB + jam layanan toko ─────────────
+export function getTimeContext() {
+  try {
+    const when = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric',
+      month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date());
+    const h = Number(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jakarta', hour: 'numeric', hour12: false,
+    }).format(new Date()));
+    const open = h >= 8 && h < 22;
+    return `SEKARANG: ${when} WIB. Jam layanan CS 08.00-22.00 (${open ? 'BUKA' : 'TUTUP — admin slow respon, jangan janjiin respon cepat'}).`;
+  } catch { return ''; }
+}
+
 // ─── Response cache (LRU, invalidated when store context refreshes) ─────
 
 const responseCache = new Map();
@@ -587,7 +770,7 @@ const TIER_TIMEOUTS = {
 
 // ─── AI fetch ──────────────────────────────────────────────────────────
 
-async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
+async function tryFetch(url, body, headers = {}, timeoutMs = 20000, signal = null) {
   const model = body?.model || 'unknown';
   const key = trackEndpointKey(url, model);
 
@@ -597,11 +780,13 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
   }
 
   const doFetch = async (timeout) => {
+    const timeoutSignal = AbortSignal.timeout(timeout);
+    const combined = signal ? AbortSignal.any([timeoutSignal, signal]) : timeoutSignal;
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...UA_HEADERS, ...headers },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeout),
+      signal: combined,
     });
     return resp;
   };
@@ -620,13 +805,13 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
           try {
             resp = await doFetch(timeoutMs);
           } catch {
-            markEndpointFailure(key);
+            if (!signal?.aborted) markEndpointFailure(key);
             return null;
           }
           if (resp.ok) {
             const data = await resp.json();
             const content = data?.choices?.[0]?.message?.content?.trim();
-            if (content) markEndpointSuccess(key);
+            if (content) { markEndpointSuccess(key); trackUsage(model, data?.usage); }
             return content || null;
           }
           if (resp.status !== 429) break;
@@ -647,13 +832,13 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
         try {
           resp = await doFetch(timeoutMs);
         } catch {
-          markEndpointFailure(key);
+          if (!signal?.aborted) markEndpointFailure(key);
           return null;
         }
         if (resp.ok) {
           const data = await resp.json();
           const content = data?.choices?.[0]?.message?.content?.trim();
-          if (content) markEndpointSuccess(key);
+          if (content) { markEndpointSuccess(key); trackUsage(model, data?.usage); }
           return content || null;
         }
       }
@@ -670,8 +855,12 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000) {
       return null;
     }
     markEndpointSuccess(key);
+    trackUsage(model, data?.usage);
     return content;
   } catch (e) {
+    // Dibatalkan karena endpoint lain sudah menang race — bukan failure, jangan
+    // kotori circuit breaker.
+    if (signal?.aborted) return null;
     const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout') || e.message?.includes('ETIMEDOUT');
     const label = isTimeout ? 'TIMEOUT' : 'ERROR';
     throttleLog('warn', 'AI', `fetch-err-${model}`, `${url} (${model}) ${label}: ${e.message?.slice(0, 100)}`, 10000);
@@ -771,7 +960,7 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
   else if (userWords <= 10) styleTarget = `\n📐 USER NGEKETIK SEDANG (${userWords} kata). Jawab 1-2 kalimat pendek.`;
   else styleTarget = `\n📐 USER NGEKETIK PANJANG (${userWords} kata). Jawab natural, maks 2 kalimat.`;
 
-  const msgs = [{ role: 'system', content: [prompt, store, ctx, langInstr, chatInstr, styleTarget, timeGap, LANG_HINTS[lang] || ''].filter(Boolean).join('\n') }];
+  const msgs = [{ role: 'system', content: [prompt, store, ctx, langInstr, chatInstr, styleTarget, timeGap, getTimeContext(), LANG_HINTS[lang] || ''].filter(Boolean).join('\n') }];
   const compressed = compressHistory(userHist);
   for (const m of compressed) msgs.push(m);
   msgs.push({ role: 'user', content: filterInput(message) });
@@ -803,10 +992,34 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 
   const clean = sanitizeInput(message);
 
+  // Anti-duplikat: redelivery WA / spam pesan sama dalam 15 detik → skip
+  // (jawaban untuk pesan itu sudah dikirim / sedang diproses).
+  if (isDuplicate(jid, clean)) {
+    logger.debug('AI', 'Skipping duplicate message');
+    return null;
+  }
+
   const fast = detectGreeting(clean);
   if (fast) {
     saveExchange(jid, message, fast, senderName, isGroup);
     return fast;
+  }
+
+  // Gibberish / emoji-only / 1 karakter → skip tanpa bakar kuota API.
+  if (isIgnorable(clean)) {
+    logger.debug('AI', 'Skipping ignorable message');
+    return null;
+  }
+
+  // User marah berulang (2x dalam 10 menit) → arahkan ke CS manusia.
+  if (detectAngry(clean)) {
+    const angryCount = trackAngry(jid);
+    if (angryCount >= ANGRY_THRESHOLD) {
+      const esc = escalationReply(mode);
+      logger.info('AI', `Escalating ${jid} to CS (angry x${angryCount})`);
+      saveExchange(jid, message, esc, senderName, isGroup);
+      return esc;
+    }
   }
 
   const cached = getCached(clean, mode);
@@ -833,16 +1046,21 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   let usedModel = 'unknown';
   const startTime = Date.now();
 
-  // Parallel race ALL tiers (B1)
+  // Smart routing: pertanyaan faktual (harga/status/order) dijawab akurat oleh
+  // model kecil & cepat — 70b dilewati untuk hemat kuota. Chat bebas memakai
+  // semua tier demi latensi terbaik.
+  const wantsFactual = FACTUAL_KW.test(clean);
   const candidates = [];
   if (config.groqKey?.startsWith('gsk_')) {
-    candidates.push({
-      model: 'llama-3.3-70b-versatile',
-      url: groqUrl,
-      body: { model: 'llama-3.3-70b-versatile', ...opts },
-      headers: groqHeaders,
-      timeout: TIER_TIMEOUTS.groq70b,
-    });
+    if (!wantsFactual) {
+      candidates.push({
+        model: 'llama-3.3-70b-versatile',
+        url: groqUrl,
+        body: { model: 'llama-3.3-70b-versatile', ...opts },
+        headers: groqHeaders,
+        timeout: TIER_TIMEOUTS.groq70b,
+      });
+    }
     candidates.push({
       model: 'llama-3.1-8b-instant',
       url: groqUrl,
@@ -870,9 +1088,14 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
     });
   }
 
-  // Fire all in parallel, take the first one that resolves
-  const raced = candidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout).then(r => ({ reply: r, model: m.model })));
+  // Race: yang pertama SUKSES menang, yang kalah langsung di-abort supaya tidak
+  // makan kuota API sia-sia. Gagal/null di-reject agar Promise.any menunggu
+  // kandidat sukses berikutnya, bukan berhenti di kegagalan tercepat.
+  const aborter = new AbortController();
+  const raced = candidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal)
+    .then(r => r ? { reply: r, model: m.model } : Promise.reject(new Error('empty'))));
   const winner = await Promise.any(raced).catch(() => null);
+  aborter.abort();
   if (winner?.reply) {
     reply = winner.reply;
     usedModel = winner.model;
@@ -947,11 +1170,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 
   logger.error('AI', 'All endpoints failed for', jid);
   trackMetric(usedModel, elapsed, false);
-  // Circuit breaker feedback (B2)
-  const hasCircuitOpen = [...FAILED_ENDPOINTS.values()].some(e => e.count >= CB_THRESHOLD);
-  return hasCircuitOpen
-    ? 'Maaf, lagi error nih. Kemungkinan server AI-nya lagi down. Coba lagi nanti ya.'
-    : 'Maaf, lagi error nih. Coba lagi ya ntar.';
+  return getFallbackReply(clean, mode);
 }
 
 // ─── Image AI ──────────────────────────────────────────────────────────
@@ -1057,8 +1276,10 @@ export async function askAIProactive(order, mode = 1) {
     candidates.push({ url: `${backupBase}/chat/completions`, body: { model: 'openai-fast', ...opts }, headers: {}, timeout: 10000 });
   }
 
-  const raced = candidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout));
+  const aborter = new AbortController();
+  const raced = candidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal));
   const result = await Promise.any(raced.map(p => p.then(r => r ? r : Promise.reject()))).catch(() => null);
+  aborter.abort();
   if (result) return result;
 
   return PROACTIVE_FALLBACK[mode] || PROACTIVE_FALLBACK[1];

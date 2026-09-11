@@ -4,6 +4,7 @@ import fsp from 'fs/promises';
 import fs from 'fs';
 import path from 'path';
 import { logger } from './utils/logger.js';
+import { config } from './config.js';
 const { Client, LocalAuth } = ww;
 
 const MAX_RECONNECT_ATTEMPTS = 20;
@@ -21,11 +22,21 @@ let onReadyCallback = null;
 let onMaxReconnect = null;
 let currentClientRef = null;
 let latestQr = null;
+let latestPairingCode = null;
+let latestPairingCodeTs = 0;
 let connectionState = 'init';
 let wasReady = false;
 
 export function getLatestQr() {
   return latestQr;
+}
+
+// Pairing code login (alternatif scan QR). Kode 8 karakter, refresh otomatis
+// tiap ±3 menit oleh whatsapp-web.js. Berlaku saat PAIRING_NUMBER diisi dan
+// belum ada sesi tersimpan.
+export function getLatestPairingCode() {
+  if (!latestPairingCode) return null;
+  return { code: latestPairingCode, generatedAt: latestPairingCodeTs };
 }
 
 export async function detectBrowser() {
@@ -182,6 +193,11 @@ async function createClientCore() {
   const c = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
     puppeteer: puppeteerConfig,
+    // Pairing-code login: kalau PAIRING_NUMBER diisi, WA Web memakai kode
+    // 8 karakter (event 'code') sebagai pengganti QR. Tanpa ini → QR biasa.
+    ...(config.pairingNumber
+      ? { pairWithPhoneNumber: { phoneNumber: config.pairingNumber, showNotification: true } }
+      : {}),
   });
 
   connectionState = 'connecting';
@@ -194,14 +210,23 @@ async function createClientCore() {
     }
   });
 
+  c.on('code', (code) => {
+    latestPairingCode = code;
+    latestPairingCodeTs = Date.now();
+    const pretty = String(code).replace(/(.{4})(.{4})/, '$1-$2');
+    logger.info('WA', `Pairing code: ${pretty} — masukkan di WA → Perangkat Tertaut → Tautkan dgn nomor telepon (atau buka /qr)`);
+  });
+
   c.on('authenticated', () => {
     latestQr = null;
+    latestPairingCode = null;
     connectionState = 'authenticated';
     logger.info('WA', 'Authenticated');
   });
 
   c.on('ready', () => {
     latestQr = null;
+    latestPairingCode = null;
     connectionState = 'ready';
     wasReady = true;
     reconnectAttempt = 0;

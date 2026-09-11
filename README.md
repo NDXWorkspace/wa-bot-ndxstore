@@ -15,6 +15,7 @@ Dibangun dengan **whatsapp-web.js** (Puppeteer) + AI via **Groq** dengan fallbac
 | **Hubungi CS (handover)** | Ketik `4` atau `cs` → pesan diteruskan ke admin, balasan admin (via reply) diteruskan balik ke user. Ketik `selesai`/`stop` untuk mengakhiri |
 | **AI chat** | Kalau AI mode aktif, pesan bebas dijawab AI dengan riwayat percakapan per-user |
 | **AI gambar** | Kirim gambar → dianalisa AI (via Pollinations; Groq vision opsional) |
+| **Gambar sekali lihat** | Kirim foto/video view-once → bot mengunduh sekali, menyimpan salinan ke `./downloads`, lalu membacanya via AI |
 | **Notifikasi order** | Monitor tabel `transactions` Supabase secara realtime → kirim notif ke grup admin + ke customer |
 
 ## AI Mode
@@ -28,6 +29,17 @@ Bot punya 3 mode (diatur admin lewat `!aimode`):
 | `2` | **NDXStore CS** — customer service profesional & ramah |
 
 Rantai model AI: **Groq** (`llama-3.3-70b-versatile` → `llama-3.1-8b-instant`) → **Pollinations** (`openai` → `llama` → `mistral` → `openai-large`). Endpoint yang gagal di-cooldown sementara supaya request berikutnya langsung lompat ke fallback.
+
+Optimasi AI:
+- **Smart routing** — pertanyaan faktual (harga/status/order) hanya memakai model kecil & cepat (70b dilewati) untuk hemat kuota; chat bebas memakai semua tier demi latensi terbaik
+- **Abort-on-win** — request ke tier yang kalah langsung dibatalkan begitu ada pemenang, tidak makan kuota sia-sia
+- **Token tracking** — pemakaian token per model tercatat, lihat di `GET /metrics` (`promptTokens`, `completionTokens`)
+- **Time grounding** — AI tahu hari/tanggal/jam WIB + status jam layanan CS (08.00–22.00)
+- **Filter hemat kuota** — pesan gibberish/emoji-only/1 karakter dan duplikat (<15 detik) di-skip tanpa panggil API
+- **Auto-resolve `cek`** — `cek [username]` / `cek [TX-/NDX-xxxx]` dijawab langsung dari API NDXStore tanpa AI (nol token), bahkan saat AI mode aktif
+- **Fast replies** — kata filler (`ok`, `makasih`, `wkwk`, `oh`, `hmm`, dll) dibalas instan tanpa API call
+- **Sentiment escalation** — user marah 2x dalam 10 menit langsung diarahkan ke CS (`ketik "cs"`)
+- **Context-aware fallback** — saat semua endpoint AI down, jawaban tetap berguna sesuai intent (order → suruh `cek`, harga → suruh buka web, CS → suruh ketik `cs`)
 
 ## Setup
 
@@ -57,6 +69,7 @@ Isi `.env`:
 | `AI_API_BASE` | Opsional | Base URL AI kustom (default `https://text.pollinations.ai`) |
 | `AI_MODEL` | Opsional | Nama model di `AI_API_BASE` (default `openai`) |
 | `GROQ_API_KEY` | Opsional | Groq API key (prefix `gsk_`) untuk AI utama yang lebih cepat/pintar |
+| `PAIRING_NUMBER` | Opsional | Nomor WA akun bot (format `628xxx`, tanpa `+`) untuk login via **pairing code** — tanpa scan QR. Kosong = login via scan QR |
 | `GROQ_VISION_MODEL` | Opsional | Model multimodal Groq untuk gambar. Kosong = gambar diproses via Pollinations |
 | `LOG_LEVEL` | Opsional | `error` \| `warn` \| `info` \| `debug` (default `info`) |
 | `PORT` | Opsional | Port health-check HTTP (default `3000`) |
@@ -75,6 +88,8 @@ npm run dev        # dev, auto-reload (node --watch)
 ```
 
 Scan QR code yang muncul di terminal dengan WhatsApp (Linked Devices). Sesi disimpan di `./wa-session` jadi tidak perlu scan ulang tiap restart.
+
+**Login tanpa scan (pairing code):** isi `PAIRING_NUMBER` di `.env` dengan nomor WA akun bot, lalu restart. Kode 8 karakter muncul di terminal dan di `http://localhost:<PORT>/qr` (juga tersedia sebagai JSON di `/code`). Di HP: WhatsApp → Perangkat Tertaut → *Tautkan dengan nomor telepon* → masukkan kode. Kode refresh otomatis tiap ±3 menit.
 
 ### 5. Produksi (PM2 / Docker / Render)
 

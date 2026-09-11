@@ -17,6 +17,9 @@ export const config = {
   },
   groupId: e('GROUP_ID'),
   adminNumber: e('ADMIN_NUMBER'),
+  // Nomor WA akun bot untuk login via pairing code (format 628xxx, tanpa +).
+  // Kosong = login via scan QR seperti biasa.
+  pairingNumber: e('PAIRING_NUMBER').replace(/[^0-9]/g, ''),
   apiPassword: e('API_PASSWORD'),
   apiBase: e('API_BASE') || 'https://ndxstoreid.vercel.app',
   aiApiBase: e('AI_API_BASE') || 'https://text.pollinations.ai',
