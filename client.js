@@ -27,6 +27,47 @@ let latestPairingCodeTs = 0;
 let connectionState = 'init';
 let wasReady = false;
 
+// ─── Login watchdog — anti hang sunyi ────────────────────────────────────
+// Kalau WA Web tidak menerbitkan event qr/code/authenticated SAMA SEKALI
+// dalam masa tenggang (mis. halaman macet), initWithRetry/monitor tidak akan
+// bereaksi (mereka hanya retry saat init GAGAL / setelah pernah ready).
+// Watchdog ini memicu re-init otomatis agar bot tidak diam selamanya.
+let lastLoginEventTs = Date.now();
+let loginWatchdogTimer = null;
+const LOGIN_GRACE_MS = 4 * 60 * 1000;
+
+export function triggerReconnect() {
+  const c = getCurrentClient();
+  if (c && !activeReconnectPromise) {
+    reconnectAttempt = 0;
+    reconnect(c).catch(() => {});
+  }
+}
+
+export function startLoginWatchdog() {
+  stopLoginWatchdog();
+  loginWatchdogTimer = setTimeout(() => {
+    loginWatchdogTimer = null;
+    const c = getCurrentClient();
+    if (c?.info?.wid?.user || wasReady) return; // sudah auth/ready — aman
+    if (Date.now() - lastLoginEventTs < LOGIN_GRACE_MS) {
+      startLoginWatchdog(); // ada progress (qr/code refresh) — perpanjang
+      return;
+    }
+    logger.error('WA', 'Login hang: tanpa event qr/code selama 4 menit — re-init otomatis...');
+    triggerReconnect();
+    startLoginWatchdog();
+  }, LOGIN_GRACE_MS + 30000);
+  if (loginWatchdogTimer.unref) loginWatchdogTimer.unref();
+}
+
+export function stopLoginWatchdog() {
+  if (loginWatchdogTimer) {
+    clearTimeout(loginWatchdogTimer);
+    loginWatchdogTimer = null;
+  }
+}
+
 export function getLatestQr() {
   return latestQr;
 }
@@ -203,9 +244,12 @@ async function createClientCore() {
   });
 
   connectionState = 'connecting';
+  lastLoginEventTs = Date.now();
+  startLoginWatchdog();
 
   c.on('qr', (qr) => {
     latestQr = qr;
+    lastLoginEventTs = Date.now();
     logger.info('WA', 'Scan QR code (atau buka /qr di browser)');
     if (process.env.LOG_CONSOLE !== 'false') {
       qrcode.generate(qr, { small: true });
@@ -215,6 +259,7 @@ async function createClientCore() {
   c.on('code', (code) => {
     latestPairingCode = code;
     latestPairingCodeTs = Date.now();
+    lastLoginEventTs = Date.now();
     const pretty = String(code).replace(/(.{4})(.{4})/, '$1-$2');
     logger.info('WA', `Pairing code: ${pretty} — masukkan di WA → Perangkat Tertaut → Tautkan dgn nomor telepon (atau buka /qr / panel /admin)`);
   });
@@ -222,6 +267,8 @@ async function createClientCore() {
   c.on('authenticated', () => {
     latestQr = null;
     latestPairingCode = null;
+    lastLoginEventTs = Date.now();
+    stopLoginWatchdog();
     connectionState = 'authenticated';
     logger.info('WA', 'Authenticated');
   });
@@ -229,6 +276,8 @@ async function createClientCore() {
   c.on('ready', () => {
     latestQr = null;
     latestPairingCode = null;
+    lastLoginEventTs = Date.now();
+    stopLoginWatchdog();
     connectionState = 'ready';
     wasReady = true;
     reconnectAttempt = 0;

@@ -324,6 +324,38 @@ async function main() {
     logger.warn('Bot', 'GROQ_API_KEY seharusnya dimulai dengan gsk_');
   }
 
+  // Startup self-check — validasi kredensial eksternal (non-blocking).
+  // Tanpa ini, key invalid = fitur mati diam-diam dan baru ketahuan hari kemudian.
+  (async () => {
+    try {
+      if (config.groqKey?.startsWith('gsk_')) {
+        const r = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: { Authorization: `Bearer ${config.groqKey}` },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (r.status === 401) logger.error('SelfCheck', 'GROQ_API_KEY DITOLAK (401) — tier Groq + Whisper NONAKTIF. Ganti key di .env.');
+        else if (!r.ok) logger.warn('SelfCheck', `Groq check: HTTP ${r.status}`);
+        else logger.info('SelfCheck', 'Groq key OK.');
+      } else {
+        logger.warn('SelfCheck', 'GROQ_API_KEY kosong — tier Groq + Whisper nonaktif.');
+      }
+    } catch (e) { logger.warn('SelfCheck', `Groq check gagal: ${e.message?.slice(0, 80)}`); }
+    try {
+      if (config.botToken) {
+        const r = await fetch(`${config.apiBase}/api/admin/stats`, {
+          headers: { 'x-bot-token': config.botToken },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (r.ok) logger.info('SelfCheck', 'NDX_BOT_TOKEN OK — panel Toko aktif.');
+        else if (r.status === 401) logger.error('SelfCheck', 'NDX_BOT_TOKEN DITOLAK (401) — samakan dengan BOT_API_TOKEN di Vercel + redeploy.');
+        else if (r.status === 500) logger.error('SelfCheck', 'BOT_API_TOKEN belum dipasang di server Vercel — panel Toko mati.');
+        else logger.warn('SelfCheck', `Admin API check: HTTP ${r.status}`);
+      } else {
+        logger.warn('SelfCheck', 'NDX_BOT_TOKEN kosong — panel Toko (stats/pending/update) akan 401.');
+      }
+    } catch (e) { logger.warn('SelfCheck', `Admin API check gagal: ${e.message?.slice(0, 80)}`); }
+  })().catch(() => {});
+
   // Start background services immediately (non-blocking)
   startLiveDataRefresh();
   startMenuRefresh();
@@ -365,7 +397,7 @@ async function main() {
 
     c.on('message_create', async (msg) => {
       try {
-        const body = msg.body?.trim() || '';
+        let body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from || '';
         const isAdmin = senderJid.split('@')[0].replace(/^\+/, '').trim() === ADMIN_RAW;
         logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}"`);
