@@ -6,11 +6,24 @@ export async function apiCall(method, path, body = null) {
   if (config.apiPassword) {
     headers['x-admin-password'] = config.apiPassword;
   }
+  // API admin sekarang wajib sesi login Google owner (NextAuth).
+  // Isi NDX_SESSION di .env dengan cookie dari browser yang sudah login
+  // (lihat README). Cookie dikirim apa adanya.
+  if (config.ndxSession) {
+    headers['Cookie'] = config.ndxSession;
+  }
   const opts = { method, headers, signal: AbortSignal.timeout(15000) };
   if (body) opts.body = JSON.stringify(body);
   const resp = await fetch(`${config.apiBase}${path}`, opts);
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
+    if (resp.status === 401) {
+      throw new Error(
+        'Sesi admin Google kedaluwarsa/ditolak. Login ulang di ndxstoreid.vercel.app ' +
+        'dengan akun owner, update NDX_SESSION di .env, lalu restart bot. ' +
+        `(${text.slice(0, 100)})`
+      );
+    }
     throw new Error(`API ${resp.status}: ${text.slice(0, 100)}`);
   }
   return await resp.json();

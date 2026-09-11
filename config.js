@@ -27,6 +27,11 @@ export const config = {
   // Kosong = login via scan QR seperti biasa.
   pairingNumber: e('PAIRING_NUMBER').replace(/[^0-9]/g, ''),
   apiPassword: e('API_PASSWORD'),
+  // Cookie sesi login Google owner untuk /api/admin/* (NextAuth).
+  // Contoh isi: "next-auth.session-token=AAA...; __Secure-next-auth.session-token=AAA..."
+  // Cara ambil: login di ndxstoreid.vercel.app via Chrome → F12 → Application →
+  // Cookies → copy semua cookie jadi satu string "nama=nilai; nama=nilai".
+  ndxSession: e('NDX_SESSION'),
   apiBase: e('API_BASE') || 'https://ndxstoreid.vercel.app',
   aiApiBase: e('AI_API_BASE') || 'https://text.pollinations.ai',
   aiModel: e('AI_MODEL') || 'openai',

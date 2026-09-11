@@ -135,6 +135,8 @@ Server HTTP bind ke `HOST` (default `127.0.0.1` = hanya dari PC ini). Kalau `HOS
 
 Admin tetap bisa **reply** pesan handover yang diteruskan bot (quote pesan forward) untuk membalas user langsung dari WA.
 
+**Fitur Toko butuh sesi Google:** endpoint `/api/admin/*` wajib login Google owner (NextAuth) — password header saja ditolak (401). Isi `NDX_SESSION` di `.env` dengan cookie browser yang sudah login (cara lengkap ada di komentar `.env`), lalu restart bot. Kalau panel Toko error 401 lagi berarti cookie expired — ulangi ambil cookie.
+
 ## Health Check
 
 `GET http://localhost:<PORT>/` mengembalikan JSON status (`200` kalau WA & DB terhubung, `503` kalau degraded):
