@@ -46,6 +46,7 @@ export function triggerReconnect() {
 
 export function startLoginWatchdog() {
   stopLoginWatchdog();
+  logger.info('WA', 'Watchdog login aktif (re-init otomatis jika tanpa qr/code 4 menit).');
   loginWatchdogTimer = setTimeout(() => {
     loginWatchdogTimer = null;
     const c = getCurrentClient();
