@@ -131,7 +131,7 @@ Yang bisa dilakukan dari panel:
 | Riwayat | 20 chat terakhir + reset history per nomor |
 | Log level | error / warn / info / debug |
 
-Server HTTP bind ke `HOST` (default `127.0.0.1` = hanya dari PC ini). Kalau `HOST=0.0.0.0` (mis. di Render), **wajib** isi `ADMIN_TOKEN` — panel & `/api/*` butuh header `x-admin-token` (panel otomatis minta token & simpan di browser).
+Server HTTP bind ke `HOST` (default `127.0.0.1` = hanya dari PC ini). Kalau `HOST` diubah ke `0.0.0.0` supaya bisa diakses dari luar, **wajib** isi `ADMIN_TOKEN` — panel & `/api/*` butuh header `x-admin-token` (panel otomatis minta token & simpan di browser).
 
 Admin tetap bisa **reply** pesan handover yang diteruskan bot (quote pesan forward) untuk membalas user langsung dari WA.
 
