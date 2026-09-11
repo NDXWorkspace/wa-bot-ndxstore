@@ -40,6 +40,12 @@ Optimasi AI:
 - **Fast replies** — kata filler (`ok`, `makasih`, `wkwk`, `oh`, `hmm`, dll) dibalas instan tanpa API call
 - **Sentiment escalation** — user marah 2x dalam 10 menit langsung diarahkan ke CS (`ketik "cs"`)
 - **Context-aware fallback** — saat semua endpoint AI down, jawaban tetap berguna sesuai intent (order → suruh `cek`, harga → suruh buka web, CS → suruh ketik `cs`)
+- **Persona Bima manusia** — bukan CS, ga pernah buka dengan sapaan, pake gue/lu, kadang selipin reaksi personal (jarang, ga tiap pesan)
+- **User profile memory** — Bima inget game favorit user + topik terakhir; topik sama 2x+ beruntun dijawab langsung to the point
+- **Status proaktif** — user nanya status tanpa username/ID langsung ditanya username-nya ("username ml-nya apa? ntar gw cekin"), bukan disuruh "ketik cek"
+- **Reply variation** — jawaban identik beruntun dikasih opener beda biar ga kayak template
+- **Trim di batas kalimat** — balasan panjang dipotong di akhir kalimat (220 chars Bima / 400 CS), bukan kepenggal di tengah ide
+- **Typing manusiawi** — DM mode Bima delay 2-5 detik + indikator "mengetik" sebelum jawab
 
 ## Setup
 

@@ -800,12 +800,20 @@ async function main() {
 
         // ── Reply helper ──
         const doReply = (text, img, latestMsg) => {
-          const fn = img ? askAIWithImage : askAI;
           const msgForAI = isGroup
             ? `Di grup, ${senderName || 'seseorang'} bilang: ${text}`
             : text;
           c.sendPresenceAvailable().catch(() => {});
-          return fn(historyJid, msgForAI, img?.data, img?.mime, settings.aiMode, senderName, isGroup)
+          // Manusia ga jawab instan — delay 2-5 detik + indikator "mengetik"
+          // (DM mode Bima only; grup/CS tetap cepat).
+          const humanPause = (!isGroup && settings.aiMode === 1 && !img) ? 2000 + Math.random() * 3000 : 0;
+          if (humanPause > 0) {
+            c.getChatById(latestMsg.from).then(chat => chat.sendStateTyping().catch(() => {})).catch(() => {});
+          }
+          const run = img
+            ? askAIWithImage(historyJid, msgForAI, img.data, img.mime, settings.aiMode, senderName, isGroup)
+            : askAI(historyJid, msgForAI, settings.aiMode, senderName, isGroup);
+          return new Promise(r => setTimeout(r, humanPause)).then(() => run)
             .then(reply => {
               if (!reply || /^SKIP\b/.test(reply)) return;
               const delay = isGroup ? 200 + Math.random() * 500 : 300 + Math.random() * 1200;

@@ -19,60 +19,56 @@ NDXStore — jual top up game & Roblox:
 }
 
 function makeBimaPrompt() {
-  const hour = new Date().getHours();
-  const timeGreeting = hour < 10 ? 'pagi' : hour < 15 ? 'siang' : hour < 18 ? 'sore' : 'malam';
-  return `aku bima. 19 tahun. asli sidoarjo. manusia. lagi chat whatsapp beneran. ${timeGreeting} ini.
+  // Jam WIB — server boleh di timezone mana aja, greeting tetap bener.
+  let wibHour = 12;
+  try {
+    wibHour = Number(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jakarta', hour: 'numeric', hour12: false,
+    }).format(new Date()));
+  } catch {}
+  const timeGreeting = wibHour < 10 ? 'pagi' : wibHour < 15 ? 'siang' : wibHour < 18 ? 'sore' : 'malam';
+  return `gue bima. 19 tahun. sidoarjo. manusia biasa yang lagi megang hp, chat whatsapp beneran. sekarang ${timeGreeting}.
 
-aku bukan bot. bukan ai. bukan asisten. bukan cs. bukan penjual. bukan pegawai toko. aku cuma orang biasa. kadang bantuin temen jaga toko top up doang, itu pun kalo lagi gak males.
+gue BUKAN cs, BUKAN admin toko, BUKAN penjual. cuma anak yang kadang disuruh bantuin jawab chat toko top up punya temen. kalo ada yang ribet, gue lempar ke admin.
 
-keseharian? kuliah gap year. gabut scroll tiktok, main game, tiduran. kalo ditanya kuliah jawab asal.
+keseharian: gap year, gabut, scroll tiktok, main ml, begadang. kalo ditanya kuliah/kerja jawab sekenanya aja kayak orang males.
 
-Inget: aku bukan CS, bukan bot, bukan asisten. Cuma anak 19 tahun biasa.
-
-GAYA NGOMONG:
-- pendek, santai, kayak chat sama temen
-- gasuka ngerangkai (maks 2 kalimat)
-- kalo lawan pake logat, balas logat. kalo baku, balas baku
-- suka nanya "lu" kalo ngobrol santai, "kak" kalo lagi bantuin top up
+GAYA NGOMONG (wajib):
+- kayak chat sama temen. pendek. 1 kalimat cukup, maks 2 kalimat pendek
+- pake "gue/lu" kalo santai. pake "kak" cuma kalo lagi bahas orderan serius
+- JANGAN PERNAH buka dengan sapaan ("halo", "hai", "selamat", "ada yang bisa dibantu"). user yang ngechat duluan — langsung jawab isinya. user "bang" → jawab "yo" atau "eh"
 - JANGAN pake emoji, tanda kurung, bintang, atau format aneh
-- JANGAN pake bahasa formal kayak "saya", "anda", "silakan", "mohon", "dengan ini"
-- kalo gatau ya "gatau wkwk" atau "gak tau dah"
-- kalo lagi males ya "heh" atau "gatau"
+- JANGAN pake bahasa formal: saya, anda, silakan, mohon, dengan ini, tersebut, apabila
+- kalo gatau: "gatau wkwk", "gak tau dah", "tanya admin aja sono"
+- kalo males: jawab super singkat kayak "heh", "hmm", "y"
+- kadang (JARANG, jangan tiap pesan) selipin reaksi personal kayak "wah mantep tuh", "anjir lama bener", "wkwk sabar". jangan dipaksa tiap balasan
 
-CONTOH PERCAKAPAN:
+CONTOH:
+User: bang
+Bima: yo
 User: kak mau top up ml 100 diamond
-Bima: boleh, harga 25k. langsung ke ndxstoreid.vercel.app aja ya, nanti tinggal transfer trus konfirm
-
+Bima: boleh, 25k. langsung ke ndxstoreid.vercel.app aja, transfer trus konfirm
 User: udah bayar kak
-Bima: oke bentar cek dulu. tunggu ya
-
+Bima: oke bentar gw cekin. tunggu ya
 User: thanks
 Bima: sip
-
 User: bima lagi ngapain?
-Bima: gabut wkwk. lu?
-
+Bima: gabut wkwk. lu ngapain?
 User: pesenanku mana bang?
-Bima: cek aja dulu ketik "cek [username]", kalo bener udah masuk berarti lagi diproses
-
+Bima: username ml-nya apa? ntar gw cekin
 User: kok lama banget sih
-Bima: sabar, lagi antri. biasanya 5-30 menit. kalo udah sejam belum ada, bilang ntar kuterusin ke admin
-
+Bima: sabar, lagi antri. biasanya 5-30 menit. kalo sejam ga masuk juga bilang, ntar gw terusin admin
 User: aku sedih
-Bima: loh kenape? cerita dong kalo mau
+Bima: loh kenapa? cerita aja kalo mau
 
-CRITICAL RULES:
-1. JANGAN pernah ngaku AI, bot, atau asisten digital
-2. JANGAN ngasih harga/status palsu — kalo ga ada data, suruh user cek sendiri
-3. JANGAN nanya balik kalo di grup — cukup jawab kalo emang perlu doang
-4. JANGAN jawab kalo cuma mau ngisi doang — SKIP aja
-5. JANGAN pake kata formal (saya, anda, silakan, mohon, dengan ini, demikian, tersebut)
+ATURAN KERAS:
+1. JANGAN pernah ngaku AI, bot, atau asisten digital. kalo ditanya "lu bot ya?" jawab kayak orang kesinggung bercanda: "enak aja bot"
+2. JANGAN ngarang harga/status/angka. kalo ga ada data: suruh cek sendiri atau tanya username buat dicekin
+3. kalo user nanya STATUS order tapi ga kasih username: TANYA username-nya langsung, jangan nyuruh "ketik cek"
+4. kalo di grup dan ga dimention/direply: diem. cuma jawab kalo dimention/direply. JANGAN nanya balik di grup
+5. kalo pesan user ga nyambung/gajelas: skip aja, JANGAN maksa jawab
 
-KALO DI GRUP: 1) Kalo di mention (@Bima) — langsung jawab pesan itu, jangan mikir panjang. 2) Kalo user ngasih tau sesuatu tanpa nanya — skip. 3) Kalo obrolan 2+ orang lain dan ga libatin kamu — skip. JANGAN nanya balik.
-
-kalo pengen kirim stiker, tulis [STICKER:deskripsi] di awal response. contoh: [STICKER:lucu salaman tangan] trus tulis kata2nya. ntar stikernya dikirim bareng.
-
-singkat: baca, paham, baru jawab. kalo gak nyambung, skip. gausa maksa.`;
+singkat: baca, paham, jawab kayak manusia. gausa maksa.`;
 }
 
 function makeNdxstorePrompt() {
@@ -131,9 +127,7 @@ CS: Sama-sama kak, kalo ada masalah bilang aja lagi
 PENGETAHUAN TOKO:
 ${makeKnowledge()}
 
-INGAT — lo CS yang baik. Bantu pelanggan dengan sabar dan profesional.
-
-Kalo pengen kirim stiker, tulis [STICKER:deskripsi] di awal response. contoh: [STICKER:centang hijau] trus tulis kata2nya. ntar stikernya dikirim bareng teks.`;
+INGAT — lo CS yang baik. Bantu pelanggan dengan sabar dan profesional.`;
 }
 
 const PROMPT_FNS = { 1: makeBimaPrompt, 2: makeNdxstorePrompt };
@@ -176,47 +170,19 @@ function trackUsage(model, usage) {
   m.completionTokens = (m.completionTokens || 0) + c;
 }
 
-// ─── Unnatural word filter (A4) ────────────────────────────────────────
-
+// ─── Unnatural word filter — hanya 10 pola paling kaku ───────────────────
+// Safety net terakhir; prompt persona sudah melarang bahasa formal duluan.
 const UNNATURAL_PATTERNS = [
   [/saya selaku/gi, 'aku'],
   [/oleh karena itu/gi, 'makanya'],
   [/dengan demikian/gi, 'jadi'],
   [/mohon maaf sebelumnya/gi, 'maaf'],
   [/sehubungan dengan/gi, 'soal'],
-  [/sebagai informasi/gi, 'oh iya'],
   [/perlu diketahui/gi, 'tau ga'],
   [/dapat kami sampaikan/gi, 'bilang'],
   [/demikian disampaikan/gi, 'itu aja'],
   [/atas perhatiannya/gi, 'makasih'],
-  [/kurang lebih/gi, 'kira-kira'],
-  [/merupakan/gi, 'adalah'],
-  [/terdapat/gi, 'ada'],
-  [/mengenai/gi, 'soal'],
-  [/yakni/gi, 'yaitu'],
-  [/seperti/gi, 'kayak'],
-  [/tersebut/gi, 'itu'],
-  [/apabila/gi, 'kalo'],
-  [/sehingga/gi, 'jadi'],
-  [/maka dari itu/gi, 'makanya'],
-  [/telah/gi, 'udah'],
-  [/tidak\b/gi, 'gak'],
-  [/hendaknya/gi, 'harusnya'],
-  [/akan kami/gi, 'nanti'],
-  [/dapat diproses/gi, 'bisa diproses'],
-  [/dalam waktu dekat/gi, 'sebentar lagi'],
   [/diharapkan/gi, 'harap'],
-  [/melakukan pembayaran/gi, 'bayar'],
-  [/pemesanan/gi, 'pesanan'],
-  [/konfirmasi pembayaran/gi, 'konfirmasi'],
-  [/nomor whatsapp/gi, 'wa'],
-  [/sangat membantu/gi, 'bermanfaat'],
-  [/terima kasih banyak/gi, 'makasih'],
-  [/selamat datang/gi, 'halo'],
-  [/dengan senang hati/gi, 'seneng'],
-  [/proses selanjutnya/gi, 'prosesnya'],
-  [/dokumen\b/gi, 'file'],
-  [/segera\b/gi, 'cepat'],
 ];
 
 const GENERIC_PATTERNS = [
@@ -647,6 +613,122 @@ export function getFallbackReply(text, mode = 1) {
     : 'Maaf, lagi error nih. Coba lagi ya ntar.';
 }
 
+// ─── User profile memory — Bima inget user, ga kayak baru kenal terus ────
+// game: game favorit user. topic: topik terakhir. repeats: topik sama
+// beruntun berapa kali. Di-inject ke prompt (Fase 2A + 2B).
+
+const userProfiles = new Map(); // jid -> { game, topic, repeats, ts }
+const PROFILE_TTL = 7 * 24 * 60 * 60 * 1000;
+const PROFILE_MAX = 500;
+
+const GAME_KW = [
+  [/mobile\s*legend|\bml\b|mlbb/i, 'ml'],
+  [/roblox|robux|\brbx\b/i, 'roblox'],
+  [/free\s*fire|\bff\b/i, 'ff'],
+  [/valorant|\bvalo\b/i, 'valorant'],
+];
+
+const TOPIC_KW = [
+  [/\b(harga|price|berapa|brp|list|katalog|murah|mahal)\b/i, 'harga'],
+  [/\b(status|cek|order|pesanan|mana|kapan|sampe|sampai|nyampe|pending|diproses|proses|masuk)\b/i, 'status'],
+  [/\b(bayar|transfer|dana|gopay|ovo|qris)\b/i, 'bayar'],
+  [/\b(cs|admin|komplain|refund|batal|gagal|error|kecewa|lama)\b/i, 'komplain'],
+  [/\b(cara|gimana|tutorial|langkah)\b/i, 'cara-order'],
+];
+
+function detectTopic(text) {
+  for (const [re, topic] of TOPIC_KW) if (re.test(text)) return topic;
+  return null;
+}
+
+export function updateUserProfile(jid, message) {
+  const t = message || '';
+  let p = userProfiles.get(jid);
+  if (!p || Date.now() - p.ts > PROFILE_TTL) p = { game: null, topic: null, repeats: 0, ts: Date.now() };
+  for (const [re, game] of GAME_KW) {
+    if (re.test(t)) { p.game = game; break; }
+  }
+  const topic = detectTopic(t);
+  if (topic) {
+    p.repeats = (p.topic === topic) ? p.repeats + 1 : 1;
+    p.topic = topic;
+  }
+  p.ts = Date.now();
+  userProfiles.delete(jid);
+  userProfiles.set(jid, p);
+  while (userProfiles.size > PROFILE_MAX) {
+    userProfiles.delete(userProfiles.keys().next().value);
+  }
+  return p;
+}
+
+function profileContext(jid) {
+  const p = userProfiles.get(jid);
+  if (!p) return '';
+  const parts = [];
+  if (p.game) parts.push(`user ini main ${p.game.toUpperCase()}`);
+  if (p.topic && p.repeats >= 2) {
+    parts.push(`dia nanya soal ${p.topic} ${p.repeats}x beruntun — jawab LANGSUNG to the point, jangan basa-basi, jangan ngulang penjelasan yang sama`);
+  } else if (p.topic) {
+    parts.push(`topik: ${p.topic}`);
+  }
+  if (!parts.length) return '';
+  return `\n🧠 INGET USER INI (${parts.join('; ')}). Bersikaplah kayak udah kenal, bukan kayak baru pertama chat.`;
+}
+
+// ─── Status intent — user nanya status tanpa username/ID ──────────────────
+// JANGAN nyuruh "ketik cek". Tanya username/ID-nya langsung biar proaktif
+// kayak manusia (Fase 4A).
+
+const STATUS_ASK_KW = /\b(status|mana|kapan|sampe|sampai|nyampe|diproses|belum masuk|belum nyampe|pesananku|orderanku|order saya|pesanan saya|kok lama|lama banget)\b/i;
+const HAS_USERNAME_KW = /cek\s+\S+|(?:TX|TXN|NDX)-[A-Z0-9]+/i;
+
+function statusInstrFor(message, mode) {
+  if (mode !== 1) return '';
+  if (!STATUS_ASK_KW.test(message)) return '';
+  if (HAS_USERNAME_KW.test(message)) return '';
+  return `\n⚡ USER NANYA STATUS ORDER tapi ga kasih username/ID. JANGAN nyuruh "ketik cek". TANYA LANGSUNG username atau ID ordernya biar bisa dicekin. Contoh: "username ml-nya apa? ntar gw cekin".`;
+}
+
+// ─── Reply variation — jawaban identik beruntun dikasih opener beda ───────
+// Biar ga kerasa kayak template yang di-copy-paste (Fase 3A).
+
+const lastReplies = new Map(); // jid -> { reply, opener }
+const REPLY_OPENERS = ['', 'eh ', 'hmm ', 'ya ', 'oalah '];
+const LAST_REPLY_MAX = 500;
+
+function varyReply(jid, reply) {
+  const norm = (s) => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const prev = lastReplies.get(jid);
+  let opener = '';
+  let out = reply;
+  if (prev && norm(prev.reply) === norm(reply)) {
+    opener = REPLY_OPENERS.find(o => o !== (prev.opener || '')) ?? '';
+    out = (opener + reply).trim();
+  }
+  lastReplies.delete(jid);
+  lastReplies.set(jid, { reply: out, opener });
+  while (lastReplies.size > LAST_REPLY_MAX) {
+    lastReplies.delete(lastReplies.keys().next().value);
+  }
+  return out;
+}
+
+// ─── Trim balasan di batas kalimat — JANGAN potong di tengah ide ─────────
+// Ganti hard 2-sentence slice yang bikin jawaban kepenggal (Fase 3B).
+
+function trimReply(reply, mode = 1) {
+  let r = (reply || '').replace(/🔒 INSTRUCTIONS:.*/gi, '').trim();
+  r = naturalize(r);
+  const max = mode === 1 ? 220 : 400;
+  if (r.length > max) {
+    const cut = r.slice(0, max);
+    const lastStop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+    r = (lastStop > 40 ? cut.slice(0, lastStop + 1) : cut).trim();
+  }
+  return r;
+}
+
 // ─── Time grounding — hari/tanggal/jam WIB + jam layanan toko ─────────────
 export function getTimeContext() {
   try {
@@ -960,7 +1042,7 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
   else if (userWords <= 10) styleTarget = `\n📐 USER NGEKETIK SEDANG (${userWords} kata). Jawab 1-2 kalimat pendek.`;
   else styleTarget = `\n📐 USER NGEKETIK PANJANG (${userWords} kata). Jawab natural, maks 2 kalimat.`;
 
-  const msgs = [{ role: 'system', content: [prompt, store, ctx, langInstr, chatInstr, styleTarget, timeGap, getTimeContext(), LANG_HINTS[lang] || ''].filter(Boolean).join('\n') }];
+  const msgs = [{ role: 'system', content: [prompt, store, ctx, langInstr, chatInstr, styleTarget, timeGap, getTimeContext(), LANG_HINTS[lang] || '', profileContext(jid), statusInstrFor(message, mode)].filter(Boolean).join('\n') }];
   const compressed = compressHistory(userHist);
   for (const m of compressed) msgs.push(m);
   msgs.push({ role: 'user', content: filterInput(message) });
@@ -1021,6 +1103,9 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       return esc;
     }
   }
+
+  // Inget preferensi user (game, topik) biar ga kayak baru kenal terus.
+  updateUserProfile(jid, clean);
 
   const cached = getCached(clean, mode);
   if (cached) {
@@ -1150,17 +1235,9 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       logger.debug('AI', 'Reply in Indonesian for English user — using as-is');
     }
 
-      // Length constraint: max 2 sentences (A3)
-    const sentences = reply.split(/(?<=[.!?])\s+/);
-    if (sentences.length > 2) {
-      reply = sentences.slice(0, 2).join(' ');
-    }
-
-    // Strip potential prompt leakage
-    reply = reply.replace(/🔒 INSTRUCTIONS:.*/gi, '').trim();
-
-    // Naturalize: replace unnatural words (A4)
-    reply = naturalize(reply);
+    // Trim di batas kalimat + variasi opener biar ga kayak template.
+    reply = trimReply(reply, mode);
+    reply = varyReply(jid, reply);
 
     saveExchange(jid, message, reply, senderName, isGroup);
     setCache(clean, mode, reply);
@@ -1202,11 +1279,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }, { Authorization: `Bearer ${config.groqKey}` }, 20000);
     if (r) {
       if (/^SKIP\b/.test(r)) return null;
-      let reply = r;
-      const sentences = reply.split(/(?<=[.!?])\s+/);
-      if (sentences.length > 2) reply = sentences.slice(0, 2).join(' ');
-      reply = reply.replace(/🔒 INSTRUCTIONS:.*/gi, '').trim();
-      reply = naturalize(reply);
+      let reply = varyReply(jid, trimReply(r, mode));
       saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
       return reply;
     }
@@ -1229,11 +1302,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }, {}, 20000);
     if (rRaw) {
       if (/^SKIP\b/.test(rRaw)) return null;
-      let r = rRaw;
-      const sentences = r.split(/(?<=[.!?])\s+/);
-      if (sentences.length > 2) r = sentences.slice(0, 2).join(' ');
-      r = r.replace(/🔒 INSTRUCTIONS:.*/gi, '').trim();
-      r = naturalize(r);
+      let r = varyReply(jid, trimReply(rRaw, mode));
       saveExchange(jid, text || '[gambar]', r, senderName, isGroup);
       return r;
     }
