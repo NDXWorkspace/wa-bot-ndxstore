@@ -16,7 +16,7 @@ import { withRetry, isDbAvailable } from './utils/db.js';
 import { formatPrice, formatTime } from './utils/format.js';
 import { isViewOnceMessage, saveViewOnceMedia } from './utils/viewOnce.js';
 import { startLiveDataRefresh } from './services/liveData.js';
-import { logger, createLogger } from './utils/logger.js';
+import { logger, createLogger, throttleLog } from './utils/logger.js';
 
 import ww from 'whatsapp-web.js';
 const { MessageMedia } = ww;
@@ -652,7 +652,13 @@ async function main() {
         }
 
         // ── Reply helper ──
-        const doReply = (text, img, latestMsg) => {
+        // Kontrak flush aiBuffer: flushFn(jid, text, image, latestMsg).
+        const doReply = (jid, text, img, latestMsg) => {
+          const targetJid = jid || latestMsg?.from || historyJid;
+          const sendTargetJid = latestMsg?.from || targetJid;
+          const sendText = (t) => latestMsg
+            ? latestMsg.reply(t)
+            : c.sendMessage(targetJid, t);
           const msgForAI = isGroup
             ? `Di grup, ${senderName || 'seseorang'} bilang: ${text}`
             : text;
@@ -660,7 +666,7 @@ async function main() {
           // Manusia ga jawab instan — delay 2-5 detik + indikator "mengetik"
           // (DM mode Bima only; grup/CS tetap cepat).
           const humanPause = (!isGroup && settings.aiMode === 1 && !img) ? 2000 + Math.random() * 3000 : 0;
-          if (humanPause > 0) {
+          if (humanPause > 0 && latestMsg) {
             c.getChatById(latestMsg.from).then(chat => chat.sendStateTyping().catch(() => {})).catch(() => {});
           }
           const run = img
@@ -673,7 +679,7 @@ async function main() {
               return new Promise(r => setTimeout(r, delay)).then(() => {
                 const stickerMatch = reply.match(/^\[STICKER:(.+?)\]\s*/);
                 const textToReply = stickerMatch ? reply.slice(stickerMatch[0].length).trim() : reply;
-                if (textToReply) latestMsg.reply(textToReply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
+                if (textToReply) sendText(textToReply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
                 if (stickerMatch) {
                   const desc = stickerMatch[1].trim();
                   if (desc.split(/\s+/).length < 2) return;
@@ -683,10 +689,10 @@ async function main() {
                     .then(buf => {
                       const base64 = Buffer.from(buf).toString('base64');
                       const media = new MessageMedia('image/png', base64);
-                      return c.sendMessage(latestMsg.from, media, { sendMediaAsSticker: true });
+                      return c.sendMessage(sendTargetJid, media, { sendMediaAsSticker: true });
                     })
                     .catch(() => {
-                      latestMsg.reply('pengen kirim stiker tapi error njirr').catch(() => {});
+                      sendText('pengen kirim stiker tapi error njirr').catch(() => {});
                     });
                 }
               });
@@ -694,7 +700,7 @@ async function main() {
         };
 
         if (isGroupDirect) {
-          doReply(body, mediaImage, msg);
+          doReply(senderJid, body, mediaImage, msg);
         } else {
           bufferAiMessage(senderJid, msg, body, mediaImage, doReply);
         }
@@ -710,6 +716,20 @@ async function main() {
       }
     });
   }
+
+  // Flush default untuk buffer yang dipulihkan dari disk saat ready.
+  // Kontrak: (jid, text, image, latestMsg) — kirim langsung via client.
+  setDefaultFlushFn((jid, text, img) => {
+    const cl = getCurrentClient();
+    if (!cl || !text?.trim()) return Promise.resolve();
+    const grp = jid?.includes('@g.us') ?? false;
+    const run = img
+      ? askAIWithImage(jid, text, img.data, img.mime, settings.aiMode, null, grp)
+      : askAI(jid, text, settings.aiMode, null, grp);
+    return run.then((r) => {
+      if (r && !/^SKIP\b/.test(r)) return cl.sendMessage(jid, r).catch(() => {});
+    }).catch(() => {});
+  });
 
   waClient = await createClient(setupMessageHandler);
   setupMessageHandler(waClient);
