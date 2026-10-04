@@ -47,8 +47,8 @@ USER node
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD curl -sf http://127.0.0.1:${PORT:-3000}/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
+  CMD curl -sf http://127.0.0.1:${PORT:-3000}/ready || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "index.js"]

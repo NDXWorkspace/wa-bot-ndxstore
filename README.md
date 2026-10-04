@@ -131,7 +131,7 @@ Yang bisa dilakukan dari panel:
 | Riwayat | 20 chat terakhir + reset history per nomor |
 | Log level | error / warn / info / debug |
 
-Server HTTP bind ke `HOST` (default `127.0.0.1` = hanya dari PC ini). Kalau `HOST` diubah ke `0.0.0.0` supaya bisa diakses dari luar, **wajib** isi `ADMIN_TOKEN` — panel & `/api/*` butuh header `x-admin-token` (panel otomatis minta token & simpan di browser).
+Server HTTP bind ke `HOST` (default `127.0.0.1` = hanya dari PC ini). Kalau `HOST` diubah ke `0.0.0.0` supaya bisa diakses dari luar, bot **menolak boot** kecuali `ADMIN_TOKEN` diisi — panel, `/api/*`, `/qr`, dan `/code` butuh header `x-admin-token` (panel otomatis minta token & simpan di browser). Token query `?token=` tidak didukung (bocor ke history/log).
 
 Admin tetap bisa **reply** pesan handover yang diteruskan bot (quote pesan forward) untuk membalas user langsung dari WA.
 

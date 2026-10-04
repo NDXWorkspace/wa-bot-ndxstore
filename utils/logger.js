@@ -144,7 +144,7 @@ function log(level, label, ...args) {
   const time = ts();
   const paddedLabel = (label || '').padEnd(8).slice(0, 8);
 
-  /* JSON format */
+  /* JSON format — tetap tulis file + alert seperti mode text. */
   if (useJson) {
     const entry = JSON.stringify({
       time, level, label,
@@ -153,11 +153,8 @@ function log(level, label, ...args) {
       pid: process.pid,
     });
     console.log(entry);
-    return;
-  }
-
-  /* Console */
-  if (process.env.LOG_CONSOLE !== 'false') {
+  } else if (process.env.LOG_CONSOLE !== 'false') {
+    /* Console (text) */
     const sym = SYMBOLS[level] || '?';
     const metaStr = meta ? ` ${color('trace', JSON.stringify(meta))}` : '';
     const line = `${color(level, sym)} ${color(level, `[${paddedLabel}]`)} ${truncate(formatted, MAX_LINE)}${metaStr}`;

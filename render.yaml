@@ -4,6 +4,12 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile
     envVars:
+      # Di container HARUS bind 0.0.0.0 agar router Render mencapai app.
+      # config.js MENOLAK boot 0.0.0.0 tanpa ADMIN_TOKEN — jadi token wajib diisi.
+      - key: HOST
+        value: 0.0.0.0
+      - key: ADMIN_TOKEN
+        sync: false
       - key: SUPABASE_URL
         value: https://jlfrtyyjxkmdetdbeakv.supabase.co
       - key: SUPABASE_KEY

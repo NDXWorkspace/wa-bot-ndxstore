@@ -48,3 +48,31 @@ export const config = {
 if (process.env.LOG_CONSOLE !== 'false') {
   console.log('Config OK. Admin:', config.adminNumber.replace(/\d(?=\d{4})/g, '*'));
 }
+
+// Keamanan: binding non-localhost tanpa ADMIN_TOKEN = panel + /api/* + /qr
+// terbuka ke publik. Tolak konfigurasi berbahaya ini saat boot.
+{
+  const host = config.host;
+  const isLocal = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  if (!isLocal && !config.adminToken) {
+    throw new Error(
+      `HOST=${host} di-expose ke jaringan tapi ADMIN_TOKEN kosong — /admin, /api/*, dan /qr akan terbuka publik. ` +
+      'Isi ADMIN_TOKEN di .env dulu (token acak panjang).'
+    );
+  }
+}
+
+// Kredensial: RLS schema hanya mengizinkan role service_role. Key anon/
+// publishable ditolak DB → semua fitur DB mati diam-diam. Deteksi dini.
+try {
+  const parts = String(config.supabase.key || '').split('.');
+  if (parts.length === 3) {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+    if (payload.role && payload.role !== 'service_role') {
+      console.error(
+        `Config ERROR: SUPABASE_KEY memakai role "${payload.role}" — schema butuh service_role. ` +
+        'Ganti dengan service_role key (Supabase Dashboard → Settings → API). Fitur DB tidak akan jalan dengan key ini.'
+      );
+    }
+  }
+} catch {}

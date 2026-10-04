@@ -3,9 +3,11 @@
 // lewat panel ini. Commands chat (!aimode, !reply, !block, ...) dimatikan.
 //
 // Keamanan: server bind ke HOST (default 127.0.0.1 = localhost only).
-// Kalau di-expose (HOST=0.0.0.0), wajib isi ADMIN_TOKEN — semua /api/* dan
-// /admin butuh header `x-admin-token` atau query `?token=`.
-// Route publik tetap: /health, /qr, /code, /metrics.
+// Kalau di-expose (HOST=0.0.0.0), config.js MENOLAK boot tanpa ADMIN_TOKEN.
+// Token hanya lewat header `x-admin-token` (jangan via ?token= — bocor ke
+// history browser/log server). Route publik tetap: /health (liveness),
+// /ready, /metrics, /. /qr + /code + /admin + /api/* butuh token begitu
+// ADMIN_TOKEN diisi.
 
 import fs from 'fs';
 import path from 'path';
@@ -41,10 +43,10 @@ function sendJson(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-function authorized(req, query) {
+export function authorized(req, query) {
   if (!config.adminToken) return true;
   const header = req.headers['x-admin-token'] || '';
-  return header === config.adminToken || query.get('token') === config.adminToken;
+  return header === config.adminToken;
 }
 
 function readBody(req, limit = 1024 * 1024) {

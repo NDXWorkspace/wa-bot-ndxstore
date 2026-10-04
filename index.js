@@ -6,7 +6,7 @@ import { startOrderMonitor } from './services/orderMonitor.js';
 import { getMenuText, getInfoProduk, getCaraOrder, getInfoPembayaran, startMenuRefresh } from './services/menu.js';
 import { isHandoverActive, endHandover, startHandover, handleAdminReply, forwardToAdmin, initHandover } from './services/handoverService.js';
 import { checkDailyLimit } from './services/queue.js';
-import { initDashboard, handleDashboardRequest } from './services/dashboard.js';
+import { initDashboard, handleDashboardRequest, authorized } from './services/dashboard.js';
 import { askAI, askAIWithImage, transcribeAudio, startHistoryCleanup, getAiMetrics } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
 import { bufferAiMessage, savePendingBuffers, setDefaultFlushFn, flushPendingBuffers } from './services/aiBuffer.js';
@@ -119,6 +119,19 @@ const healthApp = http.createServer(async (req, res) => {
   }
 
   // First-run login on a headless host — scan QR atau pakai pairing code dari browser.
+  // KODE LOGIN = KREDENSIAL PENUH atas akun WA. Begitu ADMIN_TOKEN diisi,
+  // /code + /qr wajib token (header x-admin-token) — tanpa itu siapa saja
+  // bisa menautkan perangkat dan mengambil alih sesi bot.
+  const needLoginAuth = (url === '/code' || url === '/qr') && Boolean(config.adminToken);
+  if (needLoginAuth) {
+    const q = new URLSearchParams((req.url || '').split('?')[1] || '');
+    if (!authorized(req, q)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized — butuh token admin (header x-admin-token)' }));
+      return;
+    }
+  }
+
   if (url === '/code') {
     const pairing = getLatestPairingCode();
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -167,7 +180,35 @@ const healthApp = http.createServer(async (req, res) => {
     if (await handleDashboardRequest(req, res)) return;
   }
 
-  // Readiness + detailed status (default path and /ready).
+  // Readiness — 200 hanya kalau WA + DB benar-benar terhubung, 503 kalau
+  // degraded. Dipakai Docker HEALTHCHECK (dengan start-period agar login
+  // pertama via QR/pairing tidak dibunuh). Berbeda dari /health (liveness:
+  // 200 selama proses hidup).
+  async function readiness() {
+    const waConnected = getCurrentClient()?.info?.wid?.user ? true : false;
+    let dbConnected = false;
+    try {
+      const db = getDb();
+      if (db) {
+        const { error } = await db.from('wa_bot_config').select('key').limit(1);
+        dbConnected = !error;
+      }
+    } catch {}
+    return { waConnected, dbConnected };
+  }
+
+  if (url === '/ready') {
+    const { waConnected, dbConnected } = await readiness();
+    const isOk = waConnected && dbConnected;
+    res.writeHead(isOk ? 200 : 503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: isOk ? 'ok' : 'degraded',
+      wa: waConnected ? 'connected' : 'disconnected',
+      db: dbConnected ? 'connected' : 'error',
+    }));
+    return;
+  }
+
   if (url === '/metrics') {
     const metrics = getAiMetrics();
     const avgTime = metrics.responseTimes.length
@@ -185,15 +226,7 @@ const healthApp = http.createServer(async (req, res) => {
     return;
   }
 
-  const waConnected = getCurrentClient()?.info?.wid?.user ? true : false;
-  let dbConnected = false;
-  try {
-    const db = getDb();
-    if (db) {
-      const { error } = await db.from('wa_bot_config').select('key').limit(1);
-      dbConnected = !error;
-    }
-  } catch {}
+  const { waConnected, dbConnected } = await readiness();
 
   const isOk = waConnected && dbConnected;
   res.writeHead(isOk ? 200 : 503, { 'Content-Type': 'application/json' });
@@ -217,6 +250,11 @@ healthApp.on('error', (err) => {
 });
 healthApp.listen(PORT, config.host, () => {
   logger.info('Health', `HTTP server on ${config.host}:${PORT}`);
+  // Kontrak PM2 wait_ready — tanpa ini PM2 menunggu listen_timeout penuh
+  // (2 mnt) di setiap restart sebelum menandai online.
+  if (typeof process.send === 'function') {
+    try { process.send('ready'); } catch {}
+  }
 });
 
 // ─── Check Orders ─────────────────────────────────────────────────────
@@ -473,16 +511,18 @@ async function main() {
           if (body === '2') { await msg.reply(getInfoProduk()); return; }
           if (body === '3') { await msg.reply(getCaraOrder()); return; }
           if (body === '5') { await msg.reply(getInfoPembayaran()); return; }
+        }
 
-          // ── CS Handover start ──
-          if (body === '4' || lower === 'cs') {
-            if (config.adminNumber) {
-              await startHandover(c, msg, config.adminNumber);
-            } else {
-              await msg.reply('Admin belum dikonfigurasi.');
-            }
-            return;
+        // ── CS Handover start — berlaku di SEMUA mode AI ──
+        // "4"/"cs" tidak boleh jatuh ke AI: filter gibberish menelannya
+        // (1 karakter → SKIP/null → bot diam) sehingga jalur CS resmi mati.
+        if (body === '4' || lower === 'cs') {
+          if (config.adminNumber) {
+            await startHandover(c, msg, config.adminNumber);
+          } else {
+            await msg.reply('Admin belum dikonfigurasi.');
           }
+          return;
         }
 
         // Active CS session works regardless of AI mode

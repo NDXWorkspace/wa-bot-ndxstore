@@ -105,7 +105,11 @@ async function sendAIProactive(client, order, type, userJid) {
 
 function sendUpdateToUser(client, order) {
   const userJid = formatWaNumber(pick(order, 'waNumber', 'wa_number'));
-  if (!userJid) return;
+  if (!userJid) {
+    // Nomor WA customer tidak valid — catat, jangan hilang diam-diam (M8).
+    logger.warn('OrderMonitor', `Update ${order?.id || '?'} tidak terkirim: nomor WA invalid (${pick(order, 'waNumber', 'wa_number') || '-'})`);
+    return;
+  }
 
   const statusLabels = {
     PROCESSING: 'sedang diproses',
@@ -169,7 +173,11 @@ function isPaymentConfirmed(order) {
 function handleOrder(client, order) {
   if (!order || !order.id) return;
 
-  if (!notified.has(order.id)) {
+  // Kunci notifikasi disimpan per-tipe (`<id>_new` / `<id>_payment`), jadi cek
+  // keduanya — cek order.id mentah selalu false dan membuat cabang update di
+  // bawah tidak pernah tercapai (notifikasi update status mati).
+  const alreadyTracked = notified.has(`${order.id}_new`) || notified.has(`${order.id}_payment`);
+  if (!alreadyTracked) {
     const type = isPaymentConfirmed(order) ? 'payment' : 'new';
     sendNotif(client, order, type);
     seenOrders.set(order.id, { status: order.order_status, payment: order.payment_status, ts: Date.now() });
@@ -181,9 +189,13 @@ function handleOrder(client, order) {
     const osChanged = prev.status !== order.order_status;
     const psChanged = prev.payment !== order.payment_status;
     if (osChanged || psChanged) {
+      // Normalisasi sebelum bandingkan — status DB bisa lowercase/undefined,
+      // tanpa ini notifikasi pembayaran terkirim berulang (M7).
+      const prevOs = String(prev.status || '').toUpperCase();
+      const prevPs = String(prev.payment || '').toUpperCase();
       const confirmed = isPaymentConfirmed(order) &&
-        !PAYMENT_OK.includes(prev.status) &&
-        !PAYMENT_OK.includes(prev.payment);
+        !PAYMENT_OK.includes(prevOs) &&
+        !PAYMENT_OK.includes(prevPs);
       if (confirmed) {
         sendNotif(client, order, 'payment');
       } else {

@@ -1,4 +1,5 @@
 export function formatPrice(val) {
+  if (val === '' || val === null || val === undefined) return '-';
   const n = Number(val);
   return isNaN(n) ? '-' : `Rp${n.toLocaleString('id-ID')}`;
 }

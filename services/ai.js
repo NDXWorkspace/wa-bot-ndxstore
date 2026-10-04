@@ -317,9 +317,12 @@ function compressHistory(hist) {
   }
 
   const summaryParts = pairs.map((p, idx) => {
-    const userMsg = p.user.length > 80 ? p.user.slice(0, 80) + '...' : p.user;
-    const asstMsg = p.asst ? (p.asst.length > 60 ? p.asst.slice(0, 60) + '...' : p.asst) : '';
-    return asstMsg ? `"${userMsg}" → "${asstMsg}"` : `"${userMsg}"`;
+    // Guard: baris DB korup (content null) tidak boleh meledakkan reply (M3).
+    const userMsg = String(p.user ?? '');
+    const asstMsg = String(p.asst ?? '');
+    const userShort = userMsg.length > 80 ? userMsg.slice(0, 80) + '...' : userMsg;
+    const asstShort = asstMsg ? (asstMsg.length > 60 ? asstMsg.slice(0, 60) + '...' : asstMsg) : '';
+    return asstShort ? `"${userShort}" → "${asstShort}"` : `"${userShort}"`;
   });
 
   const summary = summaryParts.length
@@ -394,14 +397,24 @@ async function loadHistoryFromDb(jid) {
   try {
     const db = getDb();
     if (!db) return [];
-    const { data } = await withTimeout(db
+    const { data, error } = await withTimeout(db
       .from('wa_chat_history')
       .select('role, content, created_at')
       .eq('user_number', jid)
       .order('created_at', { ascending: false })
       .limit(MAX_HISTORY), 5000);
+    // DB error (RLS/kolom) bukan "user baru" — catat agar tidak diam (m2).
+    if (error) {
+      if (!isRelationError(error)) {
+        logger.warn('AI', 'History load error:', error.message?.slice(0, 120));
+      }
+      return [];
+    }
     if (!data?.length) return [];
-    const hist = data.reverse().map(m => ({ role: m.role, content: m.content }));
+    // Koersi defensif: baris korup (content null / role aneh) difilter (M3).
+    const hist = data.reverse()
+      .filter(m => (m.role === 'user' || m.role === 'assistant'))
+      .map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : String(m.content ?? '') }));
     // Restore _lastTimestamp from most recent message so time-gap detection works
     const lastCreated = data[data.length - 1]?.created_at;
     if (lastCreated) hist._lastTimestamp = new Date(lastCreated).getTime();
@@ -749,8 +762,11 @@ export function getTimeContext() {
 const responseCache = new Map();
 const CACHE_TTL_MS = 30 * 1000;
 const CACHE_MAX = 50;
-function getCached(text, mode) {
-  const key = text.toLowerCase().trim().replace(/\s+/g, ' ') + '|' + mode + '|' + getStoreCacheVersion();
+function cacheKey(jid, text, mode) {
+  return jid + '|' + text.toLowerCase().trim().replace(/\s+/g, ' ') + '|' + mode + '|' + getStoreCacheVersion();
+}
+function getCached(jid, text, mode) {
+  const key = cacheKey(jid, text, mode);
   const entry = responseCache.get(key);
   if (entry && Date.now() - entry.ts < CACHE_TTL_MS) {
     responseCache.delete(key);
@@ -761,8 +777,8 @@ function getCached(text, mode) {
   return null;
 }
 
-function setCache(text, mode, reply) {
-  const key = text.toLowerCase().trim().replace(/\s+/g, ' ') + '|' + mode + '|' + getStoreCacheVersion();
+function setCache(jid, text, mode, reply) {
+  const key = cacheKey(jid, text, mode);
   responseCache.delete(key);
   responseCache.set(key, { reply, ts: Date.now() });
   while (responseCache.size > CACHE_MAX) {
@@ -965,6 +981,7 @@ const LANG_HINTS = {
 
 const userLangs = new Map();
 const USER_LANG_TTL = 24 * 60 * 60 * 1000;
+const USER_LANG_MAX = 500;
 
 setInterval(() => {
   const cutoff = Date.now() - USER_LANG_TTL;
@@ -985,7 +1002,12 @@ function detectUserLang(jid, message, userHist) {
     if (lang === 'id' || lang === 'en') counts[lang]++;
   }
   const dominant = counts.id >= counts.en ? 'id' : 'en';
+  userLangs.delete(jid);
   userLangs.set(jid, { lang: dominant, ts: Date.now() });
+  // Cap seperti Map lain — tanpa ini JID masif <24 jam = memori bocor (m1).
+  while (userLangs.size > USER_LANG_MAX) {
+    userLangs.delete(userLangs.keys().next().value);
+  }
   return dominant;
 }
 
@@ -1107,7 +1129,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   // Inget preferensi user (game, topik) biar ga kayak baru kenal terus.
   updateUserProfile(jid, clean);
 
-  const cached = getCached(clean, mode);
+  const cached = getCached(jid, clean, mode);
   if (cached) {
     saveExchange(jid, message, cached, senderName, isGroup);
     return cached;
@@ -1154,13 +1176,19 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       timeout: TIER_TIMEOUTS.groq8b,
     });
   }
-  candidates.push({
-    model: 'openai',
-    url: `${pollBase}/openai`,
-    body: { model: config.aiModel || 'openai', ...opts },
-    headers: {},
-    timeout: TIER_TIMEOUTS.pollinations,
-  });
+  // Guard: AI_API_BASE kosong = URL "/openai" invalid untuk semua kandidat.
+  // Jangan daftarkan — log konfigurasi yang jelas, bukan error misterius (m5).
+  if (pollBase) {
+    candidates.push({
+      model: 'openai',
+      url: `${pollBase}/openai`,
+      body: { model: config.aiModel || 'openai', ...opts },
+      headers: {},
+      timeout: TIER_TIMEOUTS.pollinations,
+    });
+  } else {
+    throttleLog('error', 'AI', 'pollbase-empty', 'AI_API_BASE kosong — tier Pollinations nonaktif. Isi AI_API_BASE di .env.', 3600000);
+  }
   // Backup API (KeylessAI / custom)
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
   if (backupBase && backupBase !== pollBase) {
@@ -1187,7 +1215,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   }
 
   // Retry: minimal context, force Indonesian
-  if (!reply) {
+  if (!reply && pollBase) {
     logger.warn('AI', 'Retry with minimal prompt via Pollinations');
     const minimalMsgs = [
       { role: 'system', content: `${getPrompt(mode)}\n\n⚠️ BALAS DALAM BAHASA INDONESIA. 1-2 kalimat doang. JANGAN pake bahasa Inggris.` },
@@ -1220,9 +1248,11 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 
   if (reply) {
     if (/^SKIP\b/.test(reply)) {
-      logger.debug('AI', 'Skipping — not relevant');
+      // Model memutuskan "skip" — jangan diam: balas fallback kontekstual
+      // agar user tetap dapat jawaban (M1).
+      logger.debug('AI', 'Model SKIP — memakai fallback kontekstual');
       trackMetric(usedModel, elapsed, true);
-      return null;
+      return getFallbackReply(clean, mode);
     }
 
     // Language mismatch detected — log only, no re-prompt (previous re-prompt caused unnatural apologies)
@@ -1240,7 +1270,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
     reply = varyReply(jid, reply);
 
     saveExchange(jid, message, reply, senderName, isGroup);
-    setCache(clean, mode, reply);
+    setCache(jid, clean, mode, reply);
     trackMetric(usedModel, elapsed, true);
     return reply;
   }
@@ -1278,19 +1308,23 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       model: config.groqVisionModel, messages: msgs, max_tokens: 400, temperature: 0.5,
     }, { Authorization: `Bearer ${config.groqKey}` }, 20000);
     if (r) {
-      if (/^SKIP\b/.test(r)) return null;
-      let reply = varyReply(jid, trimReply(r, mode));
-      saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
-      return reply;
+      // SKIP di vision = coba endpoint vision berikutnya, bukan diam.
+      if (!/^SKIP\b/.test(r)) {
+        let reply = varyReply(jid, trimReply(r, mode));
+        saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
+        return reply;
+      }
     }
   }
 
-  // Vision endpoints (sequential — Pollinations, backup)
+  // Vision endpoints (sequential — Pollinations, backup).
+  // Saring URL invalid (aiApiBase kosong → "/openai") agar tidak fetch sia-sia.
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
+  const pollVision = `${(config.aiApiBase || '').replace(/\/+$/, '')}/openai`;
   const visionUrls = [
-    `${(config.aiApiBase || '').replace(/\/+$/, '')}/openai`,
+    pollVision,
     'https://text.pollinations.ai/openai',
-  ];
+  ].filter(u => typeof u === 'string' && /^https?:\/\//.test(u) && u !== '/openai');
   if (backupBase) visionUrls.push(`${backupBase}/chat/completions`);
   const seen = new Set();
   for (const url of visionUrls) {
@@ -1301,14 +1335,15 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       messages: msgs, max_tokens: 400, temperature: 0.5,
     }, {}, 20000);
     if (rRaw) {
-      if (/^SKIP\b/.test(rRaw)) return null;
+      // SKIP = endpoint ini menolak, lanjut ke kandidat vision berikutnya.
+      if (/^SKIP\b/.test(rRaw)) continue;
       let r = varyReply(jid, trimReply(rRaw, mode));
       saveExchange(jid, text || '[gambar]', r, senderName, isGroup);
       return r;
     }
   }
 
-  const textOnly = await askAI(jid, text || '[gambar]', mode, senderName);
+  const textOnly = await askAI(jid, text || '[gambar]', mode, senderName, isGroup);
   return textOnly || 'Maaf, gak bisa baca gambar.';
 }
 

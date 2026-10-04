@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import ww from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import fsp from 'fs/promises';

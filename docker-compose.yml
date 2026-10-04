@@ -9,7 +9,10 @@ services:
     volumes:
       - ./wa-session:/app/wa-session
       - ./.wwebjs_cache:/app/.wwebjs_cache
-      - ./.notified.json:/app/.notified.json
+      - ./logs:/app/logs
+      # JANGAN bind-mount ./.notified.json sebagai file: kalau belum ada di
+      # host, Docker membuatnya sebagai DIREKTORI → app EISDIR saat tulis.
+      # File ini dibuat otomatis di dalam container (ephemeral).
     env_file:
       - .env
     environment:

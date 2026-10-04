@@ -38,6 +38,7 @@ export async function withRetry(fn, options = {}) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const result = await fn();
+      setDbAvailable(true);
       return result;
     } catch (err) {
       lastErr = err;
@@ -46,9 +47,13 @@ export async function withRetry(fn, options = {}) {
         throttleLog('warn', label, `retry-${label}-${attempt}`, `Retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${err.message?.slice(0, 80)}`, 10000);
         await new Promise(r => setTimeout(r, delay));
       } else {
+        // Gagal permanen (auth/RLS/SQL) — tandai DB down agar /api/status jujur.
+        setDbAvailable(false);
         throw err;
       }
     }
   }
+  // Retry habis dan tetap gagal — tandai DB down agar /api/status jujur.
+  setDbAvailable(false);
   throw lastErr;
 }

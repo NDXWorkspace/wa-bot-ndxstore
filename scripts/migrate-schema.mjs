@@ -9,11 +9,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SQL = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const DB_PASSWORD = process.env.DB_PASSWORD || process.env.SUPABASE_KEY;
+// Password DB Postgres — BUKAN JWT (SUPABASE_KEY). JWT sebagai password
+// menjamin auth gagal dengan pesan menyesatkan. Ambil di dashboard:
+// Supabase → Project Settings → Database → Database password.
+// Opsional override host/user/port untuk pooler region lain.
+const DB_PASSWORD = process.env.DB_PASSWORD;
+const DB_HOST = process.env.DB_HOST;
+const DB_PORT = Number(process.env.DB_PORT) || 0;
+const DB_USER = process.env.DB_USER;
 const projectRef = SUPABASE_URL?.replace('https://', '').split('.')[0];
 
 if (!SUPABASE_URL || !DB_PASSWORD) {
-  console.error('Set SUPABASE_URL and DB_PASSWORD (or SUPABASE_KEY as fallback)');
+  console.error('Set SUPABASE_URL and DB_PASSWORD (database password dari Supabase Dashboard → Settings → Database, bukan SUPABASE_KEY/JWT)');
   process.exit(1);
 }
 
@@ -37,12 +44,15 @@ async function tryConnect(host, port, user) {
 }
 
 async function connect() {
-  const attempts = [
-    { host: `db.${projectRef}.supabase.co`, port: 5432, user: 'postgres' },
-    { host: `db.${projectRef}.supabase.co`, port: 5432, user: `postgres.${projectRef}` },
-    { host: `aws-0-ap-southeast-1.pooler.supabase.com`, port: 6543, user: `postgres.${projectRef}` },
-    { host: `${projectRef}.supabase.co`, port: 6543, user: 'postgres' },
-  ];
+  // Koneksi langsung (port 5432) selalu valid. Pooler butuh region yang
+  // benar — jangan hardcode region/endpoint tebak-tebakan. Override penuh
+  // via DB_HOST/DB_PORT/DB_USER bila perlu pooler.
+  const attempts = DB_HOST
+    ? [{ host: DB_HOST, port: DB_PORT || 5432, user: DB_USER || 'postgres' }]
+    : [
+      { host: `db.${projectRef}.supabase.co`, port: 5432, user: 'postgres' },
+      { host: `db.${projectRef}.supabase.co`, port: 5432, user: `postgres.${projectRef}` },
+    ];
 
   for (const { host, port, user } of attempts) {
     try {

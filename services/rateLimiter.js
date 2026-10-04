@@ -25,7 +25,10 @@ async function processQueue() {
           success = true;
           break;
         } catch (e) {
-          const isRateLimit = /\brate\b/i.test(e.message || '') || e.message?.includes('429') || e.message?.includes('too many');
+          // Regex ketat: \brate\b over-match ("celebrate") → backoff sia-sia
+          // sambil memblokir antrean (m3). Hanya pola rate-limit asli.
+          const m = e.message || '';
+          const isRateLimit = /rate[\s_\-]*limit/i.test(m) || m.includes('429') || /too many/i.test(m);
           const isNetwork = e.message?.includes('timeout') || e.message?.includes('ETIMEDOUT') || e.message?.includes('ECONN');
           const retryable = isRateLimit || isNetwork;
           if (!retryable || attempt >= MAX_RETRIES) {
@@ -39,7 +42,12 @@ async function processQueue() {
       }
       lastSent = Date.now(); // Always update to maintain spacing
       if (!success) {
-        throttleLog('warn', 'RateLimit', 'dropped', 'Message dropped after exhausting retries', 60000);
+        // Drop TERAKHIR di-log error (bukan cuma throttle) — notifikasi
+        // pembayaran yang hilang harus terlihat di log (M5).
+        logger.error('RateLimit', 'Message dropped after exhausting retries');
+        item.resolve(false);
+      } else {
+        item.resolve(true);
       }
     }
   } finally {
@@ -48,12 +56,17 @@ async function processQueue() {
 }
 
 export function enqueueSend(sendFn) {
+  // Return promise<boolean> — true terkirim, false dibuang. Pemanggil lama
+  // yang mengabaikan return value tidak terpengaruh (M5).
   if (queue.length >= MAX_QUEUE_SIZE) {
     throttleLog('warn', 'RateLimit', 'queue-full', 'Queue full, dropping message', 60000);
-    return;
+    return Promise.resolve(false);
   }
-  queue.push({ send: sendFn });
+  let resolve;
+  const done = new Promise(r => { resolve = r; });
+  queue.push({ send: sendFn, resolve });
   if (!processing) {
     processQueue();
   }
+  return done;
 }

@@ -60,18 +60,26 @@ export async function getPendingOrders(game = '') {
   return { transactions: data.transactions || [], total: data.total ?? null };
 }
 
-export async function getOrderDetail(txId) {
+// ID order valid: NDX-xxxx (web) atau TX-/TXN-xxxx (ID transaksi payment).
+// Panel harus menerima semua yang AI kenali — kalau tidak, hasil "cek" dari
+// chat tidak bisa dicari/diupdate lewat panel.
+const ORDER_ID_RE = /^(?:NDX|TX|TXN)-[A-Z0-9]+$/i;
+function normalizeOrderId(txId) {
   const id = String(txId || '').trim().toUpperCase();
-  if (!id.startsWith('NDX-')) throw new Error('Format ID salah (contoh: NDX-XXXX)');
+  if (!ORDER_ID_RE.test(id)) throw new Error('Format ID salah (contoh: NDX-XXXX atau TX-XXXX)');
+  return id;
+}
+
+export async function getOrderDetail(txId) {
+  const id = normalizeOrderId(txId);
   const data = await apiCall('GET', `/api/transaction/${id}`);
   if (!data?.success) throw new Error('Transaksi tidak ditemukan');
   return data.transaction || data;
 }
 
 export async function updateOrderStatus(txId, statusArg) {
-  const id = String(txId || '').trim().toUpperCase();
+  const id = normalizeOrderId(txId);
   const status = String(statusArg || '').trim().toUpperCase();
-  if (!id.startsWith('NDX-')) throw new Error('Format ID salah (contoh: NDX-XXXX)');
   if (!VALID_ORDER_STATUSES.includes(status)) {
     throw new Error(`Status tidak valid. Pilih: ${VALID_ORDER_STATUSES.join(', ')}`);
   }

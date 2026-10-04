@@ -45,6 +45,17 @@ ALTER TABLE wa_user_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wa_handover_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wa_bot_config ENABLE ROW LEVEL SECURITY;
 
+-- Idempotensi: CREATE POLICY tidak punya IF NOT EXISTS — tanpa DROP,
+-- run migrasi kedua selalu gagal "policy already exists".
+DROP POLICY IF EXISTS "service_role all" ON wa_chat_history;
+DROP POLICY IF EXISTS "service_role all" ON wa_user_limits;
+DROP POLICY IF EXISTS "service_role all" ON wa_handover_sessions;
+DROP POLICY IF EXISTS "service_role all" ON wa_bot_config;
+DROP POLICY IF EXISTS "no anon access" ON wa_chat_history;
+DROP POLICY IF EXISTS "no anon access" ON wa_user_limits;
+DROP POLICY IF EXISTS "no anon access" ON wa_handover_sessions;
+DROP POLICY IF EXISTS "no anon access" ON wa_bot_config;
+
 CREATE POLICY "service_role all" ON wa_chat_history FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "service_role all" ON wa_user_limits FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "service_role all" ON wa_handover_sessions FOR ALL TO service_role USING (true) WITH CHECK (true);
