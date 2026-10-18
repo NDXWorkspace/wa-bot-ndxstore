@@ -13,7 +13,7 @@ import { bufferAiMessage, savePendingBuffers, setDefaultFlushFn, flushPendingBuf
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
-import { formatPrice, formatTime } from './utils/format.js';
+import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
 import { isViewOnceMessage, saveViewOnceMedia } from './utils/viewOnce.js';
 import { startLiveDataRefresh } from './services/liveData.js';
 import { logger, createLogger, throttleLog } from './utils/logger.js';
@@ -104,6 +104,7 @@ async function saveBlockedUsers() {
 }
 let botStartedAt = Date.now();
 const ADMIN_RAW = config.adminNumber.replace(/[^0-9]/g, '');
+const ADMIN_JID = formatWaNumber(config.adminNumber);
 
 // ─── Health Check ──────────────────────────────────────────────────────
 
@@ -261,16 +262,27 @@ healthApp.listen(PORT, config.host, () => {
 
 async function checkOrders(msg, username) {
   try {
-    const resp = await fetch(`${config.apiBase}/api/transactions/user/${encodeURIComponent(username.trim())}`, {
+    const clean = username.trim();
+    const resp = await fetch(`${config.apiBase}/api/transactions/user/${encodeURIComponent(clean)}`, {
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return await msg.reply('Gagal cek order.');
     const result = await resp.json();
-    if (!result?.success || !result?.transactions?.length) {
-      return await msg.reply(`Tidak ada order untuk *${username}*.`);
+    let txs = result?.data?.transactions ?? result?.transactions ?? [];
+    if ((!Array.isArray(txs) || !txs.length) && clean.length >= 3) {
+      const sResp = await fetch(`${config.apiBase}/api/transactions/search/${encodeURIComponent(clean)}`, {
+        signal: AbortSignal.timeout(10000),
+      }).catch(() => null);
+      if (sResp?.ok) {
+        const sResult = await sResp.json().catch(() => null);
+        txs = sResult?.data?.transactions ?? sResult?.transactions ?? [];
+      }
     }
-    let reply = `Order ${username}\n━━━━━━━━━━━━━━\n`;
-    for (const o of result.transactions.slice(0, 5)) {
+    if (!Array.isArray(txs) || !txs.length) {
+      return await msg.reply(`Tidak ada order untuk *${clean}*.`);
+    }
+    let reply = `Order ${clean}\n━━━━━━━━━━━━━━\n`;
+    for (const o of txs.slice(0, 5)) {
       const prod = o.productName || o.product_name || '-';
       const price = o.priceIdr ?? o.price_idr;
       const status = o.orderStatus || o.order_status || o.paymentStatus || o.payment_status || '-';
@@ -286,13 +298,13 @@ async function checkOrders(msg, username) {
 
 // ─── Auto-resolve cek (tanpa AI, hemat kuota) ────────────────────────────
 // Dipanggil saat AI mode AKTIF dan user ketik "cek [username]" atau
-// "cek [TX-/NDX-xxxx]". Jawaban diformat langsung dari API NDXStore —
+// "cek [NDXSTORE/... / TX-/NDX-xxxx]". Jawaban diformat langsung dari API NDXStore —
 // nol API call ke AI. Return true = sudah ditangani, skip AI.
 async function autoResolveCek(msg, query) {
   const q = (query || '').trim();
   if (!q) return false;
   try {
-    const idMatch = q.match(/^(?:TX|TXN|NDX)-[A-Z0-9]+$/i);
+    const idMatch = q.match(/^(?:(?:TX|TXN|NDX)-[A-Z0-9]+|NDXSTORE\/[A-Z0-9_-]+(?:\/[A-Z0-9_-]+){1,6})$/i);
     if (idMatch) {
       const orderId = idMatch[0].toUpperCase();
       const resp = await fetch(`${config.apiBase}/api/transaction/${encodeURIComponent(orderId)}`, {
@@ -303,7 +315,7 @@ async function autoResolveCek(msg, query) {
         return true;
       }
       const data = await resp.json();
-      const t = data?.transaction;
+      const t = data?.data?.transaction ?? data?.transaction;
       if (!t) {
         await msg.reply(`Order *${orderId}* tidak ditemukan kak.`);
         return true;
@@ -348,6 +360,7 @@ async function main() {
   logger.info('Bot', `Group ID: ${config.groupId || '(not set)'}`);
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
+  logger.info('Bot', `OpenRouter: ${config.openrouterKey ? '✓' : '✗'}`);
   logger.info('Bot', config.pairingNumber ? `Login: pairing code (${config.pairingNumber})` : 'Login: scan QR');
 
   const heartbeatMs = parseInt(process.env.LOG_HEARTBEAT_MS || '300000', 10);
@@ -361,6 +374,9 @@ async function main() {
   if (config.groqKey && !config.groqKey.startsWith('gsk_')) {
     logger.warn('Bot', 'GROQ_API_KEY seharusnya dimulai dengan gsk_');
   }
+  if (config.openrouterKey && !config.openrouterKey.startsWith('sk-or-')) {
+    logger.warn('Bot', 'OPENROUTER_API_KEY seharusnya dimulai dengan sk-or-');
+  }
 
   // Startup self-check — validasi kredensial eksternal (non-blocking).
   // Tanpa ini, key invalid = fitur mati diam-diam dan baru ketahuan hari kemudian.
@@ -371,13 +387,27 @@ async function main() {
           headers: { Authorization: `Bearer ${config.groqKey}` },
           signal: AbortSignal.timeout(15000),
         });
-        if (r.status === 401) logger.error('SelfCheck', 'GROQ_API_KEY DITOLAK (401) — tier Groq + Whisper NONAKTIF. Ganti key di .env.');
-        else if (!r.ok) logger.warn('SelfCheck', `Groq check: HTTP ${r.status}`);
+        if (r.status === 401) {
+          logger.warn('SelfCheck', config.openrouterKey
+            ? 'GROQ_API_KEY ditolak (401) — beralih ke fallback OpenRouter.'
+            : 'GROQ_API_KEY DITOLAK (401) — tier Groq + Whisper NONAKTIF. Ganti key di .env.');
+        } else if (!r.ok) logger.warn('SelfCheck', `Groq check: HTTP ${r.status}`);
         else logger.info('SelfCheck', 'Groq key OK.');
       } else {
         logger.warn('SelfCheck', 'GROQ_API_KEY kosong — tier Groq + Whisper nonaktif.');
       }
     } catch (e) { logger.warn('SelfCheck', `Groq check gagal: ${e.message?.slice(0, 80)}`); }
+    try {
+      if (config.openrouterKey?.startsWith('sk-or-')) {
+        const r = await fetch('https://openrouter.ai/api/v1/auth/key', {
+          headers: { Authorization: `Bearer ${config.openrouterKey}` },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (r.status === 401) logger.error('SelfCheck', 'OPENROUTER_API_KEY DITOLAK (401) — cek kembali key di .env.');
+        else if (!r.ok) logger.warn('SelfCheck', `OpenRouter check: HTTP ${r.status}`);
+        else logger.info('SelfCheck', `OpenRouter key OK (${config.openrouterModel}).`);
+      }
+    } catch (e) { logger.warn('SelfCheck', `OpenRouter check gagal: ${e.message?.slice(0, 80)}`); }
     try {
       if (config.botToken) {
         const r = await fetch(`${config.apiBase}/api/admin/stats`, {
@@ -386,10 +416,10 @@ async function main() {
         });
         if (r.ok) logger.info('SelfCheck', 'NDX_BOT_TOKEN OK — panel Toko aktif.');
         else if (r.status === 401) logger.error('SelfCheck', 'NDX_BOT_TOKEN DITOLAK (401) — samakan dengan BOT_API_TOKEN di Vercel + redeploy.');
-        else if (r.status === 500) logger.error('SelfCheck', 'BOT_API_TOKEN belum dipasang di server Vercel — panel Toko mati.');
+        else if (r.status === 500) logger.error('SelfCheck', 'BOT_API_TOKEN belum dipasang di server Vercel — panel Toko memakai fallback Supabase.');
         else logger.warn('SelfCheck', `Admin API check: HTTP ${r.status}`);
       } else {
-        logger.warn('SelfCheck', 'NDX_BOT_TOKEN kosong — panel Toko (stats/pending/update) akan 401.');
+        logger.info('SelfCheck', 'NDX_BOT_TOKEN kosong — panel Toko memakai fallback Supabase langsung.');
       }
     } catch (e) { logger.warn('SelfCheck', `Admin API check gagal: ${e.message?.slice(0, 80)}`); }
   })().catch(() => {});
@@ -511,14 +541,15 @@ async function main() {
           if (body === '2') { await msg.reply(getInfoProduk()); return; }
           if (body === '3') { await msg.reply(getCaraOrder()); return; }
           if (body === '5') { await msg.reply(getInfoPembayaran()); return; }
+          if (body === '6') { await msg.reply('Terima kasih telah menghubungi *NDXStore*! Ketik *Menu* kapan saja jika butuh bantuan.'); return; }
         }
 
         // ── CS Handover start — berlaku di SEMUA mode AI ──
         // "4"/"cs" tidak boleh jatuh ke AI: filter gibberish menelannya
         // (1 karakter → SKIP/null → bot diam) sehingga jalur CS resmi mati.
         if (body === '4' || lower === 'cs') {
-          if (config.adminNumber) {
-            await startHandover(c, msg, config.adminNumber);
+          if (ADMIN_JID) {
+            await startHandover(c, msg, ADMIN_JID);
           } else {
             await msg.reply('Admin belum dikonfigurasi.');
           }
@@ -526,15 +557,15 @@ async function main() {
         }
 
         // Active CS session works regardless of AI mode
-        if (isHandoverActive(msg.from) && config.adminNumber) {
+        if (isHandoverActive(msg.from) && ADMIN_JID) {
           if (lower === 'selesai' || lower === 'stop') {
             endHandover(msg.from);
-              await msg.reply('Sesi CS selesai. Ketik *Menu* untuk kembali.');
-            await c.sendMessage(config.adminNumber, `Sesi CS selesai\nUser: ${msg.from}`);
+            await msg.reply('Sesi CS selesai. Ketik *Menu* untuk kembali.');
+            await c.sendMessage(ADMIN_JID, `Sesi CS selesai\nUser: ${msg.from}`);
             return;
           }
           try {
-            await forwardToAdmin(c, msg.from, body, config.adminNumber);
+            await forwardToAdmin(c, msg.from, body, ADMIN_JID);
             await msg.reply('Pesan diteruskan ke admin.');
           } catch (e) {
             logger.error('Forward', 'Gagal forward ke admin:', e.message);
@@ -740,9 +771,9 @@ async function main() {
         };
 
         if (isGroupDirect) {
-          doReply(senderJid, body, mediaImage, msg);
+          doReply(historyJid, body, mediaImage, msg);
         } else {
-          bufferAiMessage(senderJid, msg, body, mediaImage, doReply);
+          bufferAiMessage(historyJid, msg, body, mediaImage, doReply);
         }
         return;
 

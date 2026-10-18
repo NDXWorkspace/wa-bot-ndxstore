@@ -13,6 +13,10 @@ export function formatTime(val) {
 export function formatWaNumber(raw) {
   if (!raw) return null;
   let n = String(raw).trim();
+  if (n.endsWith('@c.us')) {
+    const d = n.slice(0, -5).replace(/[^0-9]/g, '');
+    return d.length >= 10 ? d + '@c.us' : null;
+  }
   if (n.startsWith('+')) {
     const stripped = n.slice(1).replace(/[^0-9]/g, '');
     if (stripped.length >= 10) return stripped + '@c.us';
@@ -23,3 +27,4 @@ export function formatWaNumber(raw) {
   if (n.startsWith('62') && n.length >= 10) return n + '@c.us';
   return null;
 }
+

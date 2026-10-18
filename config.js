@@ -41,6 +41,15 @@ export const config = {
   groqKey: e('GROQ_API_KEY'),
   groqVisionModel: e('GROQ_VISION_MODEL'),
   groqUrl: e('GROQ_URL') || 'https://api.groq.com/openai/v1/chat/completions',
+  openrouterKey: (() => {
+    const raw = e('OPENROUTER_API_KEY');
+    if (!raw) return '';
+    if (raw.startsWith('sk-or-')) return raw;
+    if (/^[a-f0-9]{64}$/i.test(raw)) return `sk-or-v1-${raw}`;
+    return raw;
+  })(),
+  openrouterModel: e('OPENROUTER_MODEL') || 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  openrouterUrl: e('OPENROUTER_URL') || 'https://openrouter.ai/api/v1/chat/completions',
   aiApiBackup: e('AI_API_BACKUP') || 'https://keylessai.thryx.workers.dev/v1',
   notifiedPath: e('NOTIFIED_PATH') || './.notified.json',
 };

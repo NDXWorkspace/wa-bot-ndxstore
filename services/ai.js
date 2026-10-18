@@ -694,7 +694,7 @@ function profileContext(jid) {
 // kayak manusia (Fase 4A).
 
 const STATUS_ASK_KW = /\b(status|mana|kapan|sampe|sampai|nyampe|diproses|belum masuk|belum nyampe|pesananku|orderanku|order saya|pesanan saya|kok lama|lama banget)\b/i;
-const HAS_USERNAME_KW = /cek\s+\S+|(?:TX|TXN|NDX)-[A-Z0-9]+/i;
+const HAS_USERNAME_KW = /cek\s+\S+|(?:TX|TXN|NDX)-[A-Z0-9]+|NDXSTORE\/[A-Z0-9_\/-]+/i;
 
 function statusInstrFor(message, mode) {
   if (mode !== 1) return '';
@@ -863,6 +863,7 @@ const UA_HEADERS = { 'User-Agent': 'NDXStoreBot/1.0' };
 const TIER_TIMEOUTS = {
   groq70b: 12000,
   groq8b: 10000,
+  openrouter: 15000,
   pollinations: 15000,
 };
 
@@ -941,6 +942,12 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000, signal = nul
         }
       }
 
+      if (resp.status === 401 || resp.status === 403) {
+        FAILED_ENDPOINTS.set(key, { count: CB_THRESHOLD, cooldown: 3600000, markedAt: Date.now() });
+        throttleLog('warn', 'AI', `auth-${model}`, `${url} (${model}) ${resp.status} — API key ditolak, endpoint dinonaktifkan 1 jam`, 3600000);
+        return null;
+      }
+
       markEndpointFailure(key);
       logger.error('AI', `${url} (${model}) ${resp.status}:`, err.slice(0, 120));
       return null;
@@ -948,7 +955,7 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000, signal = nul
 
     const data = await resp.json();
     const content = data?.choices?.[0]?.message?.content?.trim();
-    if (!content) {
+    if (!content || /^User Safety:/i.test(content)) {
       markEndpointFailure(key);
       return null;
     }
@@ -1157,10 +1164,10 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   // model kecil & cepat — 70b dilewati untuk hemat kuota. Chat bebas memakai
   // semua tier demi latensi terbaik.
   const wantsFactual = FACTUAL_KW.test(clean);
-  const candidates = [];
+  const groqCandidates = [];
   if (config.groqKey?.startsWith('gsk_')) {
     if (!wantsFactual) {
-      candidates.push({
+      groqCandidates.push({
         model: 'llama-3.3-70b-versatile',
         url: groqUrl,
         body: { model: 'llama-3.3-70b-versatile', ...opts },
@@ -1168,7 +1175,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
         timeout: TIER_TIMEOUTS.groq70b,
       });
     }
-    candidates.push({
+    groqCandidates.push({
       model: 'llama-3.1-8b-instant',
       url: groqUrl,
       body: { model: 'llama-3.1-8b-instant', ...opts },
@@ -1176,42 +1183,82 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       timeout: TIER_TIMEOUTS.groq8b,
     });
   }
-  // Guard: AI_API_BASE kosong = URL "/openai" invalid untuk semua kandidat.
-  // Jangan daftarkan — log konfigurasi yang jelas, bukan error misterius (m5).
-  if (pollBase) {
-    candidates.push({
-      model: 'openai',
-      url: `${pollBase}/openai`,
-      body: { model: config.aiModel || 'openai', ...opts },
-      headers: {},
-      timeout: TIER_TIMEOUTS.pollinations,
-    });
-  } else {
-    throttleLog('error', 'AI', 'pollbase-empty', 'AI_API_BASE kosong — tier Pollinations nonaktif. Isi AI_API_BASE di .env.', 3600000);
-  }
-  // Backup API (KeylessAI / custom)
-  const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
-  if (backupBase && backupBase !== pollBase) {
-    candidates.push({
-      model: 'openai-backup',
-      url: `${backupBase}/chat/completions`,
-      body: { model: 'openai-fast', ...opts },
-      headers: {},
-      timeout: TIER_TIMEOUTS.pollinations,
-    });
+
+  // 1. Primary Tier: Groq
+  if (groqCandidates.length) {
+    const aborter = new AbortController();
+    const raced = groqCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal)
+      .then(r => r ? { reply: r, model: m.model } : Promise.reject(new Error('empty'))));
+    const winner = await Promise.any(raced).catch(() => null);
+    aborter.abort();
+    if (winner?.reply) {
+      reply = winner.reply;
+      usedModel = winner.model;
+    }
   }
 
-  // Race: yang pertama SUKSES menang, yang kalah langsung di-abort supaya tidak
-  // makan kuota API sia-sia. Gagal/null di-reject agar Promise.any menunggu
-  // kandidat sukses berikutnya, bukan berhenti di kegagalan tercepat.
-  const aborter = new AbortController();
-  const raced = candidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal)
-    .then(r => r ? { reply: r, model: m.model } : Promise.reject(new Error('empty'))));
-  const winner = await Promise.any(raced).catch(() => null);
-  aborter.abort();
-  if (winner?.reply) {
-    reply = winner.reply;
-    usedModel = winner.model;
+  // 2. Fallback Tier 1: OpenRouter (jika Groq tidak bekerja)
+  if (!reply && config.openrouterKey?.startsWith('sk-or-')) {
+    const orModel = config.openrouterModel || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    const orModels = [
+      orModel,
+      'poolside/laguna-s-2.1:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
+    ].filter((m, i, a) => m && a.indexOf(m) === i).slice(0, 3);
+    const orHeaders = {
+      Authorization: `Bearer ${config.openrouterKey}`,
+      'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
+      'X-Title': 'NDXStore WA Bot',
+    };
+    const orReply = await tryFetch(
+      config.openrouterUrl,
+      { model: orModel, models: orModels, ...opts, reasoning: { effort: 'none' } },
+      orHeaders,
+      TIER_TIMEOUTS.openrouter,
+    );
+    if (orReply) {
+      reply = orReply;
+      usedModel = orModel;
+    }
+  }
+
+  // 3. Fallback Tier 2: Pollinations & Backup API
+  const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
+  if (!reply) {
+    const fallbackCandidates = [];
+    // Guard: AI_API_BASE kosong = URL "/openai" invalid untuk semua kandidat.
+    // Jangan daftarkan — log konfigurasi yang jelas, bukan error misterius (m5).
+    if (pollBase) {
+      fallbackCandidates.push({
+        model: 'openai',
+        url: `${pollBase}/openai`,
+        body: { model: config.aiModel || 'openai', ...opts },
+        headers: {},
+        timeout: TIER_TIMEOUTS.pollinations,
+      });
+    } else {
+      throttleLog('error', 'AI', 'pollbase-empty', 'AI_API_BASE kosong — tier Pollinations nonaktif. Isi AI_API_BASE di .env.', 3600000);
+    }
+    if (backupBase && backupBase !== pollBase) {
+      fallbackCandidates.push({
+        model: 'openai-backup',
+        url: `${backupBase}/chat/completions`,
+        body: { model: 'openai-fast', ...opts },
+        headers: {},
+        timeout: TIER_TIMEOUTS.pollinations,
+      });
+    }
+    if (fallbackCandidates.length) {
+      const aborter = new AbortController();
+      const raced = fallbackCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal)
+        .then(r => r ? { reply: r, model: m.model } : Promise.reject(new Error('empty'))));
+      const winner = await Promise.any(raced).catch(() => null);
+      aborter.abort();
+      if (winner?.reply) {
+        reply = winner.reply;
+        usedModel = winner.model;
+      }
+    }
   }
 
   // Retry: minimal context, force Indonesian
@@ -1302,7 +1349,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     { role: 'user', content },
   ];
 
-  // Groq vision (opt-in)
+  // 1. Groq vision (opt-in)
   if (config.groqKey?.startsWith('gsk_') && config.groqVisionModel) {
     const r = await tryFetch('https://api.groq.com/openai/v1/chat/completions', {
       model: config.groqVisionModel, messages: msgs, max_tokens: 400, temperature: 0.5,
@@ -1317,7 +1364,28 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }
   }
 
-  // Vision endpoints (sequential — Pollinations, backup).
+  // 2. OpenRouter vision fallback
+  if (config.openrouterKey?.startsWith('sk-or-')) {
+    const orVisionModels = [
+      'nvidia/nemotron-3.5-super-vl:free',
+      'dots-studio/dots-3-note-preview:free',
+      'google/gemma-4-31b-it:free',
+    ];
+    const r = await tryFetch(config.openrouterUrl, {
+      model: orVisionModels[0], models: orVisionModels, messages: msgs, max_tokens: 400, temperature: 0.5, reasoning: { effort: 'none' },
+    }, {
+      Authorization: `Bearer ${config.openrouterKey}`,
+      'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
+      'X-Title': 'NDXStore WA Bot',
+    }, 20000);
+    if (r && !/^SKIP\b/.test(r)) {
+      let reply = varyReply(jid, trimReply(r, mode));
+      saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
+      return reply;
+    }
+  }
+
+  // 3. Vision endpoints (sequential — Pollinations, backup).
   // Saring URL invalid (aiApiBase kosong → "/openai") agar tidak fetch sia-sia.
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
   const pollVision = `${(config.aiApiBase || '').replace(/\/+$/, '')}/openai`;
@@ -1363,16 +1431,47 @@ export async function askAIProactive(order, mode = 1) {
   ];
   const maxTokens = mode === 1 ? 60 : 80;
   const opts = { messages: msgs, max_tokens: maxTokens, temperature: 0.5 };
-  const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  const groqUrl = config.groqUrl || 'https://api.groq.com/openai/v1/chat/completions';
   const groqHeaders = { Authorization: `Bearer ${config.groqKey}` };
   const pollBase = (config.aiApiBase || '').replace(/\/+$/, '');
 
-  const candidates = [
-    ...(config.groqKey?.startsWith('gsk_') ? [
+  // 1. Try Groq
+  if (config.groqKey?.startsWith('gsk_')) {
+    const groqCandidates = [
       { url: groqUrl, body: { model: 'llama-3.3-70b-versatile', ...opts }, headers: groqHeaders, timeout: 10000 },
       { url: groqUrl, body: { model: 'llama-3.1-8b-instant', ...opts }, headers: groqHeaders, timeout: 10000 },
-    ] : []),
-    { url: `${pollBase}/openai`, body: { model: config.aiModel || 'openai', ...opts }, headers: {}, timeout: 10000 },
+    ];
+    const aborter = new AbortController();
+    const raced = groqCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal));
+    const result = await Promise.any(raced.map(p => p.then(r => r ? r : Promise.reject()))).catch(() => null);
+    aborter.abort();
+    if (result) return result;
+  }
+
+  // 2. Fallback to OpenRouter if Groq failed/unavailable
+  if (config.openrouterKey?.startsWith('sk-or-')) {
+    const orModel = config.openrouterModel || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    const orModels = [
+      orModel,
+      'poolside/laguna-s-2.1:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
+    ].filter((m, i, a) => m && a.indexOf(m) === i).slice(0, 3);
+    const orResult = await tryFetch(
+      config.openrouterUrl,
+      { model: orModel, models: orModels, ...opts, reasoning: { effort: 'none' } },
+      {
+        Authorization: `Bearer ${config.openrouterKey}`,
+        'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
+        'X-Title': 'NDXStore WA Bot',
+      },
+      12000,
+    );
+    if (orResult) return orResult;
+  }
+
+  // 3. Fallback to Pollinations & Backup API
+  const candidates = [
+    ...(pollBase ? [{ url: `${pollBase}/openai`, body: { model: config.aiModel || 'openai', ...opts }, headers: {}, timeout: 10000 }] : []),
     { url: 'https://text.pollinations.ai/openai', body: { model: 'openai', ...opts }, headers: {}, timeout: 10000 },
   ];
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');

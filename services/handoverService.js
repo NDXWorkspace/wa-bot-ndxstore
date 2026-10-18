@@ -1,6 +1,7 @@
 import { getDb } from './supabase.js';
 import { logger } from '../utils/logger.js';
 import { isRelationError } from '../utils/db.js';
+import { formatWaNumber } from '../utils/format.js';
 
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -109,13 +110,14 @@ function touchSession(userNumber) {
 
 export async function startHandover(client, msg, adminNumber) {
   const userNumber = msg.from;
-  handoverSessions.set(userNumber, { adminNumber, lastActivity: Date.now() });
-  persistSession(userNumber, adminNumber).catch(() => {});
+  const adminJid = formatWaNumber(adminNumber) || adminNumber;
+  handoverSessions.set(userNumber, { adminNumber: adminJid, lastActivity: Date.now() });
+  persistSession(userNumber, adminJid).catch(() => {});
 
   await msg.reply('Terhubung ke Customer Service\nSilakan kirim pesan Anda. Admin akan membalas segera.\n\nKetik *selesai* untuk mengakhiri.');
 
   const body = msg.body.trim() === 'cs' || msg.body.trim() === '4' ? '(memulai CS)' : msg.body;
-  const adminMsg = await client.sendMessage(adminNumber,
+  const adminMsg = await client.sendMessage(adminJid,
     `📞 *CS Request*\nDari: ${userNumber}\nPesan: ${body}\n\nBalas dengan reply untuk membalas.`
   );
 
@@ -133,7 +135,7 @@ export async function handleAdminReply(client, msg) {
   // Fallback that survives a restart (in-memory map is empty then): the bot's
   // forwarded messages embed the user's JID in their text — recover it from there.
   if (!userNumber && quoted.fromMe) {
-    const m = quoted.body?.match(/(\d{6,}@c\.us)/);
+    const m = quoted.body?.match(/(\d{6,}@(?:c\.us|lid))/);
     if (m) userNumber = m[1];
   }
 
@@ -149,9 +151,11 @@ export async function handleAdminReply(client, msg) {
 
 export async function forwardToAdmin(client, userNumber, messageBody, adminNumber) {
   touchSession(userNumber);
+  const adminJid = formatWaNumber(adminNumber) || adminNumber;
 
-  const adminMsg = await client.sendMessage(adminNumber,
+  const adminMsg = await client.sendMessage(adminJid,
     `📩 *Pesan dari ${userNumber}:*\n\n${messageBody}\n\nBalas dengan reply untuk membalas.`
   );
   forwardedMessages.set(msgKey(adminMsg), { userNumber, timestamp: Date.now() });
 }
+
