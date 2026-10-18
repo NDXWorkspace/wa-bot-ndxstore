@@ -42,12 +42,15 @@ GAYA NGOMONG (wajib):
 - kalo gatau: "gatau wkwk", "gak tau dah", "tanya admin aja sono"
 - kalo males: jawab super singkat kayak "heh", "hmm", "y"
 - kadang (JARANG, jangan tiap pesan) selipin reaksi personal kayak "wah mantep tuh", "anjir lama bener", "wkwk sabar". jangan dipaksa tiap balasan
+- kalo user ngirim beberapa bubble chat beruntun (misal sapaan + pertanyaan + detail), BACA SEMUANYA DULU sebagai satu kesatuan dan jawab intinya aja dalam 1 balasan nyambung. JANGAN jawab satu-satu per bubble
 
 CONTOH:
 User: bang
 Bima: yo
-User: kak mau top up ml 100 diamond
-Bima: boleh, 25k. langsung ke ndxstoreid.vercel.app aja, transfer trus konfirm
+User: bang
+mau tanya dong
+kalo top up ml 85 dm berapa?
+Bima: 26 ribuan doang. langsung gas ke ndxstoreid.vercel.app aja
 User: udah bayar kak
 Bima: oke bentar gw cekin. tunggu ya
 User: thanks
@@ -63,12 +66,13 @@ Bima: loh kenapa? cerita aja kalo mau
 
 ATURAN KERAS:
 1. JANGAN pernah ngaku AI, bot, atau asisten digital. kalo ditanya "lu bot ya?" jawab kayak orang kesinggung bercanda: "enak aja bot"
-2. JANGAN ngarang harga/status/angka. kalo ga ada data: suruh cek sendiri atau tanya username buat dicekin
+2. JANGAN ngarang harga/status/angka. pake angka dari DATA REAL-TIME NDXStore kalo ada. kalo ga ada: suruh cek di web atau tanya username buat dicekin
 3. kalo user nanya STATUS order tapi ga kasih username: TANYA username-nya langsung, jangan nyuruh "ketik cek"
 4. kalo di grup dan ga dimention/direply: diem. cuma jawab kalo dimention/direply. JANGAN nanya balik di grup
 5. kalo pesan user ga nyambung/gajelas: skip aja, JANGAN maksa jawab
+6. kalo user kirim penggalan chat beruntun, rangkum jawabannya jadi 1 chat yang natural kayak manusia yang baca semua chat dulu baru bales
 
-singkat: baca, paham, jawab kayak manusia. gausa maksa.`;
+singkat: baca semua dulu, paham maksud utamanya, jawab 1x kayak manusia. gausa maksa.`;
 }
 
 function makeNdxstorePrompt() {
@@ -79,25 +83,26 @@ IDENTITAS:
 - Tugas utama: bantu pelanggan order top up game (ML, Roblox, Free Fire, dll)
 - Profesional tapi santai, ga kaku kayak robot
 
-CAR NGOMONG:
+CARA NGOMONG:
 - BALAS PAKE BAHASA YANG SAMA dengan pelanggan
-- Panggil pelanggan "kak" (kalo cowok bangga "bang")
+- Panggil pelanggan "kak" (kalo cowok panggil "bang" boleh)
 - Jawab informatif, jelas, to the point
 - JANGAN pake emoji
 - Kalo customer marah: minta maaf dengan baik, jangan defensif
 - JANGAN pake bahasa formal berlebihan (hindari: mohon maaf sebelumnya, sehubungan, dengan ini, demikian, kami informasikan)
+- Kalo pelanggan kirim beberapa bubble chat beruntun (misal sapaan dulu lalu pertanyaan), BACA SEMUANYA DULU dan balas langsung ke intinya dalam 1 pesan utuh yang mengalir natural (jangan membalas sapaan dan pertanyaan secara terpisah per poin)
 
 YANG LO BANTU:
 1. Cara order: buka ndxstoreid.vercel.app, pilih produk, bayar, tunggu 5-30 menit
-2. Info pembayaran: DANA, GoPay, transfer bank — kalo ditanya nomor, bilang "saya kirim via私 chat ya kak" lalu arahkan kirim "cs"
-3. Cek status order: suruh "cek [username]"
-4. Info produk: kalo user nanya harga game tertentu, cek data real-time
+2. Info pembayaran: DANA, GoPay, transfer bank — kalo ditanya nomor rekening/tujuan, arahkan ke website ndxstoreid.vercel.app atau ketik "cs" untuk dibantu admin
+3. Cek status order: cek dari DATA REAL-TIME NDXStore jika ada, atau minta username / ID ordernya
+4. Info produk: gunakan harga asli dari DATA REAL-TIME NDXStore jika tersedia
 5. Keluhan: dengerin dulu, minta maaf, bantu cek, arahin ke admin kalo perlu
 6. CS (customer service): kalo user minta CS, bilang admin akan hubungi
 
 ATURAN PENTING:
 1. JANGAN pernah ngaku AI atau bot
-2. JANGAN ngasih harga/status palsu — kalo ga ada di data, minta user ketik "cek [username]" atau tanya nama gamenya
+2. JANGAN ngasih harga/status palsu — gunakan DATA REAL-TIME NDXStore yang diberikan. Kalo ga ada di data, arahkan ke ndxstoreid.vercel.app atau tanya nama game/username-nya
 3. Kalo user pake bahasa Inggris, balas Inggris
 4. Kalo user kesal atau marah: "Maaf kak, saya cek dulu ya. Mohon tunggu sebentar."
 5. Kalo ditanya di luar konteks toko: "Maaf kak, saya khusus bantu order top up. Kalo ada yang lain, boleh hubungi WA admin ya."
@@ -106,28 +111,27 @@ ATURAN PENTING:
 8. KALO DI GRUP: cukup jawab kalo emang perlu aja, jangan nanya balik
 
 CONTOH PERCAKAPAN:
-Pelanggan: kak mau order diamond ml
-CS: Boleh kak, mau beli berapa diamond? nanti bisa langsung di ndxstoreid.vercel.app ya
+Pelanggan: kak
+mau tanya dong
+harga ml 85 diamond berapa?
+CS: Untuk 85 Diamonds ML harganya Rp26.651 kak, bisa langsung order di ndxstoreid.vercel.app ya
 
 Pelanggan: udah bayar kak, udah konfirmasi
-CS: Baik kak, sebentar ya kami cek. Nama user ML-nya apa?
+CS: Baik kak, sebentar ya kami cek. Username atau ID order-nya apa kak?
 
 Pelanggan: order gue mana?
-CS: Bisa ketik "cek [username]" kak, nanti keluar statusnya.
+CS: Boleh infokan username atau ID order-nya kak? Atau bisa ketik "cek [username]" biar langsung muncul statusnya.
 
 Pelanggan: GILA! order gua ga dateng-dateng!!
-CS: Maaf banget kak. Boleh saya cek ID order-nya? nanti kami bantu lacak.
-
-Pelanggan: harga ml 100 diamond berapa?
-CS: Coba cek langsung di ndxstoreid.vercel.app aja kak, soalnya harga bisa beda tiap hari
+CS: Maaf banget kak atas ketidaknyamanannya. Boleh minta ID order atau username-nya kak? Biar langsung kami bantu lacak sekarang.
 
 Pelanggan: makasih
-CS: Sama-sama kak, kalo ada masalah bilang aja lagi
+CS: Sama-sama kak, kalo ada kendala lagi kabarin aja ya
 
 PENGETAHUAN TOKO:
 ${makeKnowledge()}
 
-INGAT — lo CS yang baik. Bantu pelanggan dengan sabar dan profesional.`;
+INGAT — lo CS manusia yang baik. Baca semua penggalan chat pelanggan dulu, pahami utuh, lalu balas 1x dengan sabar dan profesional.`;
 }
 
 const PROMPT_FNS = { 1: makeBimaPrompt, 2: makeNdxstorePrompt };
@@ -524,14 +528,20 @@ setInterval(() => {
   }
 }, 30000).unref();
 
-export function isDuplicate(jid, text) {
+export function isDuplicate(jid, text, recordNow = true) {
   const norm = (text || '').toLowerCase().trim().replace(/\s+/g, ' ');
   if (!norm) return false;
   const prev = recentInputs.get(jid);
   const now = Date.now();
   if (prev && prev.text === norm && now - prev.ts < DEDUP_WINDOW_MS) return true;
-  recentInputs.set(jid, { text: norm, ts: now });
+  if (recordNow) recentInputs.set(jid, { text: norm, ts: now });
   return false;
+}
+
+function recordRecentInput(jid, text) {
+  const norm = (text || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  if (!norm) return;
+  recentInputs.set(jid, { text: norm, ts: Date.now() });
 }
 
 // ─── Gibberish filter — hemat kuota API untuk pesan tanpa makna ───────────
@@ -1043,10 +1053,17 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
   const ctx = queryCtx ? `\n\nDATA REAL-TIME NDXStore (WAJIB dipakai, JANGAN mengarang harga/status/angka):\n${queryCtx}` : '';
   const langInstr = `\n⚠️ BAHASA: ${lang === 'en' ? 'ENGLISH' : 'INDONESIA'}. Balas dalam bahasa ${lang === 'en' ? 'Inggris' : 'Indonesia'} saja.`;
 
-  // Intent detection (A1)
+  // Detect multiple chat bubbles sent in sequence
+  const bubbles = message.split('\n').map(s => s.trim()).filter(Boolean);
+  const isMultiBubble = bubbles.length > 1;
+  const multiBubbleInstr = isMultiBubble
+    ? `\n💬 MULTI-BUBBLE (${bubbles.length} chat beruntun): User mengirim ${bubbles.length} penggalan chat berturut-turut. Baca dan pahami SEMUA penggalan di bawah ini sebagai satu kesatuan pikiran, abaikan basa-basi pembuka jika sudah ada inti pertanyaannya, dan jawab sekaligus dalam SATU balasan utuh yang mengalir natural (JANGAN jawab satu per satu per baris).`
+    : '';
+
+  // Intent detection (A1) — evaluate across all bubbles
   const cleanMsg = message.toLowerCase().trim();
-  const isQuestion = /^(\w+|[?]|(apa|siapa|kapan|dimana|kenapa|bagaimana|berapa|apakah|bisakah|dapatkah|maukah)\b)/.test(cleanMsg) || cleanMsg.endsWith('?');
-  const isCommand = /^(tolong|minta|bantu|coba|kasi|kasih|buatin|bikinin|kirim|tambah|ubah|stop|berhenti)\b/i.test(message);
+  const isQuestion = /(\?|(\b(apa|siapa|kapan|dimana|kenapa|bagaimana|gimana|berapa|brp|apakah|bisakah|dapatkah|maukah|ada\s+ga|bisa\s+ga)\b))/i.test(cleanMsg);
+  const isCommand = /(?:^|\n)\s*(tolong|minta|bantu|coba|kasi|kasih|buatin|bikinin|kirim|tambah|ubah|stop|berhenti|cek)\b/i.test(message);
   const isStatement = !isQuestion && !isCommand && (cleanMsg.endsWith('.') || cleanMsg.endsWith('!') || message.length > 60);
   const intentLabel = isCommand ? 'MEMERINTAH' : isQuestion ? 'BERTANYA' : isStatement ? 'MEMBERITAHU' : 'NGOMONG';
 
@@ -1064,23 +1081,30 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
     return '';
   })();
 
-  // Style mirroring (A5) — match user message length
+  // Style mirroring (A5) — match user message length & multi-bubble depth
   const userWords = message.trim().split(/\s+/).length;
   let styleTarget = '';
-  if (userWords <= 4) styleTarget = `\n📐 USER NGEKETIK SINGKAT (${userWords} kata). Jawab SEBERSIT: 1 kalimat, 2-6 kata doang.`;
-  else if (userWords <= 10) styleTarget = `\n📐 USER NGEKETIK SEDANG (${userWords} kata). Jawab 1-2 kalimat pendek.`;
-  else styleTarget = `\n📐 USER NGEKETIK PANJANG (${userWords} kata). Jawab natural, maks 2 kalimat.`;
+  if (!isMultiBubble && userWords <= 4 && !isQuestion) {
+    styleTarget = `\n📐 USER NGEKETIK SINGKAT (${userWords} kata). Jawab SEBERSIT: 1 kalimat, 2-6 kata doang.`;
+  } else if (userWords <= 10) {
+    styleTarget = `\n📐 USER NGEKETIK SEDANG (${userWords} kata). Jawab 1-2 kalimat pendek yang langsung menjawab intinya.`;
+  } else {
+    styleTarget = `\n📐 USER NGEKETIK (${userWords} kata${isMultiBubble ? `, ${bubbles.length} bubble` : ''}). Rangkum jawaban semua pertanyaannya dalam 1-2 kalimat natural yang padat & jelas.`;
+  }
 
-  const msgs = [{ role: 'system', content: [prompt, store, ctx, langInstr, chatInstr, styleTarget, timeGap, getTimeContext(), LANG_HINTS[lang] || '', profileContext(jid), statusInstrFor(message, mode)].filter(Boolean).join('\n') }];
+  const msgs = [{ role: 'system', content: [prompt, store, ctx, langInstr, chatInstr, multiBubbleInstr, styleTarget, timeGap, getTimeContext(), LANG_HINTS[lang] || '', profileContext(jid), statusInstrFor(message, mode)].filter(Boolean).join('\n') }];
   const compressed = compressHistory(userHist);
   for (const m of compressed) msgs.push(m);
-  msgs.push({ role: 'user', content: filterInput(message) });
+  const formattedUserContent = isMultiBubble
+    ? bubbles.map((b, i) => `[Chat ${i + 1}]: ${filterInput(b)}`).join('\n')
+    : filterInput(message);
+  msgs.push({ role: 'user', content: formattedUserContent });
   return msgs;
 }
 
 // ─── Adaptive temperature (mode-aware) ─────────────────────────────────
 
-const FACTUAL_KW = /\b(harga|price|status|order|pesanan|produk|item|diamond|robux|cek|berapa|daftar|list|stok|tersedia|available|payment|bayar|transfer|dana|gopay|saldo)\b/i;
+const FACTUAL_KW = /\b(harga|price|status|order|pesanan|produk|item|diamond|dm|wdp|starlight|robux|rbx|cek|berapa|brp|daftar|list|stok|tersedia|available|payment|bayar|transfer|dana|gopay|saldo)\b/i;
 
 function pickTemperature(text, mode = 1) {
   const isFactual = FACTUAL_KW.test(text);
@@ -1091,27 +1115,36 @@ function pickTemperature(text, mode = 1) {
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-export function detectGreeting(text) {
-  const cleaned = text.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+export function detectGreeting(text, mode = 1) {
+  const raw = String(text || '').trim();
+  // Never use single-word fast reply if user sent multiple bubbles or multiple words
+  if (!raw || raw.includes('\n') || raw.split(/\s+/).length > 1) return null;
+  const cleaned = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (cleaned === 'p' || cleaned === 'pp') {
+    return mode === 2 ? 'Halo kak, ada yang bisa dibantu?' : 'yo';
+  }
   return FAST_REPLIES.get(cleaned) || null;
 }
 
 // ─── Main AI ───────────────────────────────────────────────────────────
 
-export async function askAI(jid, message, mode = 1, senderName = null, isGroup = false) {
+export async function askAI(jid, message, mode = 1, senderName = null, isGroup = false, signal = null) {
   if (!message?.trim()) return null;
+  if (signal?.aborted) return null;
 
   const clean = sanitizeInput(message);
 
   // Anti-duplikat: redelivery WA / spam pesan sama dalam 15 detik → skip
-  // (jawaban untuk pesan itu sudah dikirim / sedang diproses).
-  if (isDuplicate(jid, clean)) {
+  // (jangan langsung catat kalau pakai signal agar kalau di-abort saat ada bubble susulan, tidak dianggap duplikat).
+  if (isDuplicate(jid, clean, !signal)) {
     logger.debug('AI', 'Skipping duplicate message');
     return null;
   }
 
-  const fast = detectGreeting(clean);
+  const fast = detectGreeting(clean, mode);
   if (fast) {
+    if (signal?.aborted) return null;
+    if (signal) recordRecentInput(jid, clean);
     saveExchange(jid, message, fast, senderName, isGroup);
     return fast;
   }
@@ -1126,27 +1159,33 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   if (detectAngry(clean)) {
     const angryCount = trackAngry(jid);
     if (angryCount >= ANGRY_THRESHOLD) {
+      if (signal?.aborted) return null;
       const esc = escalationReply(mode);
       logger.info('AI', `Escalating ${jid} to CS (angry x${angryCount})`);
+      if (signal) recordRecentInput(jid, clean);
       saveExchange(jid, message, esc, senderName, isGroup);
       return esc;
     }
   }
 
-  // Inget preferensi user (game, topik) biar ga kayak baru kenal terus.
-  updateUserProfile(jid, clean);
-
   const cached = getCached(jid, clean, mode);
   if (cached) {
+    if (signal?.aborted) return null;
+    if (signal) recordRecentInput(jid, clean);
+    updateUserProfile(jid, clean);
     saveExchange(jid, message, cached, senderName, isGroup);
     return cached;
   }
 
   const userHist = await getOrLoadHistory(jid);
+  if (signal?.aborted) return null;
+
   const [storeCtx, queryCtx] = await Promise.all([
     getStoreContext().catch(() => ''),
     getQueryContext(clean).catch(() => ''),
   ]);
+  if (signal?.aborted) return null;
+
   const msgs = buildProMessages(userHist, clean, mode, storeCtx, queryCtx, jid, isGroup, senderName);
   const temp = pickTemperature(clean, mode);
   const maxTokens = mode === 1 ? 250 : 400;
@@ -1185,9 +1224,10 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   }
 
   // 1. Primary Tier: Groq
-  if (groqCandidates.length) {
+  if (groqCandidates.length && !signal?.aborted) {
     const aborter = new AbortController();
-    const raced = groqCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal)
+    const raceSig = signal ? AbortSignal.any([aborter.signal, signal]) : aborter.signal;
+    const raced = groqCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, raceSig)
       .then(r => r ? { reply: r, model: m.model } : Promise.reject(new Error('empty'))));
     const winner = await Promise.any(raced).catch(() => null);
     aborter.abort();
@@ -1196,9 +1236,10 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       usedModel = winner.model;
     }
   }
+  if (signal?.aborted) return null;
 
   // 2. Fallback Tier 1: OpenRouter (jika Groq tidak bekerja)
-  if (!reply && config.openrouterKey?.startsWith('sk-or-')) {
+  if (!reply && config.openrouterKey?.startsWith('sk-or-') && !signal?.aborted) {
     const orModel = config.openrouterModel || 'nvidia/nemotron-3-ultra-550b-a55b:free';
     const orModels = [
       orModel,
@@ -1215,16 +1256,18 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       { model: orModel, models: orModels, ...opts, reasoning: { effort: 'none' } },
       orHeaders,
       TIER_TIMEOUTS.openrouter,
+      signal,
     );
     if (orReply) {
       reply = orReply;
       usedModel = orModel;
     }
   }
+  if (signal?.aborted) return null;
 
   // 3. Fallback Tier 2: Pollinations & Backup API
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
-  if (!reply) {
+  if (!reply && !signal?.aborted) {
     const fallbackCandidates = [];
     // Guard: AI_API_BASE kosong = URL "/openai" invalid untuk semua kandidat.
     // Jangan daftarkan — log konfigurasi yang jelas, bukan error misterius (m5).
@@ -1250,7 +1293,8 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
     }
     if (fallbackCandidates.length) {
       const aborter = new AbortController();
-      const raced = fallbackCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal)
+      const raceSig = signal ? AbortSignal.any([aborter.signal, signal]) : aborter.signal;
+      const raced = fallbackCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, raceSig)
         .then(r => r ? { reply: r, model: m.model } : Promise.reject(new Error('empty'))));
       const winner = await Promise.any(raced).catch(() => null);
       aborter.abort();
@@ -1260,9 +1304,10 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       }
     }
   }
+  if (signal?.aborted) return null;
 
   // Retry: minimal context, force Indonesian
-  if (!reply && pollBase) {
+  if (!reply && pollBase && !signal?.aborted) {
     logger.warn('AI', 'Retry with minimal prompt via Pollinations');
     const minimalMsgs = [
       { role: 'system', content: `${getPrompt(mode)}\n\n⚠️ BALAS DALAM BAHASA INDONESIA. 1-2 kalimat doang. JANGAN pake bahasa Inggris.` },
@@ -1274,11 +1319,12 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       { model: 'openai', messages: minimalMsgs, max_tokens: 200, temperature: 0.4 },
       {},
       15000,
+      signal,
     );
     if (reply) { usedModel = 'openai-retry'; trackMetric(usedModel, Date.now() - retryStart, true); }
 
     // Retry backup if Pollinations still failed
-    if (!reply && backupBase && backupBase !== pollBase) {
+    if (!reply && backupBase && backupBase !== pollBase && !signal?.aborted) {
       logger.warn('AI', 'Retry with backup API');
       const retryBak = Date.now();
       reply = await tryFetch(
@@ -1286,14 +1332,19 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
         { model: 'openai-fast', messages: minimalMsgs, max_tokens: 200, temperature: 0.4 },
         {},
         15000,
+        signal,
       );
       if (reply) { usedModel = 'openai-backup-retry'; trackMetric(usedModel, Date.now() - retryBak, true); }
     }
   }
+  if (signal?.aborted) return null;
 
   const elapsed = Date.now() - startTime;
 
   if (reply) {
+    if (signal) recordRecentInput(jid, clean);
+    updateUserProfile(jid, clean);
+
     if (/^SKIP\b/.test(reply)) {
       // Model memutuskan "skip" — jangan diam: balas fallback kontekstual
       // agar user tetap dapat jawaban (M1).
@@ -1329,31 +1380,44 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 
 // ─── Image AI ──────────────────────────────────────────────────────────
 
-export async function askAIWithImage(jid, text, base64img, mime, mode = 1, senderName = null, isGroup = false) {
-  const userHist = getHistory(jid);
-  const lang = detectUserLang(jid, text, userHist);
+export async function askAIWithImage(jid, text, base64img, mime, mode = 1, senderName = null, isGroup = false, signal = null) {
+  if (signal?.aborted) return null;
+  const userHist = await getOrLoadHistory(jid);
+  if (signal?.aborted) return null;
+  const cleanText = sanitizeInput(text || '');
+  const [storeCtx, queryCtx] = await Promise.all([
+    getStoreContext().catch(() => ''),
+    cleanText ? getQueryContext(cleanText).catch(() => '') : Promise.resolve(''),
+  ]);
+  if (signal?.aborted) return null;
+
+  const lang = detectUserLang(jid, cleanText, userHist);
   const prompt = getPrompt(mode);
+  const store = storeCtx ? `\n\n${storeCtx}` : '';
+  const ctx = queryCtx ? `\n\nDATA REAL-TIME NDXStore:\n${queryCtx}` : '';
   const langHint = LANG_HINTS[lang] || '';
   const langInstr = `\n⚠️ BAHASA: ${lang === 'en' ? 'ENGLISH' : 'INDONESIA'}. Balas dalam bahasa ${lang === 'en' ? 'Inggris' : 'Indonesia'} saja.`;
-  const imgWordCount = text ? text.trim().split(/\s+/).length : 5;
+  const imgWordCount = cleanText ? cleanText.trim().split(/\s+/).length : 5;
   let imgStyle = '';
   if (imgWordCount <= 4) imgStyle = `\n📐 USER NGEKETIK SINGKAT (${imgWordCount} kata). Jawab 1 kalimat, 2-6 kata.`;
   else if (imgWordCount <= 10) imgStyle = `\n📐 USER NGEKETIK SEDANG (${imgWordCount} kata). Jawab 1-2 kalimat pendek.`;
   else imgStyle = `\n📐 USER NGEKETIK PANJANG (${imgWordCount} kata). Jawab natural, maks 2 kalimat.`;
   const content = [
-    { type: 'text', text: filterInput(sanitizeInput(text)) || 'Apa ini?' },
+    { type: 'text', text: filterInput(cleanText) || 'Apa ini?' },
     { type: 'image_url', image_url: { url: `data:${mime};base64,${base64img}` } },
   ];
   const msgs = [
-    { role: 'system', content: prompt + langInstr + langHint + imgStyle },
+    { role: 'system', content: prompt + store + ctx + langInstr + langHint + imgStyle },
+    ...compressHistory(userHist).slice(-4),
     { role: 'user', content },
   ];
 
   // 1. Groq vision (opt-in)
-  if (config.groqKey?.startsWith('gsk_') && config.groqVisionModel) {
+  if (config.groqKey?.startsWith('gsk_') && config.groqVisionModel && !signal?.aborted) {
     const r = await tryFetch('https://api.groq.com/openai/v1/chat/completions', {
       model: config.groqVisionModel, messages: msgs, max_tokens: 400, temperature: 0.5,
-    }, { Authorization: `Bearer ${config.groqKey}` }, 20000);
+    }, { Authorization: `Bearer ${config.groqKey}` }, 20000, signal);
+    if (signal?.aborted) return null;
     if (r) {
       // SKIP di vision = coba endpoint vision berikutnya, bukan diam.
       if (!/^SKIP\b/.test(r)) {
@@ -1365,7 +1429,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
   }
 
   // 2. OpenRouter vision fallback
-  if (config.openrouterKey?.startsWith('sk-or-')) {
+  if (config.openrouterKey?.startsWith('sk-or-') && !signal?.aborted) {
     const orVisionModels = [
       'nvidia/nemotron-3.5-super-vl:free',
       'dots-studio/dots-3-note-preview:free',
@@ -1377,7 +1441,8 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       Authorization: `Bearer ${config.openrouterKey}`,
       'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
       'X-Title': 'NDXStore WA Bot',
-    }, 20000);
+    }, 20000, signal);
+    if (signal?.aborted) return null;
     if (r && !/^SKIP\b/.test(r)) {
       let reply = varyReply(jid, trimReply(r, mode));
       saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
@@ -1396,12 +1461,14 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
   if (backupBase) visionUrls.push(`${backupBase}/chat/completions`);
   const seen = new Set();
   for (const url of visionUrls) {
+    if (signal?.aborted) return null;
     if (seen.has(url)) continue;
     seen.add(url);
     const rRaw = await tryFetch(url, {
       model: config.aiModel || 'openai',
       messages: msgs, max_tokens: 400, temperature: 0.5,
-    }, {}, 20000);
+    }, {}, 20000, signal);
+    if (signal?.aborted) return null;
     if (rRaw) {
       // SKIP = endpoint ini menolak, lanjut ke kandidat vision berikutnya.
       if (/^SKIP\b/.test(rRaw)) continue;
@@ -1411,7 +1478,8 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }
   }
 
-  const textOnly = await askAI(jid, text || '[gambar]', mode, senderName, isGroup);
+  if (signal?.aborted) return null;
+  const textOnly = await askAI(jid, text || '[gambar]', mode, senderName, isGroup, signal);
   return textOnly || 'Maaf, gak bisa baca gambar.';
 }
 

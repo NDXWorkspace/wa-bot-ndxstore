@@ -43,7 +43,7 @@ const FF = { slug: 'FF', label: 'Free Fire', kw: ['free fire', 'freefire'] };
 const ROBUX = { slug: 'ROBUX', label: 'Robux Roblox', kw: ['robux', 'rbx', 'roblox'] };
 
 const ORDER_KW = /\b(order|pesanan|pesan|status|proses|sampe|sampai|nyampe|masuk|udah|udh|belum|blm|blum|transaksi|gagal|refund|pending|cek|kapan)\b/i;
-const PRICE_KW = /\b(harga|price|berapa|brp|murah|list|produk|item|diamond|robux|joki|beli|jual|katalog|dijual)\b/i;
+const PRICE_KW = /\b(harga|price|berapa|brp|murah|list|produk|item|diamond|dm|wdp|weekly|starlight|twilight|robux|rbx|joki|beli|jual|katalog|dijual|top\s*up|topup|stok|ready)\b/i;
 
 const NON_USERNAMES = new Set([
   'DANA', 'GOPAY', 'OVO', 'NDX', 'ML', 'MLBB', 'CS', 'WA', 'ID', 'OK', 'OKE', 'TX', 'TXN',
@@ -131,11 +131,14 @@ function formatProductSummary(game, items, queryText = '') {
   if (!items.length) return '';
   let selected = items.slice(0, 12);
   if (queryText) {
-    const tokens = queryText
+    const expandedQuery = queryText
       .toLowerCase()
+      .replace(/\bwdp\b/g, 'weekly')
+      .replace(/\bsl\b/g, 'starlight');
+    const tokens = expandedQuery
       .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
-      .filter(t => t.length >= 2 && !['harga', 'berapa', 'brp', 'diamond', 'dm', 'ml', 'mlbb', 'mobile', 'legend', 'legends', 'free', 'fire', 'ff', 'roblox', 'robux', 'beli', 'top', 'up', 'kak', 'bang'].includes(t));
+      .filter(t => t.length >= 2 && !['harga', 'berapa', 'brp', 'diamond', 'dm', 'ml', 'mlbb', 'mobile', 'legend', 'legends', 'free', 'fire', 'ff', 'roblox', 'robux', 'beli', 'top', 'up', 'kak', 'bang', 'min', 'mau', 'tanya', 'nanya', 'dong', 'ya'].includes(t));
     if (tokens.length) {
       let matched = items.filter(it => {
         const lowerName = it.name.toLowerCase();

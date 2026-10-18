@@ -9,7 +9,7 @@ import { checkDailyLimit } from './services/queue.js';
 import { initDashboard, handleDashboardRequest, authorized } from './services/dashboard.js';
 import { askAI, askAIWithImage, transcribeAudio, startHistoryCleanup, getAiMetrics } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
-import { bufferAiMessage, savePendingBuffers, setDefaultFlushFn, flushPendingBuffers } from './services/aiBuffer.js';
+import { bufferAiMessage, cancelBuffer, savePendingBuffers, setDefaultFlushFn, flushPendingBuffers } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
@@ -548,6 +548,8 @@ async function main() {
         // "4"/"cs" tidak boleh jatuh ke AI: filter gibberish menelannya
         // (1 karakter → SKIP/null → bot diam) sehingga jalur CS resmi mati.
         if (body === '4' || lower === 'cs') {
+          cancelBuffer(senderJid);
+          cancelBuffer(msg.from);
           if (ADMIN_JID) {
             await startHandover(c, msg, ADMIN_JID);
           } else {
@@ -558,6 +560,8 @@ async function main() {
 
         // Active CS session works regardless of AI mode
         if (isHandoverActive(msg.from) && ADMIN_JID) {
+          cancelBuffer(senderJid);
+          cancelBuffer(msg.from);
           if (lower === 'selesai' || lower === 'stop') {
             endHandover(msg.from);
             await msg.reply('Sesi CS selesai. Ketik *Menu* untuk kembali.');
@@ -597,36 +601,45 @@ async function main() {
           return;
         }
 
-        // ── Group: scan conversation flow ──
+        // ── Group & Quoted message inspection ──
         let isGroupDirect = false;
+        let quotedContext = '';
+        if (msg.hasQuotedMsg) {
+          try {
+            const quoted = await msg.getQuotedMessage();
+            if (isGroup && quoted?.fromMe === true) {
+              isGroupDirect = true;
+            }
+            const qBody = quoted?.body?.trim();
+            if (qBody) {
+              quotedContext = `[Membalas pesan: "${qBody.replace(/\s+/g, ' ').slice(0, 120)}"] `;
+            }
+          } catch (e) { logger.debug('Bot', 'getQuotedMessage failed:', e.message); }
+        }
+
         if (isGroup) {
           const botUser = c.info?.wid?.user;
           const mentioned = botUser ? msg.mentionedIds?.some(id => id.includes(botUser)) : false;
-          let repliedToBot = false;
-          if (msg.hasQuotedMsg) {
-            try {
-              const quoted = await msg.getQuotedMessage();
-              repliedToBot = quoted?.fromMe === true;
-            } catch (e) { logger.debug('Bot', 'getQuotedMessage failed:', e.message); }
-          }
-
-          if (mentioned || repliedToBot) {
-            isGroupDirect = true;
-          } else if (settings.ungroup) {
+          if (mentioned) isGroupDirect = true;
+          if (!isGroupDirect && settings.ungroup) {
             return;
           }
         }
 
+        const historyJid = isGroup ? msg.from : senderJid;
+        const bufferKey = isGroup ? `${msg.from}:${senderJid}` : historyJid;
+        const senderName = isGroup ? senderJid.split('@')[0] : null;
+
         // ── Auto-resolve: "cek [username/id]" dijawab langsung dari API ──
-        // (nol API call ke AI). Di grup ungroup-mode, hanya jika mention/reply.
+        // (nol API call ke AI). Batalkan buffer sapaan sebelumnya agar tidak
+        // mengirim balasan ganda setelah hasil cek dikirim.
         const cekArg = body.match(/^cek\s+(.+)$/i)?.[1]?.trim();
         if (cekArg && (!isGroup || isGroupDirect || !settings.ungroup)) {
+          cancelBuffer(bufferKey);
+          cancelBuffer(historyJid);
           await autoResolveCek(msg, cekArg);
           return;
         }
-
-        const historyJid = isGroup ? msg.from : senderJid;
-        const senderName = isGroup ? senderJid.split('@')[0] : null;
 
         // ── Daily Limit (DM users only) ──
         if (!msg.from?.includes('@g.us') && !isAdmin) {
@@ -670,14 +683,14 @@ async function main() {
 
         if (msg.hasMedia && msg.type !== 'sticker' && !mediaHandled) {
           if (msg.type === 'ptt' || msg.type === 'audio') {
-            // Voice note / audio → transcribe with Whisper
-            const feedbackText = settings.aiMode === 2 ? 'saya simak dulu ya kak...' : 'dengerin...';
-            msg.reply(feedbackText).catch(() => {});
+            // Voice note / audio → mark seen (sedang mendengarkan) lalu transcribe
+            // tanpa mengirim chat "dengerin..." terpisah agar tidak balas 2x.
+            c.getChatById(msg.from).then(ch => ch.sendSeen().catch(() => {})).catch(() => {});
             const audio = await msg.downloadMedia().catch(() => null);
             if (audio?.data) {
               const text = await transcribeAudio(audio.data, audio.mimetype);
               if (text) {
-                body = body ? `${body}\n\n[Transkripsi audio: ${text}]` : `[Transkripsi audio: ${text}]`;
+                body = body ? `${body}\n\n[Pesan suara: ${text}]` : text;
               }
             }
           } else if (msg.type === 'video') {
@@ -718,63 +731,118 @@ async function main() {
             await msg.reply('Gak ada pesan sebelumnya buat diulang.');
             return;
           }
-        } else if (!msg.hasMedia) {
+        } else if (body && !msg.hasMedia) {
           lastUserMessage.set(senderJid, { body, ts: Date.now() });
         }
 
-        // ── Reply helper ──
-        // Kontrak flush aiBuffer: flushFn(jid, text, image, latestMsg).
-        const doReply = (jid, text, img, latestMsg) => {
-          const targetJid = jid || latestMsg?.from || historyJid;
-          const sendTargetJid = latestMsg?.from || targetJid;
+        if (quotedContext && body) {
+          body = `${quotedContext}${body}`;
+        }
+
+        // ── Reply helper (Realistic Human: Baca Semua Dulu → Mengetik → Kirim 1x) ──
+        // Kontrak flush aiBuffer: flushFn(jid, text, image, latestMsg, meta).
+        const doReply = async (_bufKey, text, img, latestMsg, meta) => {
+          const isCancelled = () => Boolean(meta?.isCancelled?.());
+          const signal = meta?.signal || null;
+          if (isCancelled()) return;
+
+          const sendTargetJid = latestMsg?.from || historyJid;
           const sendText = (t) => latestMsg
             ? latestMsg.reply(t)
-            : c.sendMessage(targetJid, t);
+            : c.sendMessage(sendTargetJid, t);
           const msgForAI = isGroup
-            ? `Di grup, ${senderName || 'seseorang'} bilang: ${text}`
+            ? `Di grup, ${senderName || 'seseorang'} bilang:\n${text}`
             : text;
+
+          // 1. TAHAP BACA: Tampilkan online, jeda baca natural sesuai panjang semua
+          //    bubble yang masuk, lalu tandai centang biru (sendSeen).
           c.sendPresenceAvailable().catch(() => {});
-          // Manusia ga jawab instan — delay 2-5 detik + indikator "mengetik"
-          // (DM mode Bima only; grup/CS tetap cepat).
-          const humanPause = (!isGroup && settings.aiMode === 1 && !img) ? 2000 + Math.random() * 3000 : 0;
-          if (humanPause > 0 && latestMsg) {
-            c.getChatById(latestMsg.from).then(chat => chat.sendStateTyping().catch(() => {})).catch(() => {});
+          const wordCount = (text || '').trim().split(/\s+/).filter(Boolean).length;
+          const readDelayMs = isGroup
+            ? Math.min(300 + wordCount * 25, 900)
+            : Math.min(650 + wordCount * 45, 2000);
+          await new Promise(r => setTimeout(r, readDelayMs));
+          if (isCancelled()) return;
+
+          const chat = await c.getChatById(sendTargetJid).catch(() => null);
+          if (chat) {
+            await chat.sendSeen().catch(() => {});
           }
-          const run = img
-            ? askAIWithImage(historyJid, msgForAI, img.data, img.mime, settings.aiMode, senderName, isGroup)
-            : askAI(historyJid, msgForAI, settings.aiMode, senderName, isGroup);
-          return new Promise(r => setTimeout(r, humanPause)).then(() => run)
-            .then(reply => {
-              if (!reply || /^SKIP\b/.test(reply)) return;
-              const delay = isGroup ? 200 + Math.random() * 500 : 300 + Math.random() * 1200;
-              return new Promise(r => setTimeout(r, delay)).then(() => {
-                const stickerMatch = reply.match(/^\[STICKER:(.+?)\]\s*/);
-                const textToReply = stickerMatch ? reply.slice(stickerMatch[0].length).trim() : reply;
-                if (textToReply) sendText(textToReply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
-                if (stickerMatch) {
-                  const desc = stickerMatch[1].trim();
-                  if (desc.split(/\s+/).length < 2) return;
-                  const encoded = encodeURIComponent(desc.slice(0, 200));
-                  fetch(`https://image.pollinations.ai/prompt/${encoded}?width=512&height=512&nofeed=true`)
-                    .then(r => r.arrayBuffer())
-                    .then(buf => {
-                      const base64 = Buffer.from(buf).toString('base64');
-                      const media = new MessageMedia('image/png', base64);
-                      return c.sendMessage(sendTargetJid, media, { sendMediaAsSticker: true });
-                    })
-                    .catch(() => {
-                      sendText('pengen kirim stiker tapi error njirr').catch(() => {});
-                    });
-                }
+          if (isCancelled()) return;
+
+          // 2. TAHAP MIKIR & MENGETIK: Nyalakan indikator "sedang mengetik..."
+          //    sambil memproses seluruh penggalan chat di AI.
+          let typingTimer = null;
+          if (chat) {
+            chat.sendStateTyping().catch(() => {});
+            typingTimer = setInterval(() => {
+              if (!isCancelled()) chat.sendStateTyping().catch(() => {});
+            }, 4000);
+            if (typingTimer.unref) typingTimer.unref();
+          }
+
+          let reply = null;
+          const aiStart = Date.now();
+          try {
+            reply = img
+              ? await askAIWithImage(historyJid, msgForAI, img.data, img.mime, settings.aiMode, senderName, isGroup, signal)
+              : await askAI(historyJid, msgForAI, settings.aiMode, senderName, isGroup, signal);
+          } finally {
+            if (typingTimer) clearInterval(typingTimer);
+          }
+
+          // Jika saat AI berpikir user mengirim bubble tambahan, batalkan pengiriman
+          // agar digabung ke batch berikutnya!
+          if (isCancelled() || !reply || /^SKIP\b/.test(reply)) {
+            if (chat) chat.clearState().catch(() => {});
+            return;
+          }
+
+          const stickerMatch = reply.match(/^\[STICKER:(.+?)\]\s*/);
+          const textToReply = stickerMatch ? reply.slice(stickerMatch[0].length).trim() : reply;
+
+          // 3. TAHAP DURASI MENGETIK REALISTIS: Sesuaikan durasi mengetik dengan
+          //    panjang balasan (dikurangi waktu yang sudah terpakai saat tunggu AI).
+          const aiElapsed = Date.now() - aiStart;
+          const targetTypingMs = isGroup
+            ? Math.min(400 + textToReply.length * 18, 1600)
+            : Math.min(Math.max(textToReply.length * 28, 1100), 3600);
+          const remainingTypingMs = Math.max(250, targetTypingMs - aiElapsed);
+          await new Promise(r => setTimeout(r, remainingTypingMs));
+
+          // Cek sekali lagi tepat sebelum kirim: kalau user baru saja kirim chat
+          // susulan saat bot sedang mengetik, jangan kirim balasan parsial ini!
+          if (isCancelled()) {
+            if (chat) chat.clearState().catch(() => {});
+            return;
+          }
+
+          if (chat) chat.clearState().catch(() => {});
+
+          if (textToReply) {
+            await sendText(textToReply).catch(e => throttleLog('warn', 'Bot', 'reply-fail', `AI reply failed: ${e.message?.slice(0, 80)}`, 10000));
+          }
+          if (stickerMatch && !isCancelled()) {
+            const desc = stickerMatch[1].trim();
+            if (desc.split(/\s+/).length < 2) return;
+            const encoded = encodeURIComponent(desc.slice(0, 200));
+            fetch(`https://image.pollinations.ai/prompt/${encoded}?width=512&height=512&nofeed=true`)
+              .then(r => r.arrayBuffer())
+              .then(buf => {
+                if (isCancelled()) return;
+                const base64 = Buffer.from(buf).toString('base64');
+                const media = new MessageMedia('image/png', base64);
+                return c.sendMessage(sendTargetJid, media, { sendMediaAsSticker: true });
+              })
+              .catch(() => {
+                sendText('pengen kirim stiker tapi error njirr').catch(() => {});
               });
-            });
+          }
         };
 
-        if (isGroupDirect) {
-          doReply(historyJid, body, mediaImage, msg);
-        } else {
-          bufferAiMessage(historyJid, msg, body, mediaImage, doReply);
-        }
+        // Semua chat (baik DM maupun mention/reply di grup) masuk ke buffer
+        // agar bot membaca semua penggalan chat dulu sebelum mengirim 1 balasan utuh.
+        bufferAiMessage(bufferKey, msg, body, mediaImage, doReply, { isGroup });
         return;
 
       } catch (e) {
@@ -789,16 +857,19 @@ async function main() {
   }
 
   // Flush default untuk buffer yang dipulihkan dari disk saat ready.
-  // Kontrak: (jid, text, image, latestMsg) — kirim langsung via client.
-  setDefaultFlushFn((jid, text, img) => {
+  // Kontrak: (jid, text, image, latestMsg, meta) — kirim langsung via client.
+  setDefaultFlushFn((jid, text, img, _latestMsg, meta) => {
     const cl = getCurrentClient();
-    if (!cl || !text?.trim()) return Promise.resolve();
-    const grp = jid?.includes('@g.us') ?? false;
+    if (!cl || (!text?.trim() && !img)) return Promise.resolve();
+    const targetJid = jid?.includes('@g.us:') ? `${jid.split('@g.us:')[0]}@g.us` : jid;
+    const grp = targetJid?.includes('@g.us') ?? false;
+    const signal = meta?.signal || null;
     const run = img
-      ? askAIWithImage(jid, text, img.data, img.mime, settings.aiMode, null, grp)
-      : askAI(jid, text, settings.aiMode, null, grp);
+      ? askAIWithImage(targetJid, text, img.data, img.mime, settings.aiMode, null, grp, signal)
+      : askAI(targetJid, text, settings.aiMode, null, grp, signal);
     return run.then((r) => {
-      if (r && !/^SKIP\b/.test(r)) return cl.sendMessage(jid, r).catch(() => {});
+      if (meta?.isCancelled?.()) return;
+      if (r && !/^SKIP\b/.test(r)) return cl.sendMessage(targetJid, r).catch(() => {});
     }).catch(() => {});
   });
 
