@@ -873,9 +873,57 @@ const UA_HEADERS = { 'User-Agent': 'NDXStoreBot/1.0' };
 const TIER_TIMEOUTS = {
   groq70b: 12000,
   groq8b: 10000,
-  openrouter: 15000,
+  openrouter: 12000,
+  gemini: 12000,
   pollinations: 15000,
 };
+
+// ─── Strict AI Output Validator (blocks upstream errors & leaks) ────────
+// Prevents OpenRouter/providers from leaking 200-OK error messages (e.g.
+// "Upstream error from Nvidia: Service temporarily overloaded") to users.
+const INVALID_AI_OUTPUT_RE = new RegExp([
+  '^\\s*(upstream\\s+error|provider\\s+returned\\s+error|service\\s+temporarily\\s+overloaded|internal\\s+server\\s+error|bad\\s+gateway|gateway\\s+timeout|service\\s+unavailable)',
+  '\\b(upstream\\s+error\\s+from|service\\s+temporarily\\s+overloaded|provider\\s+returned\\s+error|rate\\s+limit\\s+exceeded|quota\\s+exceeded|insufficient_quota|model\\s+is\\s+(?:currently\\s+)?overloaded|context\\s+length\\s+exceeded|maximum\\s+context\\s+length|invalid\\s+api\\s+key|authentication\\s+failed|no\\s+endpoints\\s+found|model\\s+not\\s+found|decommissioned)\\b',
+  '^\\s*(user\\s+safety|safety\\s+assessment|content\\s+safety|llama\\s+guard)\\s*:',
+  '^\\s*(safe|unsafe)\\s*(?:s\\d+)?\\s*$',
+  '^\\s*(\\{\\s*"error"|\\[\\s*\\{\\s*"error"|<!doctype\\s+html|<html\\b|<head\\b|```\\s*json)',
+  '^\\s*(error|exception|traceback|syntaxerror|typeerror|referenceerror|fetcherror|aborterror)\\s*:',
+  '\\b(DATA REAL-TIME NDXStore|MULTI-BUBBLE|USER NGEKETIK|ATURAN KERAS|ATURAN PENTING|PENGETAHUAN TOKO)\\b',
+  '\\b(as\\s+an\\s+ai\\s+language\\s+model|sebagai\\s+(?:model\\s+bahasa\\s+)?ai|saya\\s+adalah\\s+(?:asisten\\s+virtual|bot|ai))\\b',
+].join('|'), 'i');
+
+export function sanitizeAiOutput(rawContent) {
+  if (typeof rawContent !== 'string') return null;
+  let text = rawContent
+    .replace(/<(think|reasoning|thought)>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(think|reasoning|thought)>[\s\S]*$/gi, '')
+    .replace(/^(?:\[Chat\s*\d+\]\s*:\s*|Bima\s*:\s*|CS(?:\s+NDXStore)?\s*:\s*|Admin\s*:\s*|Asisten\s*:\s*|Assistant\s*:\s*)+/i, '')
+    .trim();
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    text = text.slice(1, -1).trim();
+  }
+  if (!text || text.length < 2) return null;
+  if (INVALID_AI_OUTPUT_RE.test(text)) return null;
+  return text;
+}
+
+function extractValidContent(data, url, model) {
+  if (!data || data.error || data?.choices?.[0]?.error) {
+    const errMsg = data?.error?.message || data?.choices?.[0]?.error?.message || JSON.stringify(data?.error || data?.choices?.[0]?.error || {});
+    throttleLog('warn', 'AI', `body-err-${model}`, `${url} (${model}) body error: ${String(errMsg).slice(0, 120)}`, 15000);
+    return null;
+  }
+  const choice = data?.choices?.[0];
+  if (choice?.finish_reason === 'error' || choice?.finish_reason === 'content_filter') {
+    return null;
+  }
+  const raw = choice?.message?.content;
+  const cleaned = sanitizeAiOutput(raw);
+  if (!cleaned && raw) {
+    throttleLog('warn', 'AI', `invalid-out-${model}`, `${url} (${model}) output tidak valid diblokir: "${String(raw).slice(0, 100)}"`, 15000);
+  }
+  return cleaned;
+}
 
 // ─── AI fetch ──────────────────────────────────────────────────────────
 
@@ -905,11 +953,12 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000, signal = nul
     if (!resp.ok) {
       const err = await resp.text().catch(() => 'unknown');
 
-      if (resp.status === 429) {
+      // Jangan retry 429 berulang di OpenRouter agar langsung cepat pindah ke Gemini fallback
+      if (resp.status === 429 && !url.includes('openrouter.ai')) {
         let backoff = 2000;
         let retried = false;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          throttleLog('warn', 'AI', `429-${model}`, `${url} (${model}) 429 — retry ${attempt}/3 after ${backoff}ms`, 30000);
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          throttleLog('warn', 'AI', `429-${model}`, `${url} (${model}) 429 — retry ${attempt}/2 after ${backoff}ms`, 30000);
           await new Promise(r => setTimeout(r, backoff));
           try {
             resp = await doFetch(timeoutMs);
@@ -919,9 +968,14 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000, signal = nul
           }
           if (resp.ok) {
             const data = await resp.json();
-            const content = data?.choices?.[0]?.message?.content?.trim();
-            if (content) { markEndpointSuccess(key); trackUsage(model, data?.usage); }
-            return content || null;
+            const content = extractValidContent(data, url, model);
+            if (content) {
+              markEndpointSuccess(key);
+              trackUsage(model, data?.usage);
+              return content;
+            }
+            markEndpointFailure(key);
+            return null;
           }
           if (resp.status !== 429) break;
           backoff *= 2;
@@ -935,7 +989,7 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000, signal = nul
         }
       }
 
-      if (resp.status >= 500) {
+      if (resp.status >= 500 && !url.includes('openrouter.ai')) {
         throttleLog('warn', 'AI', `5xx-${model}`, `${url} (${model}) ${resp.status} — server error, retrying once`, 30000);
         await new Promise(r => setTimeout(r, 1000));
         try {
@@ -946,9 +1000,14 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000, signal = nul
         }
         if (resp.ok) {
           const data = await resp.json();
-          const content = data?.choices?.[0]?.message?.content?.trim();
-          if (content) { markEndpointSuccess(key); trackUsage(model, data?.usage); }
-          return content || null;
+          const content = extractValidContent(data, url, model);
+          if (content) {
+            markEndpointSuccess(key);
+            trackUsage(model, data?.usage);
+            return content;
+          }
+          markEndpointFailure(key);
+          return null;
         }
       }
 
@@ -959,13 +1018,13 @@ async function tryFetch(url, body, headers = {}, timeoutMs = 20000, signal = nul
       }
 
       markEndpointFailure(key);
-      logger.error('AI', `${url} (${model}) ${resp.status}:`, err.slice(0, 120));
+      throttleLog('warn', 'AI', `http-${resp.status}-${model}`, `${url} (${model}) ${resp.status}: ${err.slice(0, 120)}`, 15000);
       return null;
     }
 
     const data = await resp.json();
-    const content = data?.choices?.[0]?.message?.content?.trim();
-    if (!content || /^User Safety:/i.test(content)) {
+    const content = extractValidContent(data, url, model);
+    if (!content) {
       markEndpointFailure(key);
       return null;
     }
@@ -1240,32 +1299,66 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 
   // 2. Fallback Tier 1: OpenRouter (jika Groq tidak bekerja)
   if (!reply && config.openrouterKey?.startsWith('sk-or-') && !signal?.aborted) {
-    const orModel = config.openrouterModel || 'nvidia/nemotron-3-ultra-550b-a55b:free';
-    const orModels = [
+    const orModel = config.openrouterModel || 'nvidia/nemotron-3-super-120b-a12b:free';
+    const orCandidates = [
       orModel,
-      'poolside/laguna-s-2.1:free',
       'nvidia/nemotron-3-super-120b-a12b:free',
-    ].filter((m, i, a) => m && a.indexOf(m) === i).slice(0, 3);
+      'nvidia/nemotron-3-ultra-550b-a55b:free',
+    ].filter((m, i, a) => m && a.indexOf(m) === i);
     const orHeaders = {
       Authorization: `Bearer ${config.openrouterKey}`,
       'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
       'X-Title': 'NDXStore WA Bot',
     };
-    const orReply = await tryFetch(
-      config.openrouterUrl,
-      { model: orModel, models: orModels, ...opts, reasoning: { effort: 'none' } },
-      orHeaders,
-      TIER_TIMEOUTS.openrouter,
-      signal,
-    );
-    if (orReply) {
-      reply = orReply;
-      usedModel = orModel;
+    for (const candidateModel of orCandidates) {
+      if (signal?.aborted) break;
+      const orReply = await tryFetch(
+        config.openrouterUrl,
+        { model: candidateModel, ...opts, reasoning: { effort: 'none' } },
+        orHeaders,
+        TIER_TIMEOUTS.openrouter,
+        signal,
+      );
+      if (orReply) {
+        reply = orReply;
+        usedModel = candidateModel;
+        break;
+      }
     }
   }
   if (signal?.aborted) return null;
 
-  // 3. Fallback Tier 2: Pollinations & Backup API
+  // 3. Fallback Tier 2: Google Gemini (jika Groq & OpenRouter gagal / mengeluarkan output error)
+  if (!reply && config.geminiKey && !signal?.aborted) {
+    const gemPrimary = config.geminiModel || 'gemini-3.5-flash-lite';
+    const gemModels = [
+      gemPrimary,
+      'gemini-3.8-flash',
+      'gemini-flash-latest',
+    ].filter((m, i, a) => m && a.indexOf(m) === i);
+    const gemHeaders = { Authorization: `Bearer ${config.geminiKey}` };
+    for (const gemModel of gemModels) {
+      if (signal?.aborted) break;
+      const gemBody = gemModel.includes('3.8') || gemModel.includes('latest')
+        ? { model: gemModel, ...opts, reasoning_effort: 'none' }
+        : { model: gemModel, ...opts };
+      const gemReply = await tryFetch(
+        config.geminiUrl,
+        gemBody,
+        gemHeaders,
+        TIER_TIMEOUTS.gemini,
+        signal,
+      );
+      if (gemReply) {
+        reply = gemReply;
+        usedModel = gemModel;
+        break;
+      }
+    }
+  }
+  if (signal?.aborted) return null;
+
+  // 4. Fallback Tier 3: Pollinations & Backup API
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
   if (!reply && !signal?.aborted) {
     const fallbackCandidates = [];
@@ -1441,7 +1534,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       Authorization: `Bearer ${config.openrouterKey}`,
       'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
       'X-Title': 'NDXStore WA Bot',
-    }, 20000, signal);
+    }, 15000, signal);
     if (signal?.aborted) return null;
     if (r && !/^SKIP\b/.test(r)) {
       let reply = varyReply(jid, trimReply(r, mode));
@@ -1450,7 +1543,23 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }
   }
 
-  // 3. Vision endpoints (sequential — Pollinations, backup).
+  // 3. Google Gemini vision fallback
+  if (config.geminiKey && !signal?.aborted) {
+    for (const gemVisionModel of [config.geminiModel || 'gemini-3.5-flash-lite', 'gemini-3.8-flash']) {
+      if (signal?.aborted) break;
+      const r = await tryFetch(config.geminiUrl, {
+        model: gemVisionModel, messages: msgs, max_tokens: 400, temperature: 0.5,
+      }, { Authorization: `Bearer ${config.geminiKey}` }, 15000, signal);
+      if (signal?.aborted) return null;
+      if (r && !/^SKIP\b/.test(r)) {
+        let reply = varyReply(jid, trimReply(r, mode));
+        saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
+        return reply;
+      }
+    }
+  }
+
+  // 4. Vision endpoints (sequential — Pollinations, backup).
   // Saring URL invalid (aiApiBase kosong → "/openai") agar tidak fetch sia-sia.
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
   const pollVision = `${(config.aiApiBase || '').replace(/\/+$/, '')}/openai`;
@@ -1518,26 +1627,33 @@ export async function askAIProactive(order, mode = 1) {
 
   // 2. Fallback to OpenRouter if Groq failed/unavailable
   if (config.openrouterKey?.startsWith('sk-or-')) {
-    const orModel = config.openrouterModel || 'nvidia/nemotron-3-ultra-550b-a55b:free';
-    const orModels = [
-      orModel,
-      'poolside/laguna-s-2.1:free',
-      'nvidia/nemotron-3-super-120b-a12b:free',
-    ].filter((m, i, a) => m && a.indexOf(m) === i).slice(0, 3);
+    const orModel = config.openrouterModel || 'nvidia/nemotron-3-super-120b-a12b:free';
     const orResult = await tryFetch(
       config.openrouterUrl,
-      { model: orModel, models: orModels, ...opts, reasoning: { effort: 'none' } },
+      { model: orModel, ...opts, reasoning: { effort: 'none' } },
       {
         Authorization: `Bearer ${config.openrouterKey}`,
         'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
         'X-Title': 'NDXStore WA Bot',
       },
-      12000,
+      10000,
     );
     if (orResult) return orResult;
   }
 
-  // 3. Fallback to Pollinations & Backup API
+  // 3. Fallback to Google Gemini
+  if (config.geminiKey) {
+    const gemModel = config.geminiModel || 'gemini-3.5-flash-lite';
+    const gemResult = await tryFetch(
+      config.geminiUrl,
+      { model: gemModel, ...opts },
+      { Authorization: `Bearer ${config.geminiKey}` },
+      10000,
+    );
+    if (gemResult) return gemResult;
+  }
+
+  // 4. Fallback to Pollinations & Backup API
   const candidates = [
     ...(pollBase ? [{ url: `${pollBase}/openai`, body: { model: config.aiModel || 'openai', ...opts }, headers: {}, timeout: 10000 }] : []),
     { url: 'https://text.pollinations.ai/openai', body: { model: 'openai', ...opts }, headers: {}, timeout: 10000 },

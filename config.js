@@ -48,8 +48,17 @@ export const config = {
     if (/^[a-f0-9]{64}$/i.test(raw)) return `sk-or-v1-${raw}`;
     return raw;
   })(),
-  openrouterModel: e('OPENROUTER_MODEL') || 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  openrouterModel: e('OPENROUTER_MODEL') || 'nvidia/nemotron-3-super-120b-a12b:free',
   openrouterUrl: e('OPENROUTER_URL') || 'https://openrouter.ai/api/v1/chat/completions',
+  geminiKey: (() => {
+    const raw = e('GEMINI_API_KEY');
+    if (!raw) return '';
+    if (raw.startsWith('AQ.') || raw.startsWith('AIza')) return raw;
+    if (/^Ab8[A-Za-z0-9_-]{30,}$/.test(raw)) return `AQ.${raw}`;
+    return raw;
+  })(),
+  geminiModel: e('GEMINI_MODEL') || 'gemini-3.5-flash-lite',
+  geminiUrl: e('GEMINI_URL') || 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
   aiApiBackup: e('AI_API_BACKUP') || 'https://keylessai.thryx.workers.dev/v1',
   notifiedPath: e('NOTIFIED_PATH') || './.notified.json',
   // Instagram Official Graph API / Webhook

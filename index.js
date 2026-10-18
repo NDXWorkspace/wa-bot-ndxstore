@@ -368,6 +368,7 @@ async function main() {
   logger.info('Bot', `Admin: ${config.adminNumber || '(not set)'}`);
   logger.info('Bot', `Groq: ${config.groqKey ? '✓' : '✗'}`);
   logger.info('Bot', `OpenRouter: ${config.openrouterKey ? '✓' : '✗'}`);
+  logger.info('Bot', `Gemini: ${config.geminiKey ? '✓' : '✗'}`);
   logger.info('Bot', config.pairingNumber ? `Login: pairing code (${config.pairingNumber})` : 'Login: scan QR');
 
   const heartbeatMs = parseInt(process.env.LOG_HEARTBEAT_MS || '300000', 10);
@@ -395,8 +396,8 @@ async function main() {
           signal: AbortSignal.timeout(15000),
         });
         if (r.status === 401) {
-          logger.warn('SelfCheck', config.openrouterKey
-            ? 'GROQ_API_KEY ditolak (401) — beralih ke fallback OpenRouter.'
+          logger.warn('SelfCheck', (config.openrouterKey || config.geminiKey)
+            ? 'GROQ_API_KEY ditolak (401) — beralih ke fallback OpenRouter / Gemini.'
             : 'GROQ_API_KEY DITOLAK (401) — tier Groq + Whisper NONAKTIF. Ganti key di .env.');
         } else if (!r.ok) logger.warn('SelfCheck', `Groq check: HTTP ${r.status}`);
         else logger.info('SelfCheck', 'Groq key OK.');
@@ -415,6 +416,16 @@ async function main() {
         else logger.info('SelfCheck', `OpenRouter key OK (${config.openrouterModel}).`);
       }
     } catch (e) { logger.warn('SelfCheck', `OpenRouter check gagal: ${e.message?.slice(0, 80)}`); }
+    try {
+      if (config.geminiKey) {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(config.geminiKey)}`, {
+          signal: AbortSignal.timeout(15000),
+        });
+        if (r.status === 401 || r.status === 403) logger.error('SelfCheck', 'GEMINI_API_KEY DITOLAK — cek kembali key di .env.');
+        else if (!r.ok) logger.warn('SelfCheck', `Gemini check: HTTP ${r.status}`);
+        else logger.info('SelfCheck', `Gemini key OK (${config.geminiModel}).`);
+      }
+    } catch (e) { logger.warn('SelfCheck', `Gemini check gagal: ${e.message?.slice(0, 80)}`); }
     try {
       if (config.botToken) {
         const r = await fetch(`${config.apiBase}/api/admin/stats`, {
