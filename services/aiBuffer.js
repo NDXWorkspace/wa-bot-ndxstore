@@ -123,6 +123,7 @@ export function cancelBuffer(jid) {
   const entry = buffers.get(jid);
   if (!entry) return;
   entry.gen++;
+  entry.pendingMedia = 0;
   if (entry.timer) {
     clearTimeout(entry.timer);
     entry.timer = null;
@@ -134,10 +135,73 @@ export function cancelBuffer(jid) {
   buffers.delete(jid);
 }
 
+// Holds the buffer open (and aborts any in-flight reply) while a voice note,
+// image, or video in the same chat burst is being downloaded/transcribed.
+export function holdBufferForMedia(jid, options = {}) {
+  let entry = buffers.get(jid);
+  if (!entry) {
+    entry = {
+      parts: [],
+      image: null,
+      timer: null,
+      latestMsg: null,
+      firstBubbleAt: Date.now(),
+      gen: 0,
+      inFlight: null,
+      flushFn: defaultFlushFn,
+      options,
+      pendingMedia: 0,
+    };
+    buffers.set(jid, entry);
+  }
+  entry.gen++;
+  entry.pendingMedia = (entry.pendingMedia || 0) + 1;
+
+  if (entry.inFlight) {
+    const prevFlight = entry.inFlight;
+    entry.inFlight = null;
+    try { prevFlight.aborter.abort(); } catch {}
+    if (prevFlight.parts?.length) {
+      entry.parts = [...prevFlight.parts, ...entry.parts];
+    }
+    if (prevFlight.image && !entry.image) {
+      entry.image = prevFlight.image;
+    }
+  }
+
+  if (entry.timer) {
+    clearTimeout(entry.timer);
+    entry.timer = null;
+  }
+  // Safety timer in case media download hangs
+  entry.timer = setTimeout(() => {
+    entry.timer = null;
+    entry.pendingMedia = 0;
+    triggerFlush(jid, entry);
+  }, 15000);
+}
+
+export function releaseBufferForMedia(jid) {
+  const entry = buffers.get(jid);
+  if (!entry) return;
+  entry.pendingMedia = Math.max(0, (entry.pendingMedia || 1) - 1);
+  if (entry.pendingMedia === 0 && !entry.inFlight && (entry.parts.length || entry.image)) {
+    if (entry.timer) clearTimeout(entry.timer);
+    const windowMs = pickWindow(entry);
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      triggerFlush(jid, entry);
+    }, windowMs);
+  } else if (entry.pendingMedia === 0 && !entry.inFlight && !entry.parts.length && !entry.image) {
+    if (entry.timer) clearTimeout(entry.timer);
+    buffers.delete(jid);
+  }
+}
+
 export function hasActiveBuffer(jid) {
   const entry = buffers.get(jid);
   if (!entry) return false;
-  return Boolean(entry.timer || entry.inFlight || entry.parts.length || entry.image);
+  return Boolean(entry.timer || entry.inFlight || entry.parts.length || entry.image || entry.pendingMedia);
 }
 
 export function flushPendingBuffers() {
@@ -284,17 +348,18 @@ export function bufferAiMessage(jid, msg, text, image, flushFn, options = {}) {
   }
 
   const elapsedSinceFirst = Date.now() - entry.firstBubbleAt;
-  if (entry.parts.length >= MAX_FRAGMENTS || elapsedSinceFirst >= MAX_TOTAL_WAIT_MS) {
+  if (!entry.pendingMedia && (entry.parts.length >= MAX_FRAGMENTS || elapsedSinceFirst >= MAX_TOTAL_WAIT_MS)) {
     triggerFlush(jid, entry);
     return;
   }
 
-  const desiredWindow = pickWindow(entry);
-  const remainingCap = Math.max(1200, MAX_TOTAL_WAIT_MS - elapsedSinceFirst);
+  const desiredWindow = entry.pendingMedia ? 15000 : pickWindow(entry);
+  const remainingCap = entry.pendingMedia ? 15000 : Math.max(1200, MAX_TOTAL_WAIT_MS - elapsedSinceFirst);
   const windowMs = Math.min(desiredWindow, remainingCap);
 
   entry.timer = setTimeout(() => {
     entry.timer = null;
+    entry.pendingMedia = 0;
     triggerFlush(jid, entry);
   }, windowMs);
 }

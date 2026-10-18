@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import { config } from '../config.js';
 import { settings, flushSettings } from './settings.js';
-import { getAiMetrics, clearHistory } from './ai.js';
+import { getAiMetrics, clearHistory, getProviderHealth } from './ai.js';
 import { getCurrentClient, getConnectionState } from '../client.js';
 import { getDb } from './supabase.js';
 import { isDbAvailable } from '../utils/db.js';
@@ -120,6 +120,7 @@ async function handleStatus(res) {
     logLevel: getLogLevel(),
     tokenRequired: Boolean(config.adminToken),
     ig: getInstagramStatus(),
+    aiProviders: getProviderHealth(),
   });
 }
 

@@ -9,7 +9,7 @@ import { checkDailyLimit } from './services/queue.js';
 import { initDashboard, handleDashboardRequest, authorized } from './services/dashboard.js';
 import { askAI, askAIWithImage, transcribeAudio, startHistoryCleanup, getAiMetrics } from './services/ai.js';
 import { isRelationError } from './utils/db.js';
-import { bufferAiMessage, cancelBuffer, savePendingBuffers, setDefaultFlushFn, flushPendingBuffers } from './services/aiBuffer.js';
+import { bufferAiMessage, cancelBuffer, savePendingBuffers, setDefaultFlushFn, flushPendingBuffers, holdBufferForMedia, releaseBufferForMedia } from './services/aiBuffer.js';
 import { settings, loadSettings, saveSettings, flushSettings } from './services/settings.js';
 import { getDb } from './services/supabase.js';
 import { withRetry, isDbAvailable } from './utils/db.js';
@@ -563,10 +563,12 @@ async function main() {
           if (body === '6') { await msg.reply('Terima kasih telah menghubungi *NDXStore*! Ketik *Menu* kapan saja jika butuh bantuan.'); return; }
         }
 
-        // ── CS Handover start — berlaku di SEMUA mode AI ──
+        const isGroup = msg.from?.includes('@g.us') ?? false;
+
+        // ── CS Handover start — berlaku di SEMUA mode AI (khusus DM / chat pribadi) ──
         // "4"/"cs" tidak boleh jatuh ke AI: filter gibberish menelannya
         // (1 karakter → SKIP/null → bot diam) sehingga jalur CS resmi mati.
-        if (body === '4' || lower === 'cs') {
+        if (!isGroup && !msg.fromMe && (body === '4' || lower === 'cs')) {
           cancelBuffer(senderJid);
           cancelBuffer(msg.from);
           if (ADMIN_JID) {
@@ -577,8 +579,8 @@ async function main() {
           return;
         }
 
-        // Active CS session works regardless of AI mode
-        if (isHandoverActive(msg.from) && ADMIN_JID) {
+        // Active CS session works regardless of AI mode (DM only)
+        if (!isGroup && !msg.fromMe && isHandoverActive(msg.from) && ADMIN_JID) {
           cancelBuffer(senderJid);
           cancelBuffer(msg.from);
           if (lower === 'selesai' || lower === 'stop') {
@@ -588,7 +590,7 @@ async function main() {
             return;
           }
           try {
-            await forwardToAdmin(c, msg.from, body, ADMIN_JID);
+            await forwardToAdmin(c, msg.from, body, ADMIN_JID, msg);
             await msg.reply('Pesan diteruskan ke admin.');
           } catch (e) {
             logger.error('Forward', 'Gagal forward ke admin:', e.message);
@@ -598,7 +600,6 @@ async function main() {
         }
 
         // ── Group / self filters ──
-        const isGroup = msg.from?.includes('@g.us') ?? false;
         const aiOn = settings.aiMode > 0;
 
         if (msg.fromMe) return;
@@ -660,82 +661,82 @@ async function main() {
           return;
         }
 
-        // ── Daily Limit (DM users only) ──
-        if (!msg.from?.includes('@g.us') && !isAdmin) {
-          const limit = await checkDailyLimit(msg.from);
-          if (!limit.allowed) {
-            await msg.reply(`Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`);
-            return;
-          }
-        }
-
-        // ── Media handling ──
+        // ── Media handling (Hold buffer open while downloading/transcribing) ──
         let mediaImage = null;
         let mediaHandled = false;
 
-        // View-once (gambar/video sekali lihat): unduh TEPAT SEKALI (akses
-        // hangus setelah dibuka), simpan ke ./downloads, teruskan ke AI.
-        if (msg.hasMedia && isViewOnceMessage(msg) && msg.type !== 'sticker') {
-          mediaHandled = true;
-          const voMedia = await msg.downloadMedia().catch(() => null);
-          if (voMedia?.data) {
-            const savedPath = await saveViewOnceMedia(voMedia, senderJid);
-            logger.info('ViewOnce', `Downloaded ${voMedia.mimetype} from ${senderJid}${savedPath ? ` → ${savedPath}` : ''}`);
-            const mime = voMedia.mimetype || '';
-            const caption = body ? ` ${body}` : '';
-            if (mime.startsWith('image/')) {
-              mediaImage = { data: voMedia.data, mime };
-              body = `[Gambar sekali lihat]${caption}`;
-            } else if (mime.startsWith('video/')) {
-              const vtext = await transcribeAudio(voMedia.data, mime);
-              body = vtext
-                ? `[Video sekali lihat]${caption}\n\n[Transkripsi: ${vtext}]`
-                : `[Video sekali lihat]${caption}\n\n(Tidak ada audio/transkripsi)`;
-            } else {
-              body = `[File sekali lihat: ${mime || 'unknown'}]${caption}`;
-            }
-          } else {
-            body = body || '[Media sekali lihat sudah dibuka / tidak bisa diunduh]';
-            logger.warn('ViewOnce', `Download failed (sudah dibuka?) from ${senderJid}`);
-          }
+        if (msg.hasMedia) {
+          holdBufferForMedia(bufferKey, { isGroup });
         }
-
-        if (msg.hasMedia && msg.type !== 'sticker' && !mediaHandled) {
-          if (msg.type === 'ptt' || msg.type === 'audio') {
-            // Voice note / audio → mark seen (sedang mendengarkan) lalu transcribe
-            // tanpa mengirim chat "dengerin..." terpisah agar tidak balas 2x.
-            c.getChatById(msg.from).then(ch => ch.sendSeen().catch(() => {})).catch(() => {});
-            const audio = await msg.downloadMedia().catch(() => null);
-            if (audio?.data) {
-              const text = await transcribeAudio(audio.data, audio.mimetype);
-              if (text) {
-                body = body ? `${body}\n\n[Pesan suara: ${text}]` : text;
-              }
-            }
-          } else if (msg.type === 'video') {
-            const video = await msg.downloadMedia().catch(() => null);
-            if (video?.data) {
-              const text = await transcribeAudio(video.data, video.mimetype);
-              if (text) {
-                body = body ? `${body}\n\n[Transkripsi video: ${text}]` : `[Transkripsi video: ${text}]`;
+        try {
+          // View-once (gambar/video sekali lihat): unduh TEPAT SEKALI (akses
+          // hangus setelah dibuka), simpan ke ./downloads, teruskan ke AI.
+          if (msg.hasMedia && isViewOnceMessage(msg) && msg.type !== 'sticker') {
+            mediaHandled = true;
+            const voMedia = await msg.downloadMedia().catch(() => null);
+            if (voMedia?.data) {
+              const savedPath = await saveViewOnceMedia(voMedia, senderJid);
+              logger.info('ViewOnce', `Downloaded ${voMedia.mimetype} from ${senderJid}${savedPath ? ` → ${savedPath}` : ''}`);
+              const mime = voMedia.mimetype || '';
+              const caption = body ? ` ${body}` : '';
+              if (mime.startsWith('image/')) {
+                mediaImage = { data: voMedia.data, mime };
+                body = `[Gambar sekali lihat]${caption}`;
+              } else if (mime.startsWith('video/')) {
+                const vtext = await transcribeAudio(voMedia.data, mime);
+                body = vtext
+                  ? `[Video sekali lihat]${caption}\n\n[Transkripsi: ${vtext}]`
+                  : `[Video sekali lihat]${caption}\n\n(Tidak ada audio/transkripsi)`;
               } else {
-                body = body ? `${body}\n\n[User mengirim video]` : '[User mengirim video]';
+                body = `[File sekali lihat: ${mime || 'unknown'}]${caption}`;
               }
-            }
-          } else if (msg.type === 'document') {
-            const doc = await msg.downloadMedia().catch(() => null);
-            if (doc) {
-              const docName = doc.filename || 'file';
-              body = body ? `${body}\n\n[User mengirim file: ${docName}]` : `[User mengirim file: ${docName}]`;
+            } else {
+              body = body || '[Media sekali lihat sudah dibuka / tidak bisa diunduh]';
+              logger.warn('ViewOnce', `Download failed (sudah dibuka?) from ${senderJid}`);
             }
           }
-        }
 
-        // Sticker & image → prepare for vision AI
-        // (skip kalau view-once sudah diunduh di atas — unduhan kedua pasti gagal)
-        if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker') && !mediaHandled) {
-          const media = await msg.downloadMedia().catch(() => null);
-          if (media) mediaImage = { data: media.data, mime: media.mimetype };
+          if (msg.hasMedia && msg.type !== 'sticker' && !mediaHandled) {
+            if (msg.type === 'ptt' || msg.type === 'audio') {
+              // Voice note / audio → mark seen (sedang mendengarkan) lalu transcribe
+              // tanpa mengirim chat "dengerin..." terpisah agar tidak balas 2x.
+              c.getChatById(msg.from).then(ch => ch.sendSeen().catch(() => {})).catch(() => {});
+              const audio = await msg.downloadMedia().catch(() => null);
+              if (audio?.data) {
+                const text = await transcribeAudio(audio.data, audio.mimetype);
+                if (text) {
+                  body = body ? `${body}\n\n[Pesan suara: ${text}]` : text;
+                }
+              }
+            } else if (msg.type === 'video') {
+              const video = await msg.downloadMedia().catch(() => null);
+              if (video?.data) {
+                const text = await transcribeAudio(video.data, video.mimetype);
+                if (text) {
+                  body = body ? `${body}\n\n[Transkripsi video: ${text}]` : `[Transkripsi video: ${text}]`;
+                } else {
+                  body = body ? `${body}\n\n[User mengirim video]` : '[User mengirim video]';
+                }
+              }
+            } else if (msg.type === 'document') {
+              const doc = await msg.downloadMedia().catch(() => null);
+              if (doc) {
+                const docName = doc.filename || 'file';
+                body = body ? `${body}\n\n[User mengirim file: ${docName}]` : `[User mengirim file: ${docName}]`;
+              }
+            }
+          }
+
+          // Sticker & image → prepare for vision AI
+          // (skip kalau view-once sudah diunduh di atas — unduhan kedua pasti gagal)
+          if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker') && !mediaHandled) {
+            const media = await msg.downloadMedia().catch(() => null);
+            if (media) mediaImage = { data: media.data, mime: media.mimetype };
+          }
+        } finally {
+          if (msg.hasMedia) {
+            releaseBufferForMedia(bufferKey);
+          }
         }
 
         if (!body && !mediaImage) return;
@@ -764,6 +765,16 @@ async function main() {
           const isCancelled = () => Boolean(meta?.isCancelled?.());
           const signal = meta?.signal || null;
           if (isCancelled()) return;
+
+          // Daily Limit dicek per 1 giliran percakapan utuh (bukan per bubble pecahan)
+          if (!isGroup && !isAdmin) {
+            const limit = await checkDailyLimit(msg.from);
+            if (isCancelled()) return;
+            if (!limit.allowed) {
+              await msg.reply(`Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`).catch(() => {});
+              return;
+            }
+          }
 
           const sendTargetJid = latestMsg?.from || historyJid;
           const sendText = (t) => latestMsg
@@ -888,7 +899,10 @@ async function main() {
       : askAI(targetJid, text, settings.aiMode, null, grp, signal);
     return run.then((r) => {
       if (meta?.isCancelled?.()) return;
-      if (r && !/^SKIP\b/.test(r)) return cl.sendMessage(targetJid, r).catch(() => {});
+      if (r && !/^SKIP\b/.test(r)) {
+        const cleaned = r.replace(/^\[STICKER:.+?\]\s*/, '').trim();
+        if (cleaned) return cl.sendMessage(targetJid, cleaned).catch(() => {});
+      }
     }).catch(() => {});
   });
 

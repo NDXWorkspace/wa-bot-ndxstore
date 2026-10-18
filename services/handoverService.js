@@ -141,7 +141,17 @@ export async function handleAdminReply(client, msg) {
 
   if (!userNumber) return null;
 
-  await client.sendMessage(userNumber, `Pesan dari Admin:\n\n${msg.body}`);
+  const caption = msg.body?.trim() ? `Pesan dari Admin:\n\n${msg.body.trim()}` : 'Pesan dari Admin:';
+  if (msg.hasMedia) {
+    const media = await msg.downloadMedia().catch(() => null);
+    if (media) {
+      await client.sendMessage(userNumber, media, { caption });
+    } else {
+      await client.sendMessage(userNumber, caption);
+    }
+  } else {
+    await client.sendMessage(userNumber, caption);
+  }
 
   forwardedMessages.set(msgKey(msg), { userNumber, timestamp: Date.now() });
   touchSession(userNumber);
@@ -149,13 +159,23 @@ export async function handleAdminReply(client, msg) {
   return userNumber;
 }
 
-export async function forwardToAdmin(client, userNumber, messageBody, adminNumber) {
+export async function forwardToAdmin(client, userNumber, messageBody, adminNumber, msg = null) {
   touchSession(userNumber);
   const adminJid = formatWaNumber(adminNumber) || adminNumber;
+  const textPart = messageBody?.trim() || (msg?.hasMedia ? '[Lampiran Media]' : '(pesan kosong)');
+  const caption = `📩 *Pesan dari ${userNumber}:*\n\n${textPart}\n\nBalas dengan reply untuk membalas.`;
 
-  const adminMsg = await client.sendMessage(adminJid,
-    `📩 *Pesan dari ${userNumber}:*\n\n${messageBody}\n\nBalas dengan reply untuk membalas.`
-  );
+  let adminMsg = null;
+  if (msg?.hasMedia) {
+    const media = await msg.downloadMedia().catch(() => null);
+    if (media) {
+      adminMsg = await client.sendMessage(adminJid, media, { caption });
+    }
+  }
+  if (!adminMsg) {
+    adminMsg = await client.sendMessage(adminJid, caption);
+  }
   forwardedMessages.set(msgKey(adminMsg), { userNumber, timestamp: Date.now() });
 }
+
 

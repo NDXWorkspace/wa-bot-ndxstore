@@ -64,7 +64,7 @@
       <button data-m="1">Bima</button>
       <button data-m="2">CS</button>
     </div>
-    <div class="switch"><span>Jawab duluan (grup, tanpa mention)</span><button id="tglJd">OFF</button></div>
+    <div class="switch"><span>Jawab duluan (notif order ke pembeli ditulis AI)</span><button id="tglJd">OFF</button></div>
     <div class="switch"><span>Ungroup (grup: hanya mention/reply)</span><button id="tglUn">OFF</button></div>
     <div class="row"><button class="primary" id="btnSaveCfg">Simpan</button></div>
     <div class="msg" id="msgCfg"></div>
@@ -172,7 +172,8 @@ async function loadStatus() {
       stat('Bot uptime', esc(Math.floor(s.botUptime / 60)) + ' mnt') +
       stat('Mode AI', s.aiMode === 0 ? 'OFF' : s.aiMode === 1 ? 'Bima' : 'CS') +
       stat('Diblokir', esc(s.blockedCount) + ' user') +
-      stat('Log level', esc(s.logLevel || '-'));
+      stat('Log level', esc(s.logLevel || '-')) +
+      igStat(s.ig) + aiStat(s.aiProviders);
     draft = { aiMode: s.aiMode, jawabDuluan: s.jawabDuluan, ungroup: s.ungroup };
     paintCfg();
     say('msgStatus', true, '');
@@ -180,6 +181,23 @@ async function loadStatus() {
   } catch (e) { say('msgStatus', false, e.message); }
 }
 function stat(k, v) { return `<div class="stat"><span>${k}</span><span>${v}</span></div>`; }
+function igStat(ig) {
+  if (!ig) return '';
+  if (!ig.enabled) return stat('Instagram', '<span class="dot mid"></span>nonaktif (IG_ACCESS_TOKEN kosong)');
+  const dot = ig.connected ? 'on' : 'off';
+  const name = ig.username ? '@' + esc(ig.username) : (ig.connected ? 'terhubung' : 'tidak terhubung');
+  let h = stat('Instagram', `<span class="dot ${dot}"></span>${name}`) +
+    stat('IG DM masuk / dibalas', esc(ig.receivedCount) + ' / ' + esc(ig.repliedCount));
+  if (ig.lastError) h += stat('IG error', `<span class="fail">${esc(String(ig.lastError).slice(0, 80))}</span>`);
+  return h;
+}
+function aiStat(p) {
+  if (!p) return '';
+  const d = on => `<span class="dot ${on ? 'on' : 'off'}"></span>`;
+  let h = stat('AI providers', `${d(p.groq)}Groq &nbsp;${d(p.gemini)}Gemini &nbsp;${d(p.openrouter)}OpenRouter`);
+  if (p.openCircuits?.length) h += stat('Circuit open', `<span class="fail">${esc(p.openCircuits.join(', '))}</span>`);
+  return h;
+}
 function paintCfg() {
   document.querySelectorAll('#segMode button').forEach(b => b.classList.toggle('active', Number(b.dataset.m) === draft.aiMode));
   $('tglJd').textContent = draft.jawabDuluan ? 'ON' : 'OFF';

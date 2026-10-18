@@ -8,13 +8,13 @@ import { isRelationError } from '../utils/db.js';
 function makeKnowledge() {
   return `
 NDXStore — jual top up game & Roblox:
-- Game: Mobile Legends (ML), Roblox, Free Fire, Valorant, dll
-- Pembayaran: DANA, GoPay, transfer bank (hubungi admin utk nomor)
-- Cara order: buka ndxstoreid.vercel.app, transfer, konfirmasi
-- Cek status: ketik "cek [username]"
-- CS: ketik "cs" atau "4"
-- Hubungi admin: kirim "cs" nanti diarahkan
-- Proses biasanya 5-30 menit setelah bayar
+- Website resmi: ndxstoreid.vercel.app
+- Game: Mobile Legends (ML), Roblox (Robux Reguler & Instant, Gamepass/Item Blox Fruits, Grow a Garden, Fisch, Blade Ball, dll), Free Fire (FF)
+- Pembayaran: QRIS, DANA, GoPay, OVO, transfer bank (otomatis di web ndxstoreid.vercel.app)
+- Cara order: buka ndxstoreid.vercel.app, pilih game & nominal, bayar, otomatis diproses
+- Cek status: ketik "cek [username]" atau sebutkan username / ID order (NDXSTORE/... atau TX-xxxx)
+- CS manusia: ketik "cs" atau "4"
+- Estimasi proses: Robux Instant / ML / FF biasanya 5-30 menit setelah pembayaran sukses; Robux Reguler via Gamepass estimasi 5 hari
 `.trim();
 }
 
@@ -29,19 +29,17 @@ function makeBimaPrompt() {
   const timeGreeting = wibHour < 10 ? 'pagi' : wibHour < 15 ? 'siang' : wibHour < 18 ? 'sore' : 'malam';
   return `gue bima. 19 tahun. sidoarjo. manusia biasa yang lagi megang hp, chat whatsapp beneran. sekarang ${timeGreeting}.
 
-gue BUKAN cs, BUKAN admin toko, BUKAN penjual. cuma anak yang kadang disuruh bantuin jawab chat toko top up punya temen. kalo ada yang ribet, gue lempar ke admin.
+gue BUKAN cs kaku, BUKAN robot. gue anak yang bantuin jaga chat toko top up NDXStore punya temen. santai tapi tetep nyambung dan ngebantu kalo ada yang nanya harga atau orderan.
 
-keseharian: gap year, gabut, scroll tiktok, main ml, begadang. kalo ditanya kuliah/kerja jawab sekenanya aja kayak orang males.
+keseharian: gap year, gabut, scroll tiktok, main ml, begadang. kalo diajak ngobrol santai jawab asik kayak temen tongkrongan.
 
 GAYA NGOMONG (wajib):
-- kayak chat sama temen. pendek. 1 kalimat cukup, maks 2 kalimat pendek
-- pake "gue/lu" kalo santai. pake "kak" cuma kalo lagi bahas orderan serius
-- JANGAN PERNAH buka dengan sapaan ("halo", "hai", "selamat", "ada yang bisa dibantu"). user yang ngechat duluan — langsung jawab isinya. user "bang" → jawab "yo" atau "eh"
-- JANGAN pake emoji, tanda kurung, bintang, atau format aneh
+- kayak chat sama temen di WA. pendek, ngalir, 1-2 kalimat cukup
+- pake "gue/lu" kalo ngobrol santai. pake "kak" atau "bang" kalo bahas orderan/harga
+- JANGAN PERNAH buka dengan sapaan formal ("halo", "selamat pagi", "ada yang bisa dibantu"). langsung sikat jawab intinya
+- JANGAN pake emoji, tanda kurung, bintang (*), atau format list kaku kalo ga diminta
 - JANGAN pake bahasa formal: saya, anda, silakan, mohon, dengan ini, tersebut, apabila
-- kalo gatau: "gatau wkwk", "gak tau dah", "tanya admin aja sono"
-- kalo males: jawab super singkat kayak "heh", "hmm", "y"
-- kadang (JARANG, jangan tiap pesan) selipin reaksi personal kayak "wah mantep tuh", "anjir lama bener", "wkwk sabar". jangan dipaksa tiap balasan
+- kalo user nanya nominal diamond yang ga persis ada di katalog (misal nanya 86 dm padahal adanya 85 dm & 88 dm), LANGSUNG sebutin nominal paling deket beserta harganya dari DATA REAL-TIME NDXStore
 - kalo user ngirim beberapa bubble chat beruntun (misal sapaan + pertanyaan + detail), BACA SEMUANYA DULU sebagai satu kesatuan dan jawab intinya aja dalam 1 balasan nyambung. JANGAN jawab satu-satu per bubble
 
 CONTOH:
@@ -49,89 +47,82 @@ User: bang
 Bima: yo
 User: bang
 mau tanya dong
-kalo top up ml 85 dm berapa?
-Bima: 26 ribuan doang. langsung gas ke ndxstoreid.vercel.app aja
+kalo top up ml 86 dm berapa?
+Bima: 86 dm ga ada bang, paling deket 85 dm Rp26.651 atau 88 dm Rp27.811. langsung gas di ndxstoreid.vercel.app aja
+User: kalo wdp berapa bang?
+Bima: wdp ml Rp31.633. order di ndxstoreid.vercel.app ya
 User: udah bayar kak
-Bima: oke bentar gw cekin. tunggu ya
+Bima: oke bentar gw cekin. username atau id ordernya apa?
 User: thanks
 Bima: sip
 User: bima lagi ngapain?
-Bima: gabut wkwk. lu ngapain?
+Bima: gabut scroll tiktok wkwk. lu ngapain?
 User: pesenanku mana bang?
-Bima: username ml-nya apa? ntar gw cekin
+Bima: username atau id ordernya apa? sini gw cekin
 User: kok lama banget sih
-Bima: sabar, lagi antri. biasanya 5-30 menit. kalo sejam ga masuk juga bilang, ntar gw terusin admin
-User: aku sedih
-Bima: loh kenapa? cerita aja kalo mau
+Bima: sabar bang lagi antri diproses, biasanya 5-30 menit. kalo ada kendala ketik cs aja biar langsung dipegang admin
 
 ATURAN KERAS:
-1. JANGAN pernah ngaku AI, bot, atau asisten digital. kalo ditanya "lu bot ya?" jawab kayak orang kesinggung bercanda: "enak aja bot"
-2. JANGAN ngarang harga/status/angka. pake angka dari DATA REAL-TIME NDXStore kalo ada. kalo ga ada: suruh cek di web atau tanya username buat dicekin
-3. kalo user nanya STATUS order tapi ga kasih username: TANYA username-nya langsung, jangan nyuruh "ketik cek"
-4. kalo di grup dan ga dimention/direply: diem. cuma jawab kalo dimention/direply. JANGAN nanya balik di grup
-5. kalo pesan user ga nyambung/gajelas: skip aja, JANGAN maksa jawab
-6. kalo user kirim penggalan chat beruntun, rangkum jawabannya jadi 1 chat yang natural kayak manusia yang baca semua chat dulu baru bales
+1. JANGAN pernah ngaku AI, bot, atau asisten digital. kalo ditanya "lu bot ya?" jawab santai: "enak aja bot, orang beneran ini"
+2. JANGAN ngarang harga/status/angka. pake angka dari DATA REAL-TIME NDXStore. kalo nominal yang ditanya ga persis ada, tawarin nominal terdekat yang ada di DATA REAL-TIME NDXStore
+3. kalo user nanya STATUS order tapi belum kasih username/ID: TANYA username atau ID ordernya langsung
+4. kalo di grup dan ga dimention/direply: diem. JANGAN nanya balik di grup
+5. kalo user kirim penggalan chat beruntun, rangkum jawabannya jadi 1 chat yang natural kayak manusia yang baca semua chat dulu baru bales
 
-singkat: baca semua dulu, paham maksud utamanya, jawab 1x kayak manusia. gausa maksa.`;
+singkat: baca semua dulu, paham maksud utamanya, jawab 1x kayak manusia beneran.`;
 }
 
 function makeNdxstorePrompt() {
-  return `Lo adalah Customer Service NDXStore — toko top up game & Roblox yang udah berjalan 2 tahun. Profesional, ramah, dan helpful.
+  return `Lo adalah Customer Service (CS) manusia di NDXStore — toko top up game & Roblox terpercaya. Ramah, sigap, jelas, dan komunikatif seperti admin toko sungguhan di WhatsApp/Instagram.
 
 IDENTITAS:
-- CS NDXStore — kerja dari jam 08.00-22.00 WIB
-- Tugas utama: bantu pelanggan order top up game (ML, Roblox, Free Fire, dll)
-- Profesional tapi santai, ga kaku kayak robot
+- CS NDXStore — jam operasional 08.00-22.00 WIB
+- Tugas utama: bantu pelanggan cek harga, cara order, dan cek status transaksi (Mobile Legends, Roblox Robux & Gamepass, Free Fire, dll)
+- Gaya bahasa: sopan, akrab, santai tapi profesional (tidak kaku seperti mesin/template)
 
 CARA NGOMONG:
 - BALAS PAKE BAHASA YANG SAMA dengan pelanggan
-- Panggil pelanggan "kak" (kalo cowok panggil "bang" boleh)
-- Jawab informatif, jelas, to the point
-- JANGAN pake emoji
-- Kalo customer marah: minta maaf dengan baik, jangan defensif
-- JANGAN pake bahasa formal berlebihan (hindari: mohon maaf sebelumnya, sehubungan, dengan ini, demikian, kami informasikan)
-- Kalo pelanggan kirim beberapa bubble chat beruntun (misal sapaan dulu lalu pertanyaan), BACA SEMUANYA DULU dan balas langsung ke intinya dalam 1 pesan utuh yang mengalir natural (jangan membalas sapaan dan pertanyaan secara terpisah per poin)
+- Panggil pelanggan "kak" (atau "bang" jika pelanggan memanggil bang/bro)
+- Jawab langsung ke inti pertanyaan, jelas, dan solutif
+- JANGAN pake emoji dan JANGAN pake format bintang (*) berlebihan
+- JANGAN pake bahasa birokrasi kaku (hindari: sehubungan dengan, dapat kami sampaikan, dengan demikian)
+- Kalo pelanggan kirim beberapa bubble chat beruntun (misal sapaan dulu lalu pertanyaan), BACA SEMUANYA DULU dan balas langsung ke intinya dalam 1 pesan utuh yang mengalir natural
 
 YANG LO BANTU:
-1. Cara order: buka ndxstoreid.vercel.app, pilih produk, bayar, tunggu 5-30 menit
-2. Info pembayaran: DANA, GoPay, transfer bank — kalo ditanya nomor rekening/tujuan, arahkan ke website ndxstoreid.vercel.app atau ketik "cs" untuk dibantu admin
-3. Cek status order: cek dari DATA REAL-TIME NDXStore jika ada, atau minta username / ID ordernya
-4. Info produk: gunakan harga asli dari DATA REAL-TIME NDXStore jika tersedia
-5. Keluhan: dengerin dulu, minta maaf, bantu cek, arahin ke admin kalo perlu
-6. CS (customer service): kalo user minta CS, bilang admin akan hubungi
+1. Info produk & harga:
+   - WAJIB gunakan angka dari DATA REAL-TIME NDXStore jika tersedia.
+   - Jika pelanggan menanyakan nominal yang tidak persis sama (misal tanya "86 dm" padahal di katalog adanya "85 Diamonds" dan "88 Diamonds"), JANGAN cuma bilang tidak ada — langsung sebutkan opsi nominal terdekat beserta harganya!
+2. Cara order: langsung di website ndxstoreid.vercel.app, pilih produk, pilih metode pembayaran (QRIS/DANA/GoPay/Transfer), otomatis diproses 5-30 menit.
+3. Cek status order:
+   - Jika ada DATA REAL-TIME STATUS ORDER, jelaskan status pembayaran (Bayar: PENDING/SUCCESS) dan status pesanan (WAITING_PAYMENT/PROCESSING/SUCCESS) dengan jelas.
+   - Jika belum ada username/ID order, tanyakan username atau ID ordernya (atau infokan bisa ketik "cek [username]").
+4. Keluhan / kendala: minta maaf dengan tulus, bantu cek statusnya, atau arahkan ketik "cs" agar disambungkan langsung ke admin utama.
 
 ATURAN PENTING:
-1. JANGAN pernah ngaku AI atau bot
-2. JANGAN ngasih harga/status palsu — gunakan DATA REAL-TIME NDXStore yang diberikan. Kalo ga ada di data, arahkan ke ndxstoreid.vercel.app atau tanya nama game/username-nya
-3. Kalo user pake bahasa Inggris, balas Inggris
-4. Kalo user kesal atau marah: "Maaf kak, saya cek dulu ya. Mohon tunggu sebentar."
-5. Kalo ditanya di luar konteks toko: "Maaf kak, saya khusus bantu order top up. Kalo ada yang lain, boleh hubungi WA admin ya."
-6. Kepastian waktu proses: "Biasanya 5-30 menit kak setelah pembayaran dikonfirmasi."
-7. JANGAN nelpon user atau minta nomor pribadi
-8. KALO DI GRUP: cukup jawab kalo emang perlu aja, jangan nanya balik
+1. JANGAN pernah mengaku sebagai AI, bot, atau sistem otomatis
+2. JANGAN mengarang harga atau status order di luar DATA REAL-TIME NDXStore
+3. Kalo pelanggan berbahasa Inggris, balas dalam bahasa Inggris yang natural
+4. Kalo di grup: jawab singkat dan jelas tanpa bertanya balik
 
 CONTOH PERCAKAPAN:
 Pelanggan: kak
 mau tanya dong
-harga ml 85 diamond berapa?
-CS: Untuk 85 Diamonds ML harganya Rp26.651 kak, bisa langsung order di ndxstoreid.vercel.app ya
+harga ml 86 diamond berapa?
+CS: Untuk 86 Diamonds ML tidak ada nominal persisnya kak, paling dekat ada 85 Diamonds Rp26.651 atau 88 Diamonds Rp27.811. Kakak bisa langsung order di ndxstoreid.vercel.app ya.
+
+Pelanggan: kalo wdp ml berapa kak?
+CS: Untuk Weekly Diamond Pass ML harganya Rp31.633 kak. Bisa langsung dipesan di ndxstoreid.vercel.app ya.
 
 Pelanggan: udah bayar kak, udah konfirmasi
-CS: Baik kak, sebentar ya kami cek. Username atau ID order-nya apa kak?
+CS: Baik kak, boleh infokan username atau ID ordernya kak biar langsung kami bantu cek statusnya?
 
-Pelanggan: order gue mana?
-CS: Boleh infokan username atau ID order-nya kak? Atau bisa ketik "cek [username]" biar langsung muncul statusnya.
-
-Pelanggan: GILA! order gua ga dateng-dateng!!
-CS: Maaf banget kak atas ketidaknyamanannya. Boleh minta ID order atau username-nya kak? Biar langsung kami bantu lacak sekarang.
-
-Pelanggan: makasih
-CS: Sama-sama kak, kalo ada kendala lagi kabarin aja ya
+Pelanggan: makasih kak
+CS: Sama-sama kak, kalau ada yang perlu dibantu lagi kabarin aja ya.
 
 PENGETAHUAN TOKO:
 ${makeKnowledge()}
 
-INGAT — lo CS manusia yang baik. Baca semua penggalan chat pelanggan dulu, pahami utuh, lalu balas 1x dengan sabar dan profesional.`;
+INGAT — lo CS manusia yang cekatan. Baca semua penggalan chat pelanggan dulu, pahami utuh, lalu balas 1x dengan jelas dan membantu.`;
 }
 
 const PROMPT_FNS = { 1: makeBimaPrompt, 2: makeNdxstorePrompt };
@@ -174,85 +165,85 @@ function trackUsage(model, usage) {
   m.completionTokens = (m.completionTokens || 0) + c;
 }
 
-// ─── Unnatural word filter — hanya 10 pola paling kaku ───────────────────
-// Safety net terakhir; prompt persona sudah melarang bahasa formal duluan.
+// ─── Unnatural word filter — hanya pola paling kaku ──────────────────────
 const UNNATURAL_PATTERNS = [
-  [/saya selaku/gi, 'aku'],
-  [/oleh karena itu/gi, 'makanya'],
-  [/dengan demikian/gi, 'jadi'],
-  [/mohon maaf sebelumnya/gi, 'maaf'],
-  [/sehubungan dengan/gi, 'soal'],
-  [/perlu diketahui/gi, 'tau ga'],
-  [/dapat kami sampaikan/gi, 'bilang'],
-  [/demikian disampaikan/gi, 'itu aja'],
-  [/atas perhatiannya/gi, 'makasih'],
-  [/diharapkan/gi, 'harap'],
-];
-
-const GENERIC_PATTERNS = [
-  /^baik[,\s]/i,
-  /^tentu[,\s]/i,
-  /^baiklah[,\s]/i,
-  /^oke[,\s]/i,
-  /^siap[,\s]/i,
-  /^baik akan/i,
-  /^tentu saja/i,
+  [/\bsaya selaku\b/gi, 'aku'],
+  [/\boleh karena itu\b/gi, 'makanya'],
+  [/\bdengan demikian\b/gi, 'jadi'],
+  [/\bmohon maaf sebelumnya[,\s]*/gi, 'Maaf '],
+  [/\bsehubungan dengan\b/gi, 'soal'],
+  [/\bperlu diketahui\b/gi, 'info aja'],
+  [/\bdapat kami sampaikan\b/gi, ''],
+  [/\bdemikian disampaikan\b/gi, ''],
+  [/\batas perhatiannya\b/gi, 'makasih'],
 ];
 
 function naturalize(text) {
-  let t = text;
+  let t = String(text || '');
   for (const [re, replacement] of UNNATURAL_PATTERNS) {
     t = t.replace(re, replacement);
   }
-  for (const re of GENERIC_PATTERNS) {
-    t = t.replace(re, '');
-  }
-  t = t.trim();
-  return t;
+  return t.replace(/\s{2,}/g, ' ').trim();
 }
 
 // ─── Fast-path responses (no API call) ─────────────────────────────────
 
-// Ultra-fast filler words — dijawab instan tanpa API call.
-// Netral untuk kedua persona (Bima & CS).
-const FAST_REPLIES = new Map([
-  ['p', 'p'],
-  ['test', 'ok'],
+const FAST_REPLIES_BIMA = new Map([
+  ['p', 'yo'],
+  ['pp', 'yo'],
+  ['test', 'masuk'],
   ['ping', 'pong'],
-  ['tes', 'ok'],
-  // acknowledgement
+  ['tes', 'masuk'],
   ['ok', 'sip'],
   ['oke', 'sip'],
   ['okey', 'sip'],
   ['okay', 'sip'],
-  ['okee', 'sip'],
-  ['okke', 'sip'],
-  ['okei', 'sip'],
   ['sip', 'sip'],
-  ['sipp', 'sip'],
   ['siap', 'siap'],
-  // laughter
   ['hehe', 'wkwk'],
   ['haha', 'wkwk'],
   ['hihi', 'wkwk'],
-  ['huhu', 'wkwk'],
   ['wkwk', 'wkwk'],
-  ['wkwkwk', 'wkwk'],
-  // thanks
   ['makasih', 'sama-sama'],
   ['makasi', 'sama-sama'],
-  ['thanks', 'sama-sama'],
+  ['terimakasih', 'sama-sama'],
+  ['thanks', 'yo sama-sama'],
   ['thankyou', 'sama-sama'],
-  ['thx', 'sama-sama'],
+  ['thx', 'sip'],
   ['trims', 'sama-sama'],
-  // confused ack — user butuh prompt lanjutan
-  ['oh', 'ya?'],
-  ['ohh', 'ya?'],
-  ['ohhh', 'ya?'],
-  ['ooh', 'ya?'],
-  ['nah', 'ya?'],
-  ['hmm', 'ya?'],
-  ['hmmm', 'ya?'],
+  ['assalamualaikum', 'waalaikumsalam'],
+  ['asalamualaikum', 'waalaikumsalam'],
+]);
+
+const FAST_REPLIES_CS = new Map([
+  ['p', 'Halo kak, ada yang bisa dibantu?'],
+  ['pp', 'Halo kak, ada yang bisa dibantu?'],
+  ['halo', 'Halo kak, ada yang bisa kami bantu?'],
+  ['hai', 'Halo kak, ada yang bisa kami bantu?'],
+  ['hi', 'Halo kak, ada yang bisa kami bantu?'],
+  ['pagi', 'Selamat pagi kak, ada yang bisa dibantu?'],
+  ['siang', 'Selamat siang kak, ada yang bisa dibantu?'],
+  ['sore', 'Selamat sore kak, ada yang bisa dibantu?'],
+  ['malam', 'Selamat malam kak, ada yang bisa dibantu?'],
+  ['malem', 'Selamat malam kak, ada yang bisa dibantu?'],
+  ['assalamualaikum', 'Waalaikumsalam kak, ada yang bisa kami bantu?'],
+  ['asalamualaikum', 'Waalaikumsalam kak, ada yang bisa kami bantu?'],
+  ['test', 'Halo kak, WA NDXStore aktif. Ada yang bisa dibantu?'],
+  ['tes', 'Halo kak, WA NDXStore aktif. Ada yang bisa dibantu?'],
+  ['ping', 'Halo kak, ada yang bisa dibantu?'],
+  ['ok', 'Baik kak'],
+  ['oke', 'Baik kak'],
+  ['okey', 'Baik kak'],
+  ['okay', 'Baik kak'],
+  ['sip', 'Siap kak'],
+  ['siap', 'Siap kak'],
+  ['makasih', 'Sama-sama kak, kalau ada yang perlu dibantu lagi kabarin aja ya'],
+  ['makasi', 'Sama-sama kak, kalau ada yang perlu dibantu lagi kabarin aja ya'],
+  ['terimakasih', 'Sama-sama kak, senang bisa membantu'],
+  ['thanks', 'Sama-sama kak, kalau butuh bantuan lagi kabarin aja ya'],
+  ['thankyou', 'Sama-sama kak'],
+  ['thx', 'Sama-sama kak'],
+  ['trims', 'Sama-sama kak'],
 ]);
 
 // ─── Conversation history ──────────────────────────────────────────────
@@ -556,12 +547,14 @@ export function isIgnorable(text) {
     .replace(/[^a-zA-Z0-9\u00C0-\u024F\u1E00-\u1EFF\u0600-\u06FF\u3040-\u30FF\uAC00-\uD7AF\u0E00-\u0E7F\u4E00-\u9FFF\u0400-\u04FF]/g, '')
     .trim();
   if (!stripped) return true;
-  // Satu karakter diulang >60% (mis. "wkwkwkwk"→ w dominan? tidak — cek proporsi)
+  // Normalisasi huruf memanjang khas WA ("kakkk" -> "kak", "yaaa" -> "ya", "halooo" -> "halo")
+  // agar kata valid yang dipanjangkan tidak dianggap gibberish!
+  const deStretched = stripped.toLowerCase().replace(/(.)\1{2,}/g, '$1');
+  if (deStretched.length === 1) return true; // misal "aaaaaa" atau "zzzzzz"
   const counts = Object.create(null);
-  const lower = stripped.toLowerCase();
-  for (const ch of lower) counts[ch] = (counts[ch] || 0) + 1;
+  for (const ch of deStretched) counts[ch] = (counts[ch] || 0) + 1;
   const top = Math.max(...Object.values(counts));
-  if (lower.length >= 4 && top / lower.length > 0.6) return true;
+  if (deStretched.length >= 6 && top / deStretched.length > 0.65) return true;
   return false;
 }
 
@@ -645,9 +638,9 @@ const PROFILE_TTL = 7 * 24 * 60 * 60 * 1000;
 const PROFILE_MAX = 500;
 
 const GAME_KW = [
-  [/mobile\s*legend|\bml\b|mlbb/i, 'ml'],
-  [/roblox|robux|\brbx\b/i, 'roblox'],
-  [/free\s*fire|\bff\b/i, 'ff'],
+  [/mobile\s*legend|\b(ml|mlbb|wdp|starlight|twilight)\b/i, 'ml'],
+  [/roblox|robux|\brbx\b|blox\s*fruit|grow\s*a\s*garden|fisch|blade\s*ball|brookhaven/i, 'roblox'],
+  [/free\s*fire|\b(ff|epep)\b/i, 'ff'],
   [/valorant|\bvalo\b/i, 'valorant'],
 ];
 
@@ -707,10 +700,11 @@ const STATUS_ASK_KW = /\b(status|mana|kapan|sampe|sampai|nyampe|diproses|belum m
 const HAS_USERNAME_KW = /cek\s+\S+|(?:TX|TXN|NDX)-[A-Z0-9]+|NDXSTORE\/[A-Z0-9_\/-]+/i;
 
 function statusInstrFor(message, mode) {
-  if (mode !== 1) return '';
   if (!STATUS_ASK_KW.test(message)) return '';
   if (HAS_USERNAME_KW.test(message)) return '';
-  return `\n⚡ USER NANYA STATUS ORDER tapi ga kasih username/ID. JANGAN nyuruh "ketik cek". TANYA LANGSUNG username atau ID ordernya biar bisa dicekin. Contoh: "username ml-nya apa? ntar gw cekin".`;
+  return mode === 2
+    ? `\n⚡ PELANGGAN TANYA STATUS ORDER tapi belum sebut username/ID. Tanyakan langsung username atau ID ordernya dengan ramah biar bisa dicek.`
+    : `\n⚡ USER NANYA STATUS ORDER tapi ga kasih username/ID. JANGAN nyuruh "ketik cek". TANYA LANGSUNG username atau ID ordernya biar bisa dicekin.`;
 }
 
 // ─── Reply variation — jawaban identik beruntun dikasih opener beda ───────
@@ -720,7 +714,8 @@ const lastReplies = new Map(); // jid -> { reply, opener }
 const REPLY_OPENERS = ['', 'eh ', 'hmm ', 'ya ', 'oalah '];
 const LAST_REPLY_MAX = 500;
 
-function varyReply(jid, reply) {
+function varyReply(jid, reply, mode = 1) {
+  if (mode === 2) return reply; // CS mode tetap sopan & konsisten tanpa selipan "eh "/"oalah "
   const norm = (s) => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
   const prev = lastReplies.get(jid);
   let opener = '';
@@ -743,11 +738,16 @@ function varyReply(jid, reply) {
 function trimReply(reply, mode = 1) {
   let r = (reply || '').replace(/🔒 INSTRUCTIONS:.*/gi, '').trim();
   r = naturalize(r);
-  const max = mode === 1 ? 220 : 400;
+  const max = mode === 1 ? 350 : 700;
   if (r.length > max) {
     const cut = r.slice(0, max);
-    const lastStop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
-    r = (lastStop > 40 ? cut.slice(0, lastStop + 1) : cut).trim();
+    const lastStop = Math.max(
+      cut.lastIndexOf('. '),
+      cut.lastIndexOf('! '),
+      cut.lastIndexOf('? '),
+      cut.lastIndexOf('\n'),
+    );
+    r = (lastStop > 60 ? cut.slice(0, lastStop + 1) : cut).trim();
   }
   return r;
 }
@@ -1179,10 +1179,23 @@ export function detectGreeting(text, mode = 1) {
   // Never use single-word fast reply if user sent multiple bubbles or multiple words
   if (!raw || raw.includes('\n') || raw.split(/\s+/).length > 1) return null;
   const cleaned = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (cleaned === 'p' || cleaned === 'pp') {
-    return mode === 2 ? 'Halo kak, ada yang bisa dibantu?' : 'yo';
+  if (!cleaned) return null;
+  const normalized = cleaned === 'pp' ? 'pp' : cleaned.replace(/(.)\1{2,}/g, '$1');
+  const map = mode === 2 ? FAST_REPLIES_CS : FAST_REPLIES_BIMA;
+  return map.get(cleaned) || map.get(normalized) || null;
+}
+
+export function getProviderHealth() {
+  const openCircuits = [];
+  for (const [k, v] of FAILED_ENDPOINTS) {
+    if (v.count >= CB_THRESHOLD) openCircuits.push(k.split('|')[1] || k);
   }
-  return FAST_REPLIES.get(cleaned) || null;
+  return {
+    groq: Boolean(config.groqKey?.startsWith('gsk_')),
+    gemini: Boolean(config.geminiKey),
+    openrouter: Boolean(config.openrouterKey?.startsWith('sk-or-')),
+    openCircuits,
+  };
 }
 
 // ─── Main AI ───────────────────────────────────────────────────────────
@@ -1236,18 +1249,19 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
     return cached;
   }
 
+  const profile = updateUserProfile(jid, clean);
   const userHist = await getOrLoadHistory(jid);
   if (signal?.aborted) return null;
 
   const [storeCtx, queryCtx] = await Promise.all([
     getStoreContext().catch(() => ''),
-    getQueryContext(clean).catch(() => ''),
+    getQueryContext(clean, profile?.game || null).catch(() => ''),
   ]);
   if (signal?.aborted) return null;
 
   const msgs = buildProMessages(userHist, clean, mode, storeCtx, queryCtx, jid, isGroup, senderName);
   const temp = pickTemperature(clean, mode);
-  const maxTokens = mode === 1 ? 250 : 400;
+  const maxTokens = mode === 1 ? 260 : 420;
 
   const groqUrl = config.groqUrl;
   const groqHeaders = { Authorization: `Bearer ${config.groqKey}` };
@@ -1258,77 +1272,30 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   let usedModel = 'unknown';
   const startTime = Date.now();
 
-  // Smart routing: pertanyaan faktual (harga/status/order) dijawab akurat oleh
-  // model kecil & cepat — 70b dilewati untuk hemat kuota. Chat bebas memakai
-  // semua tier demi latensi terbaik.
-  const wantsFactual = FACTUAL_KW.test(clean);
-  const groqCandidates = [];
-  if (config.groqKey?.startsWith('gsk_')) {
-    if (!wantsFactual) {
-      groqCandidates.push({
-        model: 'llama-3.3-70b-versatile',
-        url: groqUrl,
-        body: { model: 'llama-3.3-70b-versatile', ...opts },
-        headers: groqHeaders,
-        timeout: TIER_TIMEOUTS.groq70b,
-      });
-    }
-    groqCandidates.push({
-      model: 'llama-3.1-8b-instant',
-      url: groqUrl,
-      body: { model: 'llama-3.1-8b-instant', ...opts },
-      headers: groqHeaders,
-      timeout: TIER_TIMEOUTS.groq8b,
-    });
-  }
-
-  // 1. Primary Tier: Groq
-  if (groqCandidates.length && !signal?.aborted) {
-    const aborter = new AbortController();
-    const raceSig = signal ? AbortSignal.any([aborter.signal, signal]) : aborter.signal;
-    const raced = groqCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, raceSig)
-      .then(r => r ? { reply: r, model: m.model } : Promise.reject(new Error('empty'))));
-    const winner = await Promise.any(raced).catch(() => null);
-    aborter.abort();
-    if (winner?.reply) {
-      reply = winner.reply;
-      usedModel = winner.model;
-    }
-  }
-  if (signal?.aborted) return null;
-
-  // 2. Fallback Tier 1: OpenRouter (jika Groq tidak bekerja)
-  if (!reply && config.openrouterKey?.startsWith('sk-or-') && !signal?.aborted) {
-    const orModel = config.openrouterModel || 'nvidia/nemotron-3-super-120b-a12b:free';
-    const orCandidates = [
-      orModel,
-      'nvidia/nemotron-3-super-120b-a12b:free',
-      'nvidia/nemotron-3-ultra-550b-a55b:free',
-    ].filter((m, i, a) => m && a.indexOf(m) === i);
-    const orHeaders = {
-      Authorization: `Bearer ${config.openrouterKey}`,
-      'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
-      'X-Title': 'NDXStore WA Bot',
-    };
-    for (const candidateModel of orCandidates) {
+  // 1. Primary Tier: Groq — gunakan llama-3.3-70b-versatile sebagai model utama
+  //    untuk semua jenis pertanyaan (termasuk harga/order/multi-bubble agar cerdas & natural),
+  //    dan llama-3.1-8b-instant sebagai fallback cepat jika 70b kena limit/gangguan.
+  if (config.groqKey?.startsWith('gsk_') && !signal?.aborted) {
+    for (const groqModel of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
       if (signal?.aborted) break;
-      const orReply = await tryFetch(
-        config.openrouterUrl,
-        { model: candidateModel, ...opts, reasoning: { effort: 'none' } },
-        orHeaders,
-        TIER_TIMEOUTS.openrouter,
+      const tOut = groqModel.includes('70b') ? TIER_TIMEOUTS.groq70b : TIER_TIMEOUTS.groq8b;
+      const groqReply = await tryFetch(
+        groqUrl,
+        { model: groqModel, ...opts },
+        groqHeaders,
+        tOut,
         signal,
       );
-      if (orReply) {
-        reply = orReply;
-        usedModel = candidateModel;
+      if (groqReply) {
+        reply = groqReply;
+        usedModel = groqModel;
         break;
       }
     }
   }
   if (signal?.aborted) return null;
 
-  // 3. Fallback Tier 2: Google Gemini (jika Groq & OpenRouter gagal / mengeluarkan output error)
+  // 2. Fallback Tier 1: Google Gemini (cepat ~1.5s, stabil, bebas error upstream)
   if (!reply && config.geminiKey && !signal?.aborted) {
     const gemPrimary = config.geminiModel || 'gemini-3.5-flash-lite';
     const gemModels = [
@@ -1358,12 +1325,43 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   }
   if (signal?.aborted) return null;
 
+  // 3. Fallback Tier 2: OpenRouter (dengan filter anti-error ketat)
+  if (!reply && config.openrouterKey?.startsWith('sk-or-') && !signal?.aborted) {
+    const orModel = config.openrouterModel || 'nvidia/nemotron-3-super-120b-a12b:free';
+    const orCandidates = [
+      orModel,
+      'nvidia/nemotron-3-super-120b-a12b:free',
+      'google/gemma-3-27b-it:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'openrouter/free',
+    ].filter((m, i, a) => m && a.indexOf(m) === i);
+    const orHeaders = {
+      Authorization: `Bearer ${config.openrouterKey}`,
+      'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
+      'X-Title': 'NDXStore WA Bot',
+    };
+    for (const candidateModel of orCandidates) {
+      if (signal?.aborted) break;
+      const orReply = await tryFetch(
+        config.openrouterUrl,
+        { model: candidateModel, ...opts, reasoning: { effort: 'none' } },
+        orHeaders,
+        TIER_TIMEOUTS.openrouter,
+        signal,
+      );
+      if (orReply) {
+        reply = orReply;
+        usedModel = candidateModel;
+        break;
+      }
+    }
+  }
+  if (signal?.aborted) return null;
+
   // 4. Fallback Tier 3: Pollinations & Backup API
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
   if (!reply && !signal?.aborted) {
     const fallbackCandidates = [];
-    // Guard: AI_API_BASE kosong = URL "/openai" invalid untuk semua kandidat.
-    // Jangan daftarkan — log konfigurasi yang jelas, bukan error misterius (m5).
     if (pollBase) {
       fallbackCandidates.push({
         model: 'openai',
@@ -1436,17 +1434,13 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 
   if (reply) {
     if (signal) recordRecentInput(jid, clean);
-    updateUserProfile(jid, clean);
 
     if (/^SKIP\b/.test(reply)) {
-      // Model memutuskan "skip" — jangan diam: balas fallback kontekstual
-      // agar user tetap dapat jawaban (M1).
       logger.debug('AI', 'Model SKIP — memakai fallback kontekstual');
       trackMetric(usedModel, elapsed, true);
       return getFallbackReply(clean, mode);
     }
 
-    // Language mismatch detected — log only, no re-prompt (previous re-prompt caused unnatural apologies)
     const replyLang = detectLang(reply);
     const detectedUserLang = (userLangs.get(jid)?.lang) || detectLang(clean);
     if (detectedUserLang === 'id' && replyLang === 'en') {
@@ -1456,9 +1450,8 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       logger.debug('AI', 'Reply in Indonesian for English user — using as-is');
     }
 
-    // Trim di batas kalimat + variasi opener biar ga kayak template.
     reply = trimReply(reply, mode);
-    reply = varyReply(jid, reply);
+    reply = varyReply(jid, reply, mode);
 
     saveExchange(jid, message, reply, senderName, isGroup);
     setCache(jid, clean, mode, reply);
@@ -1478,9 +1471,10 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
   const userHist = await getOrLoadHistory(jid);
   if (signal?.aborted) return null;
   const cleanText = sanitizeInput(text || '');
+  const profile = cleanText ? updateUserProfile(jid, cleanText) : userProfiles.get(jid);
   const [storeCtx, queryCtx] = await Promise.all([
     getStoreContext().catch(() => ''),
-    cleanText ? getQueryContext(cleanText).catch(() => '') : Promise.resolve(''),
+    cleanText ? getQueryContext(cleanText, profile?.game || null).catch(() => '') : Promise.resolve(''),
   ]);
   if (signal?.aborted) return null;
 
@@ -1511,39 +1505,14 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       model: config.groqVisionModel, messages: msgs, max_tokens: 400, temperature: 0.5,
     }, { Authorization: `Bearer ${config.groqKey}` }, 20000, signal);
     if (signal?.aborted) return null;
-    if (r) {
-      // SKIP di vision = coba endpoint vision berikutnya, bukan diam.
-      if (!/^SKIP\b/.test(r)) {
-        let reply = varyReply(jid, trimReply(r, mode));
-        saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
-        return reply;
-      }
-    }
-  }
-
-  // 2. OpenRouter vision fallback
-  if (config.openrouterKey?.startsWith('sk-or-') && !signal?.aborted) {
-    const orVisionModels = [
-      'nvidia/nemotron-3.5-super-vl:free',
-      'dots-studio/dots-3-note-preview:free',
-      'google/gemma-4-31b-it:free',
-    ];
-    const r = await tryFetch(config.openrouterUrl, {
-      model: orVisionModels[0], models: orVisionModels, messages: msgs, max_tokens: 400, temperature: 0.5, reasoning: { effort: 'none' },
-    }, {
-      Authorization: `Bearer ${config.openrouterKey}`,
-      'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
-      'X-Title': 'NDXStore WA Bot',
-    }, 15000, signal);
-    if (signal?.aborted) return null;
     if (r && !/^SKIP\b/.test(r)) {
-      let reply = varyReply(jid, trimReply(r, mode));
+      const reply = varyReply(jid, trimReply(r, mode), mode);
       saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
       return reply;
     }
   }
 
-  // 3. Google Gemini vision fallback
+  // 2. Google Gemini vision fallback (cepat & akurat untuk screenshot bukti bayar / game)
   if (config.geminiKey && !signal?.aborted) {
     for (const gemVisionModel of [config.geminiModel || 'gemini-3.5-flash-lite', 'gemini-3.8-flash']) {
       if (signal?.aborted) break;
@@ -1552,7 +1521,32 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       }, { Authorization: `Bearer ${config.geminiKey}` }, 15000, signal);
       if (signal?.aborted) return null;
       if (r && !/^SKIP\b/.test(r)) {
-        let reply = varyReply(jid, trimReply(r, mode));
+        const reply = varyReply(jid, trimReply(r, mode), mode);
+        saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
+        return reply;
+      }
+    }
+  }
+
+  // 3. OpenRouter vision fallback
+  if (config.openrouterKey?.startsWith('sk-or-') && !signal?.aborted) {
+    const orVisionModels = [
+      'google/gemma-3-27b-it:free',
+      'nvidia/nemotron-3.5-super-vl:free',
+      'openrouter/free',
+    ];
+    for (const orVisModel of orVisionModels) {
+      if (signal?.aborted) break;
+      const r = await tryFetch(config.openrouterUrl, {
+        model: orVisModel, messages: msgs, max_tokens: 400, temperature: 0.5, reasoning: { effort: 'none' },
+      }, {
+        Authorization: `Bearer ${config.openrouterKey}`,
+        'HTTP-Referer': config.apiBase || 'https://ndxstoreid.vercel.app',
+        'X-Title': 'NDXStore WA Bot',
+      }, 15000, signal);
+      if (signal?.aborted) return null;
+      if (r && !/^SKIP\b/.test(r)) {
+        const reply = varyReply(jid, trimReply(r, mode), mode);
         saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
         return reply;
       }
@@ -1560,7 +1554,6 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
   }
 
   // 4. Vision endpoints (sequential — Pollinations, backup).
-  // Saring URL invalid (aiApiBase kosong → "/openai") agar tidak fetch sia-sia.
   const backupBase = config.aiApiBackup?.replace(/\/+$/, '');
   const pollVision = `${(config.aiApiBase || '').replace(/\/+$/, '')}/openai`;
   const visionUrls = [
@@ -1579,9 +1572,8 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     }, {}, 20000, signal);
     if (signal?.aborted) return null;
     if (rRaw) {
-      // SKIP = endpoint ini menolak, lanjut ke kandidat vision berikutnya.
       if (/^SKIP\b/.test(rRaw)) continue;
-      let r = varyReply(jid, trimReply(rRaw, mode));
+      const r = varyReply(jid, trimReply(rRaw, mode), mode);
       saveExchange(jid, text || '[gambar]', r, senderName, isGroup);
       return r;
     }
@@ -1614,18 +1606,25 @@ export async function askAIProactive(order, mode = 1) {
 
   // 1. Try Groq
   if (config.groqKey?.startsWith('gsk_')) {
-    const groqCandidates = [
-      { url: groqUrl, body: { model: 'llama-3.3-70b-versatile', ...opts }, headers: groqHeaders, timeout: 10000 },
-      { url: groqUrl, body: { model: 'llama-3.1-8b-instant', ...opts }, headers: groqHeaders, timeout: 10000 },
-    ];
-    const aborter = new AbortController();
-    const raced = groqCandidates.map(m => tryFetch(m.url, m.body, m.headers || {}, m.timeout, aborter.signal));
-    const result = await Promise.any(raced.map(p => p.then(r => r ? r : Promise.reject()))).catch(() => null);
-    aborter.abort();
-    if (result) return result;
+    for (const groqModel of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
+      const result = await tryFetch(groqUrl, { model: groqModel, ...opts }, groqHeaders, 10000);
+      if (result) return result;
+    }
   }
 
-  // 2. Fallback to OpenRouter if Groq failed/unavailable
+  // 2. Fallback to Google Gemini
+  if (config.geminiKey) {
+    const gemModel = config.geminiModel || 'gemini-3.5-flash-lite';
+    const gemResult = await tryFetch(
+      config.geminiUrl,
+      { model: gemModel, ...opts },
+      { Authorization: `Bearer ${config.geminiKey}` },
+      10000,
+    );
+    if (gemResult) return gemResult;
+  }
+
+  // 3. Fallback to OpenRouter
   if (config.openrouterKey?.startsWith('sk-or-')) {
     const orModel = config.openrouterModel || 'nvidia/nemotron-3-super-120b-a12b:free';
     const orResult = await tryFetch(
@@ -1639,18 +1638,6 @@ export async function askAIProactive(order, mode = 1) {
       10000,
     );
     if (orResult) return orResult;
-  }
-
-  // 3. Fallback to Google Gemini
-  if (config.geminiKey) {
-    const gemModel = config.geminiModel || 'gemini-3.5-flash-lite';
-    const gemResult = await tryFetch(
-      config.geminiUrl,
-      { model: gemModel, ...opts },
-      { Authorization: `Bearer ${config.geminiKey}` },
-      10000,
-    );
-    if (gemResult) return gemResult;
   }
 
   // 4. Fallback to Pollinations & Backup API
@@ -1672,33 +1659,82 @@ export async function askAIProactive(order, mode = 1) {
   return PROACTIVE_FALLBACK[mode] || PROACTIVE_FALLBACK[1];
 }
 
-// ─── Audio Transcription ────────────────────────────────────────────────
+// ─── Audio Transcription (Groq Whisper + Gemini Fallback) ───────────────
 
 export async function transcribeAudio(base64Data, mimeType) {
-  if (!config.groqKey?.startsWith('gsk_')) return null;
-  try {
-    const buf = Buffer.from(base64Data, 'base64');
-    const ext = mimeType?.includes('ogg') ? 'ogg' : mimeType?.includes('mp4') ? 'm4a' : 'webm';
-    const form = new FormData();
-    form.append('model', 'whisper-large-v3');
-    form.append('file', new Blob([buf], { type: mimeType || 'audio/ogg' }), `audio.${ext}`);
-    const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${config.groqKey}` },
-      body: form,
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!resp.ok) {
-      const err = await resp.text().catch(() => '');
-      logger.error('AI', 'Whisper error:', err.slice(0, 120));
-      return null;
+  if (!base64Data) return null;
+
+  // 1. Primary: Groq Whisper
+  if (config.groqKey?.startsWith('gsk_')) {
+    try {
+      const buf = Buffer.from(base64Data, 'base64');
+      const ext = mimeType?.includes('ogg') ? 'ogg' : mimeType?.includes('mp4') ? 'm4a' : 'webm';
+      const form = new FormData();
+      form.append('model', 'whisper-large-v3');
+      form.append('language', 'id');
+      form.append('file', new Blob([buf], { type: mimeType || 'audio/ogg' }), `audio.${ext}`);
+      const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.groqKey}` },
+        body: form,
+        signal: AbortSignal.timeout(25000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const text = data.text?.trim();
+        if (text) {
+          logger.info('AI', `Transcribed via Whisper (${text.length} chars): ${text.slice(0, 80)}`);
+          return text;
+        }
+      } else {
+        const err = await resp.text().catch(() => '');
+        logger.warn('AI', 'Whisper failed, trying Gemini audio fallback:', err.slice(0, 100));
+      }
+    } catch (e) {
+      logger.warn('AI', 'Whisper error, trying Gemini audio fallback:', e.message?.slice(0, 100));
     }
-    const data = await resp.json();
-    const text = data.text?.trim();
-    if (text) logger.info('AI', `Transcribed (${text.length} chars): ${text.slice(0, 80)}`);
-    return text || null;
-  } catch (e) {
-    logger.error('AI', 'Transcription error:', e.message?.slice(0, 120));
-    return null;
   }
+
+  // 2. Fallback: Google Gemini Multimodal Audio Transcription
+  if (config.geminiKey) {
+    try {
+      const format = mimeType?.includes('ogg') ? 'ogg' : mimeType?.includes('mp4') ? 'mp4' : 'wav';
+      const gemModel = config.geminiModel || 'gemini-3.5-flash-lite';
+      const resp = await fetch(config.geminiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.geminiKey}`,
+        },
+        body: JSON.stringify({
+          model: gemModel,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Transkripsikan pesan suara ini ke teks bahasa Indonesia apa adanya tanpa tambahan komentar apa pun.' },
+                { type: 'input_audio', input_audio: { data: base64Data, format } },
+              ],
+            },
+          ],
+          max_tokens: 300,
+          temperature: 0.1,
+        }),
+        signal: AbortSignal.timeout(25000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const text = sanitizeAiOutput(data?.choices?.[0]?.message?.content);
+        if (text) {
+          logger.info('AI', `Transcribed via Gemini (${text.length} chars): ${text.slice(0, 80)}`);
+          return text;
+        }
+      }
+    } catch (e) {
+      logger.error('AI', 'Gemini audio transcription error:', e.message?.slice(0, 100));
+    }
+  }
+
+  return null;
 }
+

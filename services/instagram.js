@@ -11,7 +11,7 @@ import crypto from 'crypto';
 import { config } from '../config.js';
 import { settings } from './settings.js';
 import { askAI, askAIWithImage } from './ai.js';
-import { bufferAiMessage, cancelBuffer } from './aiBuffer.js';
+import { bufferAiMessage, cancelBuffer, holdBufferForMedia, releaseBufferForMedia } from './aiBuffer.js';
 import { pick } from '../utils/fieldResolver.js';
 import { formatPrice, formatTime } from '../utils/format.js';
 import { logger, throttleLog } from '../utils/logger.js';
@@ -222,7 +222,12 @@ export async function processIncomingIgBubble({ senderId, mid, text, imageUrl, r
 
   let mediaImage = null;
   if (imageUrl) {
-    mediaImage = await fetchImageAsBase64(imageUrl);
+    holdBufferForMedia(jid);
+    try {
+      mediaImage = await fetchImageAsBase64(imageUrl);
+    } finally {
+      releaseBufferForMedia(jid);
+    }
   }
   if (!body && !mediaImage) return;
 
