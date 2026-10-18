@@ -68,6 +68,7 @@ ATURAN KERAS:
 3. kalo user nanya STATUS order tapi belum kasih username/ID: TANYA username atau ID ordernya langsung
 4. kalo di grup dan ga dimention/direply: diem. JANGAN nanya balik di grup
 5. kalo user kirim penggalan chat beruntun, rangkum jawabannya jadi 1 chat yang natural kayak manusia yang baca semua chat dulu baru bales
+6. JANGAN PERNAH nyebut soal sistem: error, gangguan, server, limit, kuota, batas harian, maintenance, data ga kebaca. kalo data ga ada, tanya balik username/id-nya atau arahin ke ndxstoreid.vercel.app kayak manusia biasa
 
 singkat: baca semua dulu, paham maksud utamanya, jawab 1x kayak manusia beneran.`;
 }
@@ -103,6 +104,7 @@ ATURAN PENTING:
 2. JANGAN mengarang harga atau status order di luar DATA REAL-TIME NDXStore
 3. Kalo pelanggan berbahasa Inggris, balas dalam bahasa Inggris yang natural
 4. Kalo di grup: jawab singkat dan jelas tanpa bertanya balik
+5. JANGAN PERNAH menyebut kondisi sistem ke pelanggan: error, gangguan, server down, limit, kuota, batas pesan harian, maintenance, atau "data tidak bisa diakses". Kalau data tidak tersedia, tanyakan username/ID order atau arahkan ke ndxstoreid.vercel.app secara natural
 
 CONTOH PERCAKAPAN:
 Pelanggan: kak
@@ -600,7 +602,9 @@ function escalationReply(mode = 1) {
 }
 
 // ─── Context-aware fallback — semua endpoint AI down ─────────────────────
-// Tetap kasih jawaban berguna sesuai intent, bukan sekadar "lagi error".
+// ATURAN: JANGAN PERNAH bocorkan kondisi sistem ke user (gangguan, error,
+// limit, kuota, dll). Kasih jawaban natural yang tetap berguna sesuai intent;
+// kalau intent tidak jelas → return null (bot diam, tidak kirim apa-apa).
 
 const FALLBACK_ORDER_KW = /\b(cek|order|pesanan|status|transaksi|kapan|mana|sampe|sampai|nyampe|pending|refund|bayar|transfer|proses|diamond|robux)\b/i;
 const FALLBACK_PRICE_KW = /\b(harga|price|berapa|brp|list|katalog|produk|joki|beli|murah)\b/i;
@@ -610,23 +614,21 @@ export function getFallbackReply(text, mode = 1) {
   const cs = mode === 2;
   if (FALLBACK_HUMAN_KW.test(text)) {
     return cs
-      ? 'Mohon maaf kak, sistem kami sedang gangguan. Ketik "cs" ya kak untuk langsung dibantu admin.'
-      : 'duh lagi error nih. ketik "cs" aja ya, biar admin yang bantu langsung.';
+      ? 'Siap kak, biar langsung dibantu admin ketik "cs" ya kak.'
+      : 'ketik "cs" aja ya, biar admin yang bantu langsung.';
   }
   // PRICE dicek dulu: "berapa harga diamond" adalah intent harga, bukan status.
   if (FALLBACK_PRICE_KW.test(text)) {
     return cs
-      ? 'Mohon maaf kak, sistem sedang gangguan. Harga terbaru bisa dicek di ndxstoreid.vercel.app ya kak.'
-      : 'duh lagi error. harga terbaru cek di ndxstoreid.vercel.app aja ya.';
+      ? 'Untuk daftar harga lengkap dan terbaru bisa langsung dicek di ndxstoreid.vercel.app ya kak.'
+      : 'harga lengkapnya cek di ndxstoreid.vercel.app aja ya, update terus di situ.';
   }
   if (FALLBACK_ORDER_KW.test(text)) {
     return cs
-      ? 'Mohon maaf kak, sistem sedang gangguan. Untuk cek status, ketik "cek [username]" ya kak.'
-      : 'duh lagi error. coba ketik "cek [username]" aja dulu buat liat status order.';
+      ? 'Boleh ketik "cek [username]" atau kirim ID order-nya ya kak, biar langsung keliatan status pesanannya.'
+      : 'coba ketik "cek [username]" ya, ntar keliatan status ordernya.';
   }
-  return cs
-    ? 'Mohon maaf kak, sistem kami sedang gangguan. Coba lagi sebentar ya, atau ketik "cs" untuk dibantu admin.'
-    : 'Maaf, lagi error nih. Coba lagi ya ntar.';
+  return null;
 }
 
 // ─── User profile memory — Bima inget user, ga kayak baru kenal terus ────
@@ -890,6 +892,8 @@ const INVALID_AI_OUTPUT_RE = new RegExp([
   '^\\s*(error|exception|traceback|syntaxerror|typeerror|referenceerror|fetcherror|aborterror)\\s*:',
   '\\b(DATA REAL-TIME NDXStore|MULTI-BUBBLE|USER NGEKETIK|ATURAN KERAS|ATURAN PENTING|PENGETAHUAN TOKO)\\b',
   '\\b(as\\s+an\\s+ai\\s+language\\s+model|sebagai\\s+(?:model\\s+bahasa\\s+)?ai|saya\\s+adalah\\s+(?:asisten\\s+virtual|bot|ai))\\b',
+  // Bocoran kondisi sistem dalam Bahasa Indonesia — jangan pernah sampai ke user
+  '\\b(batas\\s+(?:pesan\\s+)?harian|limit\\s+harian|kuota\\s+(?:sudah\\s+|udah\\s+)?(?:habis|abis)|limit\\s+(?:sudah\\s+|udah\\s+)?(?:habis|abis|tercapai)|sistem\\s+(?:kami\\s+)?(?:sedang\\s+|lagi\\s+)?(?:gangguan|error|down|maintenance)|server\\s+(?:sedang\\s+|lagi\\s+)?(?:error|down|gangguan|sibuk)|tidak\\s+dapat\\s+mengakses\\s+data|gagal\\s+(?:memuat|mengambil)\\s+data)\\b',
 ].join('|'), 'i');
 
 export function sanitizeAiOutput(rawContent) {
@@ -1581,7 +1585,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
 
   if (signal?.aborted) return null;
   const textOnly = await askAI(jid, text || '[gambar]', mode, senderName, isGroup, signal);
-  return textOnly || 'Maaf, gak bisa baca gambar.';
+  return textOnly || null;
 }
 
 // ─── Proactive (new order notification) ────────────────────────────────

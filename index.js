@@ -273,7 +273,10 @@ async function checkOrders(msg, username) {
     const resp = await fetch(`${config.apiBase}/api/transactions/user/${encodeURIComponent(clean)}`, {
       signal: AbortSignal.timeout(10000),
     });
-    if (!resp.ok) return await msg.reply('Gagal cek order.');
+    if (!resp.ok) {
+      logger.warn('CekOrder', `HTTP ${resp.status} for ${clean}`);
+      return false;
+    }
     const result = await resp.json();
     let txs = result?.data?.transactions ?? result?.transactions ?? [];
     if ((!Array.isArray(txs) || !txs.length) && clean.length >= 3) {
@@ -286,7 +289,8 @@ async function checkOrders(msg, username) {
       }
     }
     if (!Array.isArray(txs) || !txs.length) {
-      return await msg.reply(`Tidak ada order untuk *${clean}*.`);
+      await msg.reply(`Belum ketemu order atas nama *${clean}* kak. Boleh kirim ID order-nya (NDXSTORE/...) biar aku cek ulang?`);
+      return true;
     }
     let reply = `Order ${clean}\n━━━━━━━━━━━━━━\n`;
     for (const o of txs.slice(0, 5)) {
@@ -297,9 +301,11 @@ async function checkOrders(msg, username) {
       reply += `\nID: ${o.id}\nProduk: ${prod}\nHarga: ${formatPrice(price)}\nStatus: ${status}\nWaktu: ${formatTime(time)}\n━━━━━━━━━━━━━━`;
     }
     await msg.reply(reply);
+    return true;
   } catch (e) {
-    await msg.reply('Gagal cek order.');
+    // Jangan kirim "Gagal cek order" ke user — caller lempar ke AI.
     logger.error('CekOrder', e.message);
+    return false;
   }
 }
 
@@ -317,14 +323,15 @@ async function autoResolveCek(msg, query) {
       const resp = await fetch(`${config.apiBase}/api/transaction/${encodeURIComponent(orderId)}`, {
         signal: AbortSignal.timeout(10000),
       });
-      if (!resp.ok) {
-        await msg.reply(`Order *${orderId}* tidak ditemukan kak. Cek lagi ID-nya ya.`);
+      if (resp.status === 404) {
+        await msg.reply(`Order *${orderId}* belum ketemu kak. Boleh dicek lagi ID-nya ya.`);
         return true;
       }
+      if (!resp.ok) return false;
       const data = await resp.json();
       const t = data?.data?.transaction ?? data?.transaction;
       if (!t) {
-        await msg.reply(`Order *${orderId}* tidak ditemukan kak.`);
+        await msg.reply(`Order *${orderId}* belum ketemu kak. Boleh dicek lagi ID-nya ya.`);
         return true;
       }
       const status = t.orderStatus || t.order_status || t.paymentStatus || t.payment_status || '-';
@@ -337,12 +344,11 @@ async function autoResolveCek(msg, query) {
       );
       return true;
     }
-    await checkOrders(msg, q);
-    return true;
+    return await checkOrders(msg, q);
   } catch (e) {
+    // API gagal → return false supaya AI yang jawab (tanpa pesan error).
     logger.error('AutoCek', e.message?.slice(0, 120));
-    await msg.reply('Gagal cek order kak, coba lagi sebentar ya.');
-    return true;
+    return false;
   }
 }
 
@@ -551,7 +557,14 @@ async function main() {
           if (lower.startsWith('cek ') || body === '1') {
             if (lower.startsWith('cek ')) {
               const username = body.slice(4).trim();
-              if (username) return await checkOrders(msg, username);
+              if (username) {
+                const ok = await checkOrders(msg, username);
+                if (!ok) {
+                  await msg.reply(`Siap kak, order *${username}* aku cek dulu ya. Nanti dikabari 🙏`);
+                  if (ADMIN_JID) c.sendMessage(ADMIN_JID, `[Auto] API cek order gagal.\nUser: ${msg.from}\nUsername: ${username}\nTolong follow up manual.`).catch(() => {});
+                }
+                return;
+              }
             }
             await msg.reply('Ketik *Cek [username]* buat cek status order.\nContoh: *Cek ROWSOWS*');
             return;
@@ -568,14 +581,10 @@ async function main() {
         // ── CS Handover start — berlaku di SEMUA mode AI (khusus DM / chat pribadi) ──
         // "4"/"cs" tidak boleh jatuh ke AI: filter gibberish menelannya
         // (1 karakter → SKIP/null → bot diam) sehingga jalur CS resmi mati.
-        if (!isGroup && !msg.fromMe && (body === '4' || lower === 'cs')) {
+        if (!isGroup && !msg.fromMe && ADMIN_JID && (body === '4' || lower === 'cs')) {
           cancelBuffer(senderJid);
           cancelBuffer(msg.from);
-          if (ADMIN_JID) {
-            await startHandover(c, msg, ADMIN_JID);
-          } else {
-            await msg.reply('Admin belum dikonfigurasi.');
-          }
+          await startHandover(c, msg, ADMIN_JID);
           return;
         }
 
@@ -593,8 +602,11 @@ async function main() {
             await forwardToAdmin(c, msg.from, body, ADMIN_JID, msg);
             await msg.reply('Pesan diteruskan ke admin.');
           } catch (e) {
+            // Jangan kirim pesan error ke user — coba ulang sekali diam-diam.
             logger.error('Forward', 'Gagal forward ke admin:', e.message);
-            await msg.reply('Maaf, pesan gagal diteruskan ke admin. Coba lagi.');
+            setTimeout(() => {
+              forwardToAdmin(c, msg.from, body, ADMIN_JID, msg).catch(err => logger.error('Forward', 'Retry gagal:', err.message));
+            }, 3000);
           }
           return;
         }
@@ -657,8 +669,8 @@ async function main() {
         if (cekArg && (!isGroup || isGroupDirect || !settings.ungroup)) {
           cancelBuffer(bufferKey);
           cancelBuffer(historyJid);
-          await autoResolveCek(msg, cekArg);
-          return;
+          if (await autoResolveCek(msg, cekArg)) return;
+          // API gagal → lanjut ke AI (jawab natural, tanpa pesan error)
         }
 
         // ── Media handling (Hold buffer open while downloading/transcribing) ──
@@ -748,7 +760,6 @@ async function main() {
             body = last.body;
             lastUserMessage.delete(senderJid);
           } else {
-            await msg.reply('Gak ada pesan sebelumnya buat diulang.');
             return;
           }
         } else if (body && !msg.hasMedia) {
@@ -771,7 +782,8 @@ async function main() {
             const limit = await checkDailyLimit(msg.from);
             if (isCancelled()) return;
             if (!limit.allowed) {
-              await msg.reply(`Kamu sudah mencapai batas pesan harian. ${limit.remaining === 0 ? 'Coba lagi besok.' : ''}`).catch(() => {});
+              // Jangan pernah kirim "batas harian habis" ke user — diam saja.
+              logger.info('Limit', `Daily limit reached for ${msg.from} — reply skipped silently`);
               return;
             }
           }
@@ -865,7 +877,7 @@ async function main() {
                 return c.sendMessage(sendTargetJid, media, { sendMediaAsSticker: true });
               })
               .catch(() => {
-                sendText('pengen kirim stiker tapi error njirr').catch(() => {});
+                // Gagal bikin stiker → diam saja, jangan kirim pesan error.
               });
           }
         };

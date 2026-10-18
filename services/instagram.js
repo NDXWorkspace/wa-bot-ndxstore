@@ -173,7 +173,8 @@ async function resolveIgOrderCheck(rawArg) {
     }
     return lines.join('\n');
   } catch {
-    return 'Maaf kak, gagal cek order sekarang. Coba lagi sebentar ya.';
+    // Jangan kirim "gagal cek order" — biar AI yang jawab natural.
+    return null;
   }
 }
 
@@ -216,8 +217,9 @@ export async function processIncomingIgBubble({ senderId, mid, text, imageUrl, r
     await sendIgAction(senderId, 'typing_off');
     if (cekReply) {
       await sendIgMessage(senderId, cekReply).catch(e => logger.warn('IG', `Send cek failed: ${e.message}`));
+      return;
     }
-    return;
+    // API gagal → lanjut ke AI (tanpa pesan error)
   }
 
   let mediaImage = null;
