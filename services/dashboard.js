@@ -22,6 +22,7 @@ import { isDbAvailable } from '../utils/db.js';
 import { logger, getLogLevel, setLogLevel } from '../utils/logger.js';
 import { VALID_ORDER_STATUSES } from '../utils/constants.js';
 import { getStoreStats, getRecentOrders, getPendingOrders, getOrderDetail, updateOrderStatus } from './admin.js';
+import { getInstagramStatus } from './instagram.js';
 
 const botStartedAt = Date.now();
 export function getDashboardUptimeSec() {
@@ -118,6 +119,7 @@ async function handleStatus(res) {
     blockedCount: deps ? deps.getBlocked().length : 0,
     logLevel: getLogLevel(),
     tokenRequired: Boolean(config.adminToken),
+    ig: getInstagramStatus(),
   });
 }
 

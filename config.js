@@ -52,6 +52,23 @@ export const config = {
   openrouterUrl: e('OPENROUTER_URL') || 'https://openrouter.ai/api/v1/chat/completions',
   aiApiBackup: e('AI_API_BACKUP') || 'https://keylessai.thryx.workers.dev/v1',
   notifiedPath: e('NOTIFIED_PATH') || './.notified.json',
+  // Instagram Official Graph API / Webhook
+  igAccessToken: (() => {
+    const raw = e('IG_ACCESS_TOKEN');
+    if (!raw) return '';
+    if (raw.startsWith('IGA') || raw.startsWith('EAA')) return raw;
+    try {
+      const dec = Buffer.from(raw, 'base64').toString('utf8').trim();
+      if (dec.startsWith('IGA') || dec.startsWith('EAA')) return dec;
+    } catch {}
+    return raw;
+  })(),
+  igAccountId: e('IG_ACCOUNT_ID') || 'me',
+  igVerifyToken: e('IG_VERIFY_TOKEN') || 'ndxstore_ig_verify_2026',
+  igAppSecret: e('IG_APP_SECRET'),
+  igGraphBase: e('IG_GRAPH_BASE'),
+  igPollIntervalMs: e('IG_POLL_INTERVAL_MS') !== '' ? Number(e('IG_POLL_INTERVAL_MS')) : 15000,
+  igAiMode: Number(e('IG_AI_MODE')) || 0,
 };
 
 if (process.env.LOG_CONSOLE !== 'false') {

@@ -16,6 +16,7 @@ import { withRetry, isDbAvailable } from './utils/db.js';
 import { formatPrice, formatTime, formatWaNumber } from './utils/format.js';
 import { isViewOnceMessage, saveViewOnceMedia } from './utils/viewOnce.js';
 import { startLiveDataRefresh } from './services/liveData.js';
+import { handleInstagramWebhook, startInstagramService } from './services/instagram.js';
 import { logger, createLogger, throttleLog } from './utils/logger.js';
 
 import ww from 'whatsapp-web.js';
@@ -173,6 +174,12 @@ const healthApp = http.createServer(async (req, res) => {
     body += `${modeNote}<script>setTimeout(()=>location.reload(),20000)</script></body></html>`;
     res.end(body);
     return;
+  }
+
+  // Webhook resmi Meta Instagram (/webhook/instagram atau /api/webhook/instagram).
+  // Dipasang sebelum auth x-admin-token karena request datang dari server Meta.
+  if (url === '/webhook/instagram' || url === '/api/webhook/instagram') {
+    if (await handleInstagramWebhook(req, res)) return;
   }
 
   // Admin dashboard + API — konfigurasi bot lewat localhost, bukan via chat.
@@ -457,6 +464,7 @@ async function main() {
     },
   });
   logger.info('Bot', `Panel admin: http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${PORT}/admin`);
+  startInstagramService().catch(e => logger.error('IG', e.message));
 
   setOnMaxReconnect(() => shutdown('MaxReconnect'));
 
