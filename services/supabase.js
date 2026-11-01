@@ -4,11 +4,15 @@ import { logger } from '../utils/logger.js';
 
 let supabase = null;
 let supabaseRt = null;
+let warnedNoKey = false;
 
 export function getDb() {
   if (supabase) return supabase;
-  if (!config.supabase.key) {
-    logger.warn('Supabase', 'No SUPABASE_KEY set');
+  if (!config.supabase.url || !config.supabase.key) {
+    if (!warnedNoKey) {
+      warnedNoKey = true;
+      logger.info('Supabase', 'SUPABASE_URL/KEY tidak diisi — berjalan dengan penyimpanan lokal');
+    }
     return null;
   }
   supabase = createClient(config.supabase.url, config.supabase.key);
@@ -17,8 +21,7 @@ export function getDb() {
 
 export function getDbWithRealtime() {
   if (supabaseRt) return supabaseRt;
-  if (!config.supabase.key) {
-    logger.warn('Supabase', 'No SUPABASE_KEY set');
+  if (!config.supabase.url || !config.supabase.key) {
     return null;
   }
   supabaseRt = createClient(config.supabase.url, config.supabase.key, {

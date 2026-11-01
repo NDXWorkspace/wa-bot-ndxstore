@@ -30,8 +30,9 @@ RUN apt-get update && apt-get install -y \
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable \
     NODE_ENV=production \
+    HOST=0.0.0.0 \
     PORT=3000 \
-    NODE_OPTIONS="--max-old-space-size=512"
+    NODE_OPTIONS="--max-old-space-size=256"
 
 WORKDIR /app
 
@@ -40,15 +41,16 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY . .
 
-RUN mkdir -p /app/wa-session /app/.wwebjs_cache /app/logs \
-    && chown -R node:node /app
+RUN mkdir -p /app/wa-session /app/.wwebjs_cache /app/logs /app/downloads \
+    && chown -R node:node /app \
+    && chmod -R 777 /app/wa-session /app/.wwebjs_cache /app/logs /app/downloads
 
 USER node
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
-  CMD curl -sf http://127.0.0.1:${PORT:-3000}/ready || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=2m --retries=3 \
+  CMD curl -sf http://127.0.0.1:${PORT:-3000}/health || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "index.js"]

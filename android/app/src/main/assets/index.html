@@ -551,16 +551,43 @@
   <!-- TAB 4: SERVER INTERNET & KEAMANAN -->
   <div class="tab-page" id="tab-server">
     <div class="card">
-      <div class="card-title"><span>🌐 Koneksi Server Internet</span></div>
+      <div class="card-title"><span>🌐 Server Cloud Render (Internet)</span></div>
       <p class="card-desc">
-        APK ini mengontrol bot langsung lewat internet. Jika Anda membuka dari APK Android, masukkan URL server cloud bot Anda (contoh: Render / Railway / VPS).
+        Aplikasi ini terhubung langsung ke server Render di internet tanpa local/Termux. Jika server Render Anda menggunakan URL kustom, tempel URL-nya di bawah.
       </p>
-      <label>URL Server Bot (HTTPS / HTTP)</label>
-      <input type="url" id="srvUrlInput" placeholder="https://wa-bot-anda.onrender.com">
+      <label>URL Server Render (HTTPS)</label>
+      <input type="url" id="srvUrlInput" placeholder="https://wa-bot-ndxstore.onrender.com">
       <label>Token Keamanan Admin (Opsional, kosongkan jika tidak dipakai)</label>
       <input type="password" id="srvTokenInput" placeholder="Opsional">
       <div class="row" style="margin-top:12px">
-        <button class="btn btn-primary" id="btnSaveServer" style="flex:1">Simpan &amp; Hubungkan</button>
+        <button class="btn btn-primary" id="btnSaveServer" style="flex:1">Simpan &amp; Hubungkan ke Render</button>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+          Belum deploy server ke akun Render Anda? Klik tombol di bawah untuk membuat server gratis di Render dalam 1 klik:
+        </div>
+        <a href="https://dashboard.render.com/blueprint/new?repo=https://github.com/NDXWorkspace/wa-bot-ndxstore" target="_blank" style="text-decoration:none">
+          <button type="button" class="btn" style="border-color:var(--accent2);color:#93c5fd">🚀 Deploy 1-Klik ke Render Cloud</button>
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>🔑 API Key AI Cepat (Opsional)</span>
+        <span class="badge" id="aiProviderBadge">AI Bawaan Aktif</span>
+      </div>
+      <p class="card-desc">
+        AI gratis bawaan sudah langsung aktif otomatis! Isi salah satu API key di bawah jika ingin performa AI lebih cepat (Groq / Gemini / OpenRouter).
+      </p>
+      <label>Groq API Key (Opsional - gsk_...)</label>
+      <input type="password" id="cfgGroqKey" placeholder="Biarkan kosong jika tidak diubah">
+      <label>Google Gemini API Key (Opsional - AIza...)</label>
+      <input type="password" id="cfgGeminiKey" placeholder="Biarkan kosong jika tidak diubah">
+      <label>OpenRouter API Key (Opsional - sk-or-...)</label>
+      <input type="password" id="cfgOpenrouterKey" placeholder="Biarkan kosong jika tidak diubah">
+      <div style="margin-top:12px">
+        <button class="btn btn-primary" id="btnSaveAiKeys">Simpan API Key ke Server</button>
       </div>
     </div>
 
@@ -609,15 +636,16 @@
 
 <script>
 const $ = id => document.getElementById(id);
+const DEFAULT_RENDER_URL = 'https://wa-bot-ndxstore.onrender.com';
 
-// Deteksi otomatis base URL server (mendukung web langsung maupun APK file://)
+// Deteksi otomatis base URL server (mendukung web Render langsung maupun APK file://)
 function getDefaultServerUrl() {
   const saved = localStorage.getItem('wa_ai_server_url');
   if (saved) return saved.replace(/\/+$/, '');
   if (location.protocol === 'http:' || location.protocol === 'https:') {
     return location.origin;
   }
-  return '';
+  return DEFAULT_RENDER_URL;
 }
 
 let SERVER_URL = getDefaultServerUrl();
@@ -754,6 +782,17 @@ async function pollStatus() {
     setToggle($('quickAiToggle'), aiOn);
     $('quickAiName').textContent = s.aiName || 'Asisten AI';
     $('quickAiStyle').textContent = s.aiStyle || 'santai';
+
+    if (s.aiProviders) {
+      const pList = [];
+      if (s.aiProviders.groq) pList.push('Groq');
+      if (s.aiProviders.gemini) pList.push('Gemini');
+      if (s.aiProviders.openrouter) pList.push('OpenRouter');
+      const badge = $('aiProviderBadge');
+      if (badge) {
+        badge.textContent = pList.length ? pList.join(' + ') + ' Aktif' : 'AI Gratis Bawaan Aktif';
+      }
+    }
 
     if (!formLoadedOnce) {
       formLoadedOnce = true;
@@ -926,6 +965,29 @@ $('btnSaveServer').onclick = async () => {
   await pollStatus();
   showToast('Terhubung ke server!');
   switchTab('connect');
+};
+
+$('btnSaveAiKeys').onclick = async () => {
+  const payload = {};
+  const g = $('cfgGroqKey').value.trim();
+  const m = $('cfgGeminiKey').value.trim();
+  const o = $('cfgOpenrouterKey').value.trim();
+  if (g) payload.groqKey = g;
+  if (m) payload.geminiKey = m;
+  if (o) payload.openrouterKey = o;
+  if (!Object.keys(payload).length) {
+    return showToast('Isi minimal satu API key baru untuk disimpan', false);
+  }
+  try {
+    await api('/api/settings', { method: 'POST', body: JSON.stringify(payload) });
+    $('cfgGroqKey').value = '';
+    $('cfgGeminiKey').value = '';
+    $('cfgOpenrouterKey').value = '';
+    showToast('✅ API Key AI berhasil disimpan ke server Render!');
+    pollStatus();
+  } catch (e) {
+    showToast(e.message, false);
+  }
 };
 
 async function loadBlockedUsers() {

@@ -199,6 +199,18 @@ async function handleSettings(body, res) {
     settings.ungroup = Boolean(body.ungroup);
     out.ungroup = settings.ungroup;
   }
+  if (body.groqKey !== undefined) {
+    settings.groqKey = String(body.groqKey || '').trim().slice(0, 300);
+    out.groqKey = settings.groqKey ? '***' : '';
+  }
+  if (body.geminiKey !== undefined) {
+    settings.geminiKey = String(body.geminiKey || '').trim().slice(0, 300);
+    out.geminiKey = settings.geminiKey ? '***' : '';
+  }
+  if (body.openrouterKey !== undefined) {
+    settings.openrouterKey = String(body.openrouterKey || '').trim().slice(0, 300);
+    out.openrouterKey = settings.openrouterKey ? '***' : '';
+  }
   // Reset cache/history Custom AI bila prompt diubah agar perubahan langsung terasa
   if (body.customPrompt !== undefined || body.aiName !== undefined || body.aiStyle !== undefined || body.customKnowledge !== undefined) {
     clearHistory('all');

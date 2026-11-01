@@ -522,7 +522,7 @@ async function main() {
 
         let body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from || '';
-        const isAdmin = senderJid.split('@')[0].replace(/^\+/, '').trim() === ADMIN_RAW;
+        const isAdmin = Boolean(ADMIN_RAW) && senderJid.split('@')[0].replace(/^\+/, '').trim() === ADMIN_RAW;
         logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}"`);
 
         // ── Block / Unblock ──
@@ -981,6 +981,15 @@ async function main() {
 
   const monitorTimer = startConnectionMonitor(60000);
   monitorTimer.unref();
+
+  // Render Keep-Alive: cegah web service Render sleep saat idle HTTP > 15 menit
+  const renderUrl = (process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
+  if (renderUrl) {
+    logger.info('Render', `Keep-alive aktif untuk ${renderUrl}/health`);
+    setInterval(() => {
+      fetch(`${renderUrl}/health`, { signal: AbortSignal.timeout(10000) }).catch(() => {});
+    }, 10 * 60 * 1000).unref();
+  }
 
   async function shutdown(signal) {
     logger.info('Bot', `Received ${signal}, shutting down...`);

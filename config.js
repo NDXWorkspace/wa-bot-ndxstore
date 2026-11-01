@@ -2,10 +2,10 @@ import 'dotenv/config';
 
 const e = (key) => (process.env[key] || '').trim();
 
-const REQUIRED = ['SUPABASE_URL', 'SUPABASE_KEY', 'ADMIN_NUMBER'];
-const missing = REQUIRED.filter(k => !e(k));
-if (missing.length > 0) {
-  throw new Error(`Missing required env vars: ${missing.join(', ')}`);
+const OPTIONAL_WARN = ['SUPABASE_URL', 'SUPABASE_KEY', 'ADMIN_NUMBER'];
+const missing = OPTIONAL_WARN.filter(k => !e(k));
+if (missing.length > 0 && process.env.LOG_CONSOLE !== 'false') {
+  console.warn(`Config info: running without optional env vars (${missing.join(', ')}) — mode umum / file storage aktif.`);
 }
 
 export const config = {

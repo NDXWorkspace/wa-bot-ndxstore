@@ -1,47 +1,31 @@
 services:
   - type: web
     name: wa-bot-ndxstore
-    env: docker
+    runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     envVars:
-      # Di container HARUS bind 0.0.0.0 agar router Render mencapai app.
-      # config.js MENOLAK boot 0.0.0.0 tanpa ADMIN_TOKEN — jadi token wajib diisi.
       - key: HOST
         value: 0.0.0.0
-      - key: ADMIN_TOKEN
-        sync: false
+      - key: PORT
+        value: 3000
       - key: SUPABASE_URL
         value: https://jlfrtyyjxkmdetdbeakv.supabase.co
-      - key: SUPABASE_KEY
-        sync: false
-      - key: ADMIN_NUMBER
-        sync: false
-      - key: PAIRING_NUMBER
-        sync: false
-      - key: GROUP_ID
-        sync: false
-      - key: API_PASSWORD
-        sync: false
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GROQ_VISION_MODEL
-        sync: false
       - key: AI_API_BASE
         value: https://text.pollinations.ai
       - key: AI_MODEL
         value: openai
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: OPENROUTER_MODEL
+        value: nvidia/nemotron-3-super-120b-a12b:free
       - key: LOG_LEVEL
         value: info
+      - key: LOG_CONSOLE
+        value: "true"
       - key: API_BASE
-        sync: false
-    # Persist WhatsApp session across deploys/restarts
-    disk:
-      name: wa-session
-      mountPath: /app/wa-session
-      sizeGB: 1
-    # /health returns 200 while the process is alive (before WhatsApp is ready).
-    # Render's healthcheck uses this path to avoid killing the container
-    # during first-run QR login.
+        value: https://ndxstoreid.vercel.app
+    # /health returns 200 while the process is alive (even before WhatsApp is paired).
     healthCheckPath: /health
-    autoDeploy: false
+    autoDeploy: true
     numInstances: 1
