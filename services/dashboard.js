@@ -118,13 +118,13 @@ async function dbOk() {
 
 async function handleStatus(res) {
   const client = getCurrentClient();
-  const waUser = client?.info?.wid?.user || null;
   const login = getLoginDetails();
+  const waUser = client?.info?.wid?.user || login.waNumber || null;
   sendJson(res, 200, {
-    wa: waUser ? 'connected' : 'disconnected',
+    wa: login.connected ? 'connected' : 'disconnected',
     waNumber: waUser || null,
     waName: login.waName || null,
-    waState: getConnectionState?.() || null,
+    waState: login.state || getConnectionState?.() || null,
     login,
     db: (await dbOk()) ? 'connected' : 'error',
     dbAvailable: isDbAvailable(),

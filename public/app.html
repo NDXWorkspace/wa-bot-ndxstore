@@ -781,16 +781,27 @@ function renderLoginBox(login) {
   if (login.connected) {
     $('connectedCard').style.display = 'block';
     $('pairCard').style.display = 'none';
-    $('connectedInfo').innerHTML = `Terhubung ke nomor WhatsApp: <b>+${login.waNumber}</b>${login.waName ? ' (' + login.waName + ')' : ''}.<br>Semua pesan masuk otomatis dijawab oleh AI sesuai konfigurasi Anda.`;
+    const numLabel = login.waNumber ? `+${login.waNumber}` : 'Akun Anda';
+    if (login.syncing) {
+      $('connectedInfo').innerHTML = `✅ Perangkat WhatsApp berhasil tertaut (<b>${numLabel}</b>)!<br>🔄 Sedang menyinkronkan obrolan WhatsApp (±3 detik)...`;
+    } else {
+      $('connectedInfo').innerHTML = `✅ Terhubung penuh ke nomor WhatsApp: <b>${numLabel}</b>${login.waName ? ' (' + login.waName + ')' : ''}.<br>Semua pesan masuk otomatis dijawab oleh AI sesuai konfigurasi Anda.`;
+    }
     $('waDot').className = 'dot on';
-    $('waStatusText').textContent = '+' + login.waNumber;
+    $('waStatusText').textContent = login.waNumber ? ('WA Aktif: +' + login.waNumber) : 'WA Terhubung';
     return;
   }
 
   $('connectedCard').style.display = 'none';
   $('pairCard').style.display = 'block';
   $('waDot').className = 'dot warn';
-  $('waStatusText').textContent = 'Belum Terhubung';
+  if (typeof login.loadingPercent === 'number' && login.loadingPercent > 0 && login.loadingPercent < 100) {
+    $('waStatusText').textContent = `Sinkron WA (${login.loadingPercent}%)`;
+  } else if (login.pairingCode || login.qr) {
+    $('waStatusText').textContent = 'Siap Ditautkan';
+  } else {
+    $('waStatusText').textContent = 'WA Belum Ditautkan';
+  }
 
   if (login.pairingCode) {
     const pretty = String(login.pairingCode).replace(/(.{4})(.{4})/, '$1-$2');
@@ -1092,7 +1103,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 
 pollStatus();
 loadBlockedUsers();
-setInterval(pollStatus, 4000);
+setInterval(pollStatus, 2000);
 </script>
 </body>
 </html>

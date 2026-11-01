@@ -27,6 +27,10 @@ let latestPairingCode = null;
 let latestPairingCodeTs = 0;
 let runtimePairingNumber = config.pairingNumber || '';
 let connectionState = 'init';
+let authenticatedWid = null;
+let authenticatedName = null;
+let loadingPercent = null;
+let fastSyncTimer = null;
 let wasReady = false;
 let pairingLock = null;
 
@@ -86,15 +90,20 @@ export function getLatestPairingCode() {
 
 export function getLoginDetails() {
   const c = getCurrentClient();
-  const wid = c?.info?.wid?.user || null;
-  const pushname = c?.info?.pushname || null;
+  const wid = c?.info?.wid?.user || authenticatedWid || null;
+  const pushname = c?.info?.pushname || authenticatedName || null;
+  const isReady = Boolean(c?.info?.wid?.user);
+  const isAuth = isReady || connectionState === 'authenticated' || Boolean(authenticatedWid);
   return {
-    state: wid ? 'ready' : connectionState,
-    connected: Boolean(wid),
-    waNumber: wid,
+    state: isReady ? 'ready' : isAuth ? 'authenticated' : connectionState,
+    connected: isAuth,
+    ready: isReady,
+    syncing: isAuth && !isReady,
+    loadingPercent,
+    waNumber: wid || (isAuth ? runtimePairingNumber : null) || null,
     waName: pushname,
-    qr: wid ? null : latestQr,
-    pairingCode: wid ? null : latestPairingCode,
+    qr: isAuth ? null : latestQr,
+    pairingCode: isAuth ? null : latestPairingCode,
     pairingNumber: runtimePairingNumber || null,
     pairingGeneratedAt: latestPairingCodeTs || null,
   };
@@ -154,19 +163,18 @@ async function getPuppeteerConfig() {
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
     '--no-first-run',
-    '--no-zygote',
+    '--no-default-browser-check',
     '--disable-gpu',
-    '--disable-features=LockProfileOnLaunch',
-    '--disable-background-networking',
+    '--disable-features=LockProfileOnLaunch,TranslateUI,BlinkGenPropertyTrees',
     '--disable-renderer-backgrounding',
+    '--disable-backgrounding-occluded-windows',
     '--disable-extensions',
     '--disable-sync',
     '--disable-translate',
     '--mute-audio',
     '--hide-scrollbars',
     '--disable-background-timer-throttling',
-    '--enable-features=NetworkService,NetworkServiceInProcess',
-    ...(isAndroid ? ['--single-process', '--disable-software-rasterizer', '--disable-features=PartitionConnections'] : []),
+    ...(isAndroid ? ['--no-zygote', '--single-process', '--disable-software-rasterizer', '--disable-features=PartitionConnections', '--enable-features=NetworkService,NetworkServiceInProcess'] : []),
   ];
 
   const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -243,6 +251,78 @@ function cleanupLockfiles() {
   }
 }
 
+function stopFastSyncWatcher() {
+  if (fastSyncTimer) {
+    clearInterval(fastSyncTimer);
+    fastSyncTimer = null;
+  }
+}
+
+function startFastSyncWatcher(c) {
+  stopFastSyncWatcher();
+  fastSyncTimer = setInterval(async () => {
+    try {
+      if (c?.info?.wid?.user) {
+        authenticatedWid = c.info.wid.user;
+        authenticatedName = c.info.pushname || authenticatedName;
+        stopFastSyncWatcher();
+        return;
+      }
+      const page = c?.pupPage;
+      if (!page || page.isClosed()) return;
+
+      const probe = await page.evaluate(() => {
+        try {
+          const req = typeof window.require === 'function' ? window.require : null;
+          if (!req) return null;
+          let meUser = null;
+          let pushname = null;
+          try {
+            const meMod = req('WAWebUserPrefsMeUser');
+            const widObj = meMod?.getMaybeMePnUser?.() || meMod?.getMaybeMeLidUser?.();
+            if (widObj?.user) meUser = String(widObj.user);
+          } catch {}
+          try {
+            const conn = req('WAWebConnModel')?.Conn;
+            if (conn?.pushname) pushname = String(conn.pushname);
+          } catch {}
+          let sockState = '';
+          let hasSynced = false;
+          try {
+            const sock = req('WAWebSocketModel')?.Socket;
+            sockState = String(sock?.state || '');
+            hasSynced = Boolean(sock?.hasSynced || window.AuthStore?.AppState?.hasSynced);
+          } catch {}
+
+          const isPaired = Boolean(meUser) && sockState !== 'UNPAIRED' && sockState !== 'UNPAIRED_IDLE';
+          if (isPaired && !window.WWebJS && typeof window.onAppStateHasSyncedEvent === 'function') {
+            const now = Date.now();
+            if (!window.__lastSyncTriggerTs || (now - window.__lastSyncTriggerTs > 6000)) {
+              window.__lastSyncTriggerTs = now;
+              window.onAppStateHasSyncedEvent();
+            }
+          }
+          return { meUser, pushname, sockState, hasSynced, isPaired, wwebReady: Boolean(window.WWebJS) };
+        } catch {
+          return null;
+        }
+      }).catch(() => null);
+
+      if (probe?.isPaired && probe.meUser) {
+        if (!authenticatedWid) {
+          authenticatedWid = probe.meUser;
+          authenticatedName = probe.pushname || null;
+          latestQr = null;
+          latestPairingCode = null;
+          if (connectionState === 'connecting') connectionState = 'authenticated';
+          logger.info('WA', `FastSync: Perangkat tertaut terdeteksi (+${probe.meUser}) — menyelesaikan sinkronisasi...`);
+        }
+      }
+    } catch {}
+  }, 1500);
+  if (fastSyncTimer.unref) fastSyncTimer.unref();
+}
+
 async function createClientCore() {
   cleanupLockfiles();
   const puppeteerConfig = await getPuppeteerConfig();
@@ -257,6 +337,10 @@ async function createClientCore() {
   const c = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
     puppeteer: puppeteerConfig,
+    authTimeoutMs: 60000,
+    qrMaxRetries: 0,
+    takeoverOnConflict: true,
+    takeoverTimeoutMs: 5000,
     // Pairing-code login: kalau nomor pairing aktif, WA Web memakai kode
     // 8 karakter (event 'code') sebagai pengganti QR. Tanpa ini → QR biasa.
     ...(activePairNum
@@ -265,8 +349,15 @@ async function createClientCore() {
   });
 
   connectionState = 'connecting';
+  loadingPercent = null;
   lastLoginEventTs = Date.now();
   startLoginWatchdog();
+  startFastSyncWatcher(c);
+
+  c.on('loading_screen', (percent) => {
+    loadingPercent = Number(percent) || 0;
+    lastLoginEventTs = Date.now();
+  });
 
   c.on('qr', (qr) => {
     latestQr = qr;
@@ -291,15 +382,22 @@ async function createClientCore() {
     lastLoginEventTs = Date.now();
     stopLoginWatchdog();
     connectionState = 'authenticated';
-    logger.info('WA', 'Authenticated');
+    if (!authenticatedWid && runtimePairingNumber) {
+      authenticatedWid = runtimePairingNumber;
+    }
+    logger.info('WA', 'Authenticated — menyinkronkan sesi WhatsApp...');
   });
 
   c.on('ready', () => {
     latestQr = null;
     latestPairingCode = null;
+    loadingPercent = 100;
     lastLoginEventTs = Date.now();
     stopLoginWatchdog();
+    stopFastSyncWatcher();
     connectionState = 'ready';
+    authenticatedWid = c?.info?.wid?.user || authenticatedWid;
+    authenticatedName = c?.info?.pushname || authenticatedName;
     wasReady = true;
     reconnectAttempt = 0;
     if (reconnectTimer) {
@@ -312,11 +410,16 @@ async function createClientCore() {
 
   c.on('auth_failure', (msg) => {
     connectionState = 'failed';
+    authenticatedWid = null;
     logger.error('WA', 'Auth failure:', msg);
   });
 
   c.on('disconnected', async (reason) => {
     connectionState = 'disconnected';
+    authenticatedWid = null;
+    authenticatedName = null;
+    loadingPercent = null;
+    stopFastSyncWatcher();
     logger.warn('WA', `Disconnected: ${reason}`);
     if (reason === 'LOGOUT') {
       logger.warn('WA', 'Manual logout detected — NOT reconnecting');
@@ -493,6 +596,7 @@ export function normalizePairingNumber(raw) {
 async function restartClientFresh(clearSessionDir = false) {
   reconnectGen++;
   const myGen = reconnectGen;
+  stopFastSyncWatcher();
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -503,10 +607,10 @@ async function restartClientFresh(clearSessionDir = false) {
   }
   if (clearSessionDir) {
     cleanupLockfiles();
-    const sessRoot = path.resolve('./wa-session');
+    const sessRoot = path.resolve('./wa-session/session');
     try {
       await fsp.rm(sessRoot, { recursive: true, force: true });
-      logger.info('WA', 'Session folder ./wa-session dihapus bersih');
+      logger.info('WA', 'Session folder ./wa-session/session dihapus bersih');
     } catch (e) {
       logger.warn('WA', 'Gagal hapus folder session:', e.message);
     }
@@ -514,6 +618,9 @@ async function restartClientFresh(clearSessionDir = false) {
   latestQr = null;
   latestPairingCode = null;
   latestPairingCodeTs = 0;
+  authenticatedWid = null;
+  authenticatedName = null;
+  loadingPercent = null;
   wasReady = false;
   connectionState = 'connecting';
 
@@ -542,8 +649,8 @@ export async function requestDynamicPairingCode(rawPhone) {
 
   pairingLock = (async () => {
     try {
-      const c = getCurrentClient();
-      const alreadyConnected = Boolean(c?.info?.wid?.user);
+      let c = getCurrentClient();
+      const alreadyConnected = Boolean(c?.info?.wid?.user || authenticatedWid);
 
       // Jika sudah pakai nomor yang sama dan kode masih baru (<2 menit), kembalikan langsung
       if (!alreadyConnected && runtimePairingNumber === cleanPhone && latestPairingCode && (Date.now() - latestPairingCodeTs < 120000)) {
@@ -554,31 +661,44 @@ export async function requestDynamicPairingCode(rawPhone) {
       latestPairingCode = null;
       latestPairingCodeTs = 0;
 
-      // Coba minta pairing code langsung di page aktif tanpa restart browser jika memungkinkan
-      if (!alreadyConnected && c?.pupPage && !c.pupPage.isClosed()) {
-        try {
-          logger.info('WA', `Meminta kode pairing langsung untuk ${cleanPhone}...`);
-          let directTimer;
-          const directCode = await Promise.race([
-            c.requestPairingCode(cleanPhone, true, 180000),
-            new Promise((_, rej) => {
-              directTimer = setTimeout(() => rej(new Error('direct pairing timeout')), 12000);
-            }),
-          ]).finally(() => clearTimeout(directTimer));
+      // Jika belum terkoneksi ke akun lain, tunggu page aktif (jangan bunuh Chrome yang sedang loading!)
+      if (!alreadyConnected && c) {
+        const waitPageStart = Date.now();
+        while ((!c.pupPage || c.pupPage.isClosed()) && Date.now() - waitPageStart < 15000) {
+          await new Promise(r => setTimeout(r, 400));
+          c = getCurrentClient();
+          if (!c) break;
+        }
+        if (c?.pupPage && !c.pupPage.isClosed()) {
+          try {
+            logger.info('WA', `Menyiapkan kode pairing cepat untuk ${cleanPhone}...`);
+            // Tunggu AuthStore siap di page yang sudah terbuka (maks 18 detik)
+            await c.pupPage.waitForFunction(
+              () => Boolean(window.AuthStore && window.AuthStore.PairingCodeLinkUtils),
+              { timeout: 18000, polling: 300 },
+            );
+            let directTimer;
+            const directCode = await Promise.race([
+              c.requestPairingCode(cleanPhone, true, 180000),
+              new Promise((_, rej) => {
+                directTimer = setTimeout(() => rej(new Error('direct pairing timeout')), 12000);
+              }),
+            ]).finally(() => clearTimeout(directTimer));
 
-          if (directCode && typeof directCode === 'string' && directCode.length >= 6) {
-            latestPairingCode = directCode;
-            latestPairingCodeTs = Date.now();
-            lastLoginEventTs = Date.now();
-            logger.info('WA', `Kode pairing berhasil dibuat untuk ${cleanPhone}: ${directCode}`);
-            return { code: directCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
+            if (directCode && typeof directCode === 'string' && directCode.length >= 6) {
+              latestPairingCode = directCode;
+              latestPairingCodeTs = Date.now();
+              lastLoginEventTs = Date.now();
+              logger.info('WA', `Kode pairing berhasil dibuat untuk ${cleanPhone}: ${directCode}`);
+              return { code: directCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
+            }
+          } catch (e) {
+            logger.info('WA', `Direct requestPairingCode fallback (${e.message}), re-init dengan pairWithPhoneNumber...`);
           }
-        } catch (e) {
-          logger.info('WA', `Direct requestPairingCode gagal (${e.message}), re-init dengan pairWithPhoneNumber...`);
         }
       }
 
-      // Jika sudah login ke akun lain atau page belum siap, restart client dengan nomor baru
+      // Hanya restart client jika sebelumnya sudah login ke akun lain atau page belum siap
       await restartClientFresh(alreadyConnected);
 
       // Tunggu sampai event 'code' muncul (maks 25 detik)
@@ -587,7 +707,7 @@ export async function requestDynamicPairingCode(rawPhone) {
         if (latestPairingCode) {
           return { code: latestPairingCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
         }
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 400));
       }
 
       return {
@@ -609,21 +729,41 @@ export async function switchToQrMode() {
   latestPairingCode = null;
   latestPairingCodeTs = 0;
   const c = getCurrentClient();
-  const alreadyConnected = Boolean(c?.info?.wid?.user);
+  const alreadyConnected = Boolean(c?.info?.wid?.user || authenticatedWid);
   if (!alreadyConnected && latestQr) {
     return { qr: latestQr, pending: false };
   }
+
+  // Jika Chrome sedang berjalan dan belum login, coba ambil/refresh QR langsung tanpa mematikan Chrome
+  if (!alreadyConnected && c) {
+    if (c.pupPage && !c.pupPage.isClosed()) {
+      try {
+        await c.pupPage.evaluate(() => {
+          if (window.codeInterval) clearInterval(window.codeInterval);
+          try { window.require?.('WAWebCmd')?.Cmd?.refreshQR?.(); } catch {}
+        }).catch(() => {});
+      } catch {}
+    }
+    const startWait = Date.now();
+    while (Date.now() - startWait < 12000) {
+      if (latestQr) return { qr: latestQr, pending: false };
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
   await restartClientFresh(alreadyConnected);
   const startWait = Date.now();
   while (Date.now() - startWait < 15000) {
     if (latestQr) return { qr: latestQr, pending: false };
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 400));
   }
   return { qr: latestQr || null, pending: !latestQr };
 }
 
 export async function logoutAndResetWa() {
   runtimePairingNumber = '';
+  authenticatedWid = null;
+  authenticatedName = null;
   const c = getCurrentClient();
   if (c) {
     try { await c.logout().catch(() => {}); } catch {}
