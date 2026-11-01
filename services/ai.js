@@ -1535,9 +1535,9 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
     if (signal) recordRecentInput(jid, clean);
 
     if (/^SKIP\b/.test(reply)) {
-      logger.debug('AI', 'Model SKIP — memakai fallback kontekstual');
+      logger.debug('AI', 'Model SKIP — silent skip');
       trackMetric(usedModel, elapsed, true);
-      return getFallbackReply(clean, mode);
+      return null;
     }
 
     const replyLang = detectLang(reply);

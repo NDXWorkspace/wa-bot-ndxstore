@@ -9,6 +9,17 @@ const MSG_CLEANUP_AGE_MS = 60 * 60 * 1000;
 
 const handoverSessions = new Map();
 const forwardedMessages = new Map();
+export const MAX_FORWARDED_MSGS = 1000;
+export const MAX_HANDOVER_SESSIONS = 500;
+
+function trackForwardedMessage(key, data) {
+  if (!key) return;
+  forwardedMessages.set(key, data);
+  while (forwardedMessages.size > MAX_FORWARDED_MSGS) {
+    const oldest = forwardedMessages.keys().next().value;
+    forwardedMessages.delete(oldest);
+  }
+}
 
 function msgKey(msg) {
   return msg?.id?.id || '';
@@ -111,6 +122,11 @@ function touchSession(userNumber) {
 export async function startHandover(client, msg, adminNumber) {
   const userNumber = msg.from;
   const adminJid = formatWaNumber(adminNumber) || adminNumber;
+  while (handoverSessions.size >= MAX_HANDOVER_SESSIONS) {
+    const oldestKey = handoverSessions.keys().next().value;
+    handoverSessions.delete(oldestKey);
+    removeSessionFromDb(oldestKey).catch(() => {});
+  }
   handoverSessions.set(userNumber, { adminNumber: adminJid, lastActivity: Date.now() });
   persistSession(userNumber, adminJid).catch(() => {});
 
@@ -121,7 +137,7 @@ export async function startHandover(client, msg, adminNumber) {
     `📞 *CS Request*\nDari: ${userNumber}\nPesan: ${body}\n\nBalas dengan reply untuk membalas.`
   );
 
-  forwardedMessages.set(msgKey(adminMsg), { userNumber, timestamp: Date.now() });
+  trackForwardedMessage(msgKey(adminMsg), { userNumber, timestamp: Date.now() });
 }
 
 export async function handleAdminReply(client, msg) {
@@ -153,7 +169,7 @@ export async function handleAdminReply(client, msg) {
     await client.sendMessage(userNumber, caption);
   }
 
-  forwardedMessages.set(msgKey(msg), { userNumber, timestamp: Date.now() });
+  trackForwardedMessage(msgKey(msg), { userNumber, timestamp: Date.now() });
   touchSession(userNumber);
 
   return userNumber;
@@ -175,7 +191,7 @@ export async function forwardToAdmin(client, userNumber, messageBody, adminNumbe
   if (!adminMsg) {
     adminMsg = await client.sendMessage(adminJid, caption);
   }
-  forwardedMessages.set(msgKey(adminMsg), { userNumber, timestamp: Date.now() });
+  trackForwardedMessage(msgKey(adminMsg), { userNumber, timestamp: Date.now() });
 }
 
 

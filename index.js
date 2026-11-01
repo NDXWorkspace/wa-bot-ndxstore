@@ -799,8 +799,8 @@ async function main() {
           lastUserMessage.set(senderJid, { body, ts: Date.now() });
         }
 
-        if (quotedContext && body) {
-          body = `${quotedContext}${body}`;
+        if (quotedContext) {
+          body = body ? `${quotedContext}${body}` : quotedContext;
         }
 
         // ── Reply helper (Realistic Human: Baca Semua Dulu → Mengetik → Kirim 1x) ──
@@ -862,6 +862,10 @@ async function main() {
             reply = img
               ? await askAIWithImage(historyJid, msgForAI, img.data, img.mime, settings.aiMode, senderName, isGroup, signal)
               : await askAI(historyJid, msgForAI, settings.aiMode, senderName, isGroup, signal);
+          } catch (aiErr) {
+            logger.error('Reply', `AI call threw: ${aiErr?.message || aiErr}`);
+            if (chat) chat.clearState().catch(() => {});
+            return;
           } finally {
             if (typingTimer) clearInterval(typingTimer);
           }

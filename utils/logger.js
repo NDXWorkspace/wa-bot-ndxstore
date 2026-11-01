@@ -116,7 +116,7 @@ function truncate(msg, maxLen) {
 function shouldSample(level) {
   if (level !== 'trace' && level !== 'debug') return true;
   const key = level;
-  if (CURRENT_LEVEL > LOG_LEVELS[level]) return false;
+  if (LOG_LEVELS[level] < CURRENT_LEVEL) return false;
   if (SAMPLE_RATE > 0) {
     const counter = (sampleCounters.get(key) || 0) + 1;
     sampleCounters.set(key, counter);
@@ -136,7 +136,7 @@ function extractMeta(args) {
 
 /* ─── Core log function ───────────────────────────────────── */
 function log(level, label, ...args) {
-  if (LOG_LEVELS[level] > CURRENT_LEVEL) return;
+  if (LOG_LEVELS[level] < CURRENT_LEVEL) return;
   if (!shouldSample(level)) return;
 
   const { meta, rest } = extractMeta(args);

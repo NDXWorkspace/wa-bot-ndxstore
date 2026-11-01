@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
@@ -5,20 +6,31 @@ import crypto from 'crypto';
 import { execSync } from 'child_process';
 import { createClient } from '@supabase/supabase-js';
 
+import { fileURLToPath } from 'url';
+
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
 const SUPABASE_KEY = (process.env.SUPABASE_KEY || '').trim();
 const SESSION_SECRET = (process.env.SESSION_SECRET || SUPABASE_KEY || 'wa-ai-bot-default-secret-2026').trim();
 
-function getDb() {
+export function hasTar() {
+  try {
+    execSync('tar --version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getDb() {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null;
   return createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-function deriveKey(secret) {
+export function deriveKey(secret) {
   return crypto.createHash('sha256').update(String(secret)).digest();
 }
 
-function encryptBuffer(buf, secret) {
+export function encryptBuffer(buf, secret) {
   const key = deriveKey(secret);
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -27,7 +39,7 @@ function encryptBuffer(buf, secret) {
   return Buffer.concat([iv, tag, encrypted]).toString('base64');
 }
 
-function decryptBuffer(b64, secret) {
+export function decryptBuffer(b64, secret) {
   const raw = Buffer.from(b64, 'base64');
   if (raw.length < 28) throw new Error('Invalid encrypted payload');
   const key = deriveKey(secret);
@@ -39,7 +51,7 @@ function decryptBuffer(b64, secret) {
   return Buffer.concat([decipher.update(data), decipher.final()]);
 }
 
-async function publishUrl(tunnelUrl) {
+export async function publishUrl(tunnelUrl) {
   const cleanUrl = String(tunnelUrl || '').trim().replace(/\/+$/, '');
   if (!cleanUrl.startsWith('https://')) {
     console.error('[CloudRunner] Invalid tunnel URL:', cleanUrl);
@@ -71,23 +83,48 @@ async function publishUrl(tunnelUrl) {
   console.log('[CloudRunner] Wrote cloud-server.json:', cleanUrl);
 }
 
-async function backupSession() {
+export async function backupSession() {
   const sessionDir = path.resolve('./wa-session');
   if (!fs.existsSync(sessionDir)) {
     console.log('[CloudRunner] No ./wa-session directory to backup.');
     return;
   }
+  if (!hasTar()) {
+    console.warn('[CloudRunner] "tar" executable not found in PATH, skipping backup.');
+    return;
+  }
   // Hanya backup sesi WA jika WhatsApp benar-benar sudah terhubung (jangan backup sesi kosong/unpaired)
   try {
-    const res = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/status`, {
-      signal: AbortSignal.timeout(4000),
-    });
-    if (res.ok) {
-      const st = await res.json();
-      if (st.wa !== 'connected') {
-        return;
+    const port = process.env.PORT || 3000;
+    let connected = false;
+
+    // 1. Coba cek /ready (public health check tanpa butuh auth token)
+    try {
+      const readyRes = await fetch(`http://127.0.0.1:${port}/ready`, {
+        signal: AbortSignal.timeout(4000),
+      });
+      const rSt = await readyRes.json().catch(() => null);
+      if (rSt && rSt.wa === 'connected') {
+        connected = true;
       }
-    } else {
+    } catch {}
+
+    // 2. Fallback cek /api/status (sertakan header x-admin-token jika ADMIN_TOKEN disetel)
+    if (!connected) {
+      const headers = {};
+      if (process.env.ADMIN_TOKEN) headers['x-admin-token'] = process.env.ADMIN_TOKEN;
+      const res = await fetch(`http://127.0.0.1:${port}/api/status`, {
+        headers,
+        signal: AbortSignal.timeout(4000),
+      });
+      if (res.ok) {
+        const st = await res.json();
+        connected = st.wa === 'connected';
+      }
+    }
+
+    if (!connected) {
+      console.log('[CloudRunner] WhatsApp belum connected, skip backup sesi.');
       return;
     }
   } catch {
@@ -132,7 +169,7 @@ async function backupSession() {
   }
 }
 
-async function restoreSession() {
+export async function restoreSession() {
   let enc = null;
   const db = getDb();
   if (db) {
@@ -159,6 +196,11 @@ async function restoreSession() {
     return;
   }
 
+  if (!hasTar()) {
+    console.warn('[CloudRunner] "tar" executable not found in PATH, skipping restore.');
+    return;
+  }
+
   const tmpTar = path.resolve('./wa-session-restore.tar.gz');
   try {
     const buf = decryptBuffer(enc.trim(), SESSION_SECRET);
@@ -173,13 +215,16 @@ async function restoreSession() {
   }
 }
 
-const cmd = process.argv[2];
-if (cmd === 'publish-url') {
-  publishUrl(process.argv[3]);
-} else if (cmd === 'backup') {
-  backupSession();
-} else if (cmd === 'restore') {
-  restoreSession();
-} else {
-  console.log('Usage: node scripts/cloud-runner.mjs [publish-url <url> | backup | restore]');
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (isMain) {
+  const cmd = process.argv[2];
+  if (cmd === 'publish-url') {
+    publishUrl(process.argv[3]);
+  } else if (cmd === 'backup') {
+    backupSession();
+  } else if (cmd === 'restore') {
+    restoreSession();
+  } else {
+    console.log('Usage: node scripts/cloud-runner.mjs [publish-url <url> | backup | restore]');
+  }
 }

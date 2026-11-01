@@ -12,6 +12,7 @@ import { config } from '../config.js';
 import { settings } from './settings.js';
 import { askAI, askAIWithImage } from './ai.js';
 import { bufferAiMessage, cancelBuffer, holdBufferForMedia, releaseBufferForMedia } from './aiBuffer.js';
+import { checkDailyLimit } from './queue.js';
 import { pick } from '../utils/fieldResolver.js';
 import { formatPrice, formatTime } from '../utils/format.js';
 import { logger, throttleLog } from '../utils/logger.js';
@@ -61,18 +62,23 @@ export function formatForIg(text) {
     .trim();
 }
 
-function splitIgChunks(text, maxLen = 950) {
+export function splitIgChunks(text, maxLen = 950) {
   const clean = formatForIg(text);
   if (clean.length <= maxLen) return [clean];
   const chunks = [];
   let rest = clean;
+  const minThreshold = Math.min(100, Math.floor(maxLen * 0.25));
   while (rest.length > maxLen) {
     let idx = rest.lastIndexOf('\n', maxLen);
-    if (idx < 200) idx = rest.lastIndexOf('. ', maxLen);
-    if (idx < 200) idx = rest.lastIndexOf(' ', maxLen);
-    if (idx < 100) idx = maxLen;
-    chunks.push(rest.slice(0, idx + 1).trim());
-    rest = rest.slice(idx + 1).trim();
+    if (idx < minThreshold) idx = rest.lastIndexOf('. ', maxLen);
+    if (idx < minThreshold) idx = rest.lastIndexOf(' ', maxLen);
+    if (idx < minThreshold) {
+      chunks.push(rest.slice(0, maxLen).trim());
+      rest = rest.slice(maxLen).trim();
+    } else {
+      chunks.push(rest.slice(0, idx).trim());
+      rest = rest.slice(idx + 1).trim();
+    }
   }
   if (rest) chunks.push(rest);
   return chunks;
@@ -241,6 +247,14 @@ export async function processIncomingIgBubble({ senderId, mid, text, imageUrl, r
     const signal = meta?.signal || null;
     if (isCancelled()) return;
 
+    // Daily limit check: silent skip jika limit tercapai
+    const limit = await checkDailyLimit(jid);
+    if (isCancelled()) return;
+    if (!limit.allowed) {
+      logger.info('Limit', `Daily limit reached for ${jid} — IG reply skipped silently`);
+      return;
+    }
+
     // 1. TAHAP BACA: Jeda baca natural sesuai panjang semua DM yang masuk → mark_seen
     const wordCount = (combinedText || '').trim().split(/\s+/).filter(Boolean).length;
     const readDelayMs = Math.min(650 + wordCount * 45, 2000);
@@ -254,9 +268,16 @@ export async function processIncomingIgBubble({ senderId, mid, text, imageUrl, r
     await sendIgAction(senderId, 'typing_on');
     const mode = resolveAiMode();
     const aiStart = Date.now();
-    const reply = img
-      ? await askAIWithImage(jid, combinedText, img.data, img.mime, mode, null, false, signal)
-      : await askAI(jid, combinedText, mode, null, false, signal);
+    let reply = null;
+    try {
+      reply = img
+        ? await askAIWithImage(jid, combinedText, img.data, img.mime, mode, null, false, signal)
+        : await askAI(jid, combinedText, mode, null, false, signal);
+    } catch (e) {
+      logger.error('IG', `AI call threw for ${jid}: ${e?.message || e}`);
+      await sendIgAction(senderId, 'typing_off');
+      return;
+    }
 
     if (isCancelled() || !reply || /^SKIP\b/.test(reply)) {
       await sendIgAction(senderId, 'typing_off');

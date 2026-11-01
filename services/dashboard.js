@@ -53,6 +53,23 @@ const SW_JS = path.join(PUBLIC_DIR, 'sw.js');
 const ICON_SVG = path.join(PUBLIC_DIR, 'icon.svg');
 const APK_FILE = path.join(ROOT_DIR, 'WA-AI-Bot.apk');
 
+// In-memory static asset cache to prevent blocking event loop on disk reads
+const staticCache = new Map();
+
+function getCachedStatic(filePath) {
+  if (staticCache.has(filePath)) {
+    return staticCache.get(filePath);
+  }
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    staticCache.set(filePath, content);
+    return content;
+  } catch {
+    return null;
+  }
+}
+
 function sendJson(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
@@ -64,14 +81,26 @@ export function authorized(req, query) {
   return header === config.adminToken;
 }
 
-function readBody(req, limit = 1024 * 1024) {
+async function readBody(req, limit = 1024 * 1024) {
+  if (typeof req[Symbol.asyncIterator] === 'function') {
+    let size = 0;
+    const chunks = [];
+    for await (const c of req) {
+      const buf = Buffer.isBuffer(c) ? c : Buffer.from(c);
+      size += buf.length;
+      if (size > limit) throw new Error('body too large');
+      chunks.push(buf);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  }
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
-      size += c.length;
+      const buf = Buffer.isBuffer(c) ? c : Buffer.from(c);
+      size += buf.length;
       if (size > limit) reject(new Error('body too large'));
-      else chunks.push(c);
+      else chunks.push(buf);
     });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
@@ -290,6 +319,9 @@ async function handleStore(pathname, query, method, body, res) {
       return sendJson(res, 200, { transaction: await getOrderDetail(query.get('id') || '') });
     }
     if (pathname === '/api/store/status' && method === 'POST') {
+      if (!body?.id || !body?.status) {
+        return sendJson(res, 400, { error: 'id dan status transaksi wajib diisi' }), true;
+      }
       return sendJson(res, 200, { ok: true, ...(await updateOrderStatus(body.id, body.status)) });
     }
     if (pathname === '/api/store/statuses' && method === 'GET') {
@@ -343,34 +375,33 @@ export async function handleDashboardRequest(req, res) {
 
   // Static files untuk Aplikasi Mobile / PWA (/ dan /app)
   if ((pathname === '/' || pathname === '/app') && method === 'GET') {
-    try {
-      const targetFile = fs.existsSync(APP_HTML) ? APP_HTML : ADMIN_HTML;
-      const html = fs.readFileSync(targetFile, 'utf8');
+    const html = getCachedStatic(APP_HTML) || getCachedStatic(ADMIN_HTML);
+    if (html) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(html);
-    } catch {
+    } else {
       sendJson(res, 500, { error: 'File app.html tidak ditemukan' });
     }
     return true;
   }
 
   if (pathname === '/manifest.json' && method === 'GET') {
-    try {
-      const json = fs.readFileSync(MANIFEST_JSON, 'utf8');
+    const json = getCachedStatic(MANIFEST_JSON);
+    if (json) {
       res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8' });
       res.end(json);
-    } catch {
+    } else {
       sendJson(res, 404, { error: 'manifest.json tidak ditemukan' });
     }
     return true;
   }
 
   if (pathname === '/sw.js' && method === 'GET') {
-    try {
-      const js = fs.readFileSync(SW_JS, 'utf8');
+    const js = getCachedStatic(SW_JS);
+    if (js) {
       res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
       res.end(js);
-    } catch {
+    } else {
       res.writeHead(200, { 'Content-Type': 'application/javascript' });
       res.end('self.addEventListener("fetch", () => {});');
     }
@@ -378,11 +409,11 @@ export async function handleDashboardRequest(req, res) {
   }
 
   if (pathname === '/icon.svg' && method === 'GET') {
-    try {
-      const svg = fs.readFileSync(ICON_SVG, 'utf8');
+    const svg = getCachedStatic(ICON_SVG);
+    if (svg) {
       res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8' });
       res.end(svg);
-    } catch {
+    } else {
       res.writeHead(404);
       res.end();
     }
@@ -391,11 +422,11 @@ export async function handleDashboardRequest(req, res) {
 
   // Halaman dashboard lama (/admin)
   if (pathname === '/admin' && method === 'GET') {
-    try {
-      const html = fs.readFileSync(ADMIN_HTML, 'utf8');
+    const html = getCachedStatic(ADMIN_HTML);
+    if (html) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(html);
-    } catch {
+    } else {
       sendJson(res, 500, { error: 'File admin.html tidak ditemukan' });
     }
     return true;
@@ -423,12 +454,17 @@ export async function handleDashboardRequest(req, res) {
     if (pathname === '/api/wa/pair' && method === 'POST') {
       const body = await readJson(req);
       const rawPhone = body.phoneNumber || body.phone || body.number || '';
-      const result = await requestDynamicPairingCode(rawPhone);
-      if (!settings.aiMode || settings.aiMode <= 0) {
-        settings.aiMode = 3;
-        await flushSettings();
+      try {
+        const result = await requestDynamicPairingCode(rawPhone);
+        if (!settings.aiMode || settings.aiMode <= 0) {
+          settings.aiMode = 3;
+          await flushSettings();
+        }
+        sendJson(res, 200, { ok: true, ...result, aiMode: settings.aiMode });
+      } catch (err) {
+        const isBad = err.message?.includes('tidak valid') || err.message?.includes('format');
+        sendJson(res, isBad ? 400 : 500, { error: err.message || 'Gagal meminta kode pairing' });
       }
-      sendJson(res, 200, { ok: true, ...result, aiMode: settings.aiMode });
       return true;
     }
     if (pathname === '/api/wa/qr' && method === 'POST') {
@@ -537,7 +573,8 @@ export async function handleDashboardRequest(req, res) {
     sendJson(res, 404, { error: 'Endpoint tidak dikenal' });
     return true;
   } catch (e) {
-    sendJson(res, 500, { error: e.message?.slice(0, 200) });
+    const isBadReq = e.message?.includes('JSON') || e.message?.includes('body too large');
+    sendJson(res, isBadReq ? 400 : 500, { error: e.message?.slice(0, 200) });
     return true;
   }
 }
