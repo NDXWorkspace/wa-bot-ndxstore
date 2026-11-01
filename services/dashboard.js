@@ -15,8 +15,15 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import { config } from '../config.js';
 import { settings, flushSettings } from './settings.js';
-import { getAiMetrics, clearHistory, getProviderHealth } from './ai.js';
-import { getCurrentClient, getConnectionState } from '../client.js';
+import { askAI, getAiMetrics, clearHistory, getProviderHealth } from './ai.js';
+import {
+  getCurrentClient,
+  getConnectionState,
+  getLoginDetails,
+  requestDynamicPairingCode,
+  switchToQrMode,
+  logoutAndResetWa,
+} from '../client.js';
 import { getDb } from './supabase.js';
 import { isDbAvailable } from '../utils/db.js';
 import { logger, getLogLevel, setLogLevel } from '../utils/logger.js';
@@ -37,7 +44,14 @@ export function initDashboard(d) {
   deps = d;
 }
 
-const ADMIN_HTML = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'admin.html');
+const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
+const ROOT_DIR = path.join(PUBLIC_DIR, '..');
+const ADMIN_HTML = path.join(PUBLIC_DIR, 'admin.html');
+const APP_HTML = path.join(PUBLIC_DIR, 'app.html');
+const MANIFEST_JSON = path.join(PUBLIC_DIR, 'manifest.json');
+const SW_JS = path.join(PUBLIC_DIR, 'sw.js');
+const ICON_SVG = path.join(PUBLIC_DIR, 'icon.svg');
+const APK_FILE = path.join(ROOT_DIR, 'WA-AI-Bot.apk');
 
 function sendJson(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
@@ -105,15 +119,25 @@ async function dbOk() {
 async function handleStatus(res) {
   const client = getCurrentClient();
   const waUser = client?.info?.wid?.user || null;
+  const login = getLoginDetails();
   sendJson(res, 200, {
     wa: waUser ? 'connected' : 'disconnected',
     waNumber: waUser || null,
+    waName: login.waName || null,
     waState: getConnectionState?.() || null,
+    login,
     db: (await dbOk()) ? 'connected' : 'error',
     dbAvailable: isDbAvailable(),
     uptime: os.uptime(),
     botUptime: getDashboardUptimeSec(),
     aiMode: settings.aiMode,
+    aiName: settings.aiName || 'Asisten AI',
+    aiStyle: settings.aiStyle || 'santai',
+    customPrompt: settings.customPrompt || '',
+    customKnowledge: settings.customKnowledge || '',
+    replyPrivate: settings.replyPrivate !== false,
+    replyGroup: settings.replyGroup || 'mention',
+    useStoreData: Boolean(settings.useStoreData),
     jawabDuluan: settings.jawabDuluan,
     ungroup: settings.ungroup,
     blockedCount: deps ? deps.getBlocked().length : 0,
@@ -128,9 +152,44 @@ async function handleSettings(body, res) {
   const out = {};
   if (body.aiMode !== undefined) {
     const m = Number(body.aiMode);
-    if (![0, 1, 2].includes(m)) return sendJson(res, 400, { error: 'aiMode harus 0, 1, atau 2' });
+    if (![0, 1, 2, 3].includes(m)) return sendJson(res, 400, { error: 'aiMode harus 0, 1, 2, atau 3' });
     settings.aiMode = m;
     out.aiMode = m;
+  }
+  if (body.aiName !== undefined) {
+    settings.aiName = String(body.aiName || '').trim().slice(0, 80) || 'Asisten AI';
+    out.aiName = settings.aiName;
+  }
+  if (body.aiStyle !== undefined) {
+    const st = String(body.aiStyle || '').trim();
+    if (['santai', 'ramah', 'profesional', 'custom'].includes(st)) {
+      settings.aiStyle = st;
+      out.aiStyle = st;
+    }
+  }
+  if (body.customPrompt !== undefined) {
+    settings.customPrompt = String(body.customPrompt || '').trim().slice(0, 4000);
+    out.customPrompt = settings.customPrompt;
+  }
+  if (body.customKnowledge !== undefined) {
+    settings.customKnowledge = String(body.customKnowledge || '').trim().slice(0, 8000);
+    out.customKnowledge = settings.customKnowledge;
+  }
+  if (body.replyPrivate !== undefined) {
+    settings.replyPrivate = Boolean(body.replyPrivate);
+    out.replyPrivate = settings.replyPrivate;
+  }
+  if (body.replyGroup !== undefined) {
+    const rg = String(body.replyGroup || '').trim();
+    if (['all', 'mention', 'off'].includes(rg)) {
+      settings.replyGroup = rg;
+      settings.ungroup = rg !== 'all';
+      out.replyGroup = rg;
+    }
+  }
+  if (body.useStoreData !== undefined) {
+    settings.useStoreData = Boolean(body.useStoreData);
+    out.useStoreData = settings.useStoreData;
   }
   if (body.jawabDuluan !== undefined) {
     settings.jawabDuluan = Boolean(body.jawabDuluan);
@@ -140,9 +199,27 @@ async function handleSettings(body, res) {
     settings.ungroup = Boolean(body.ungroup);
     out.ungroup = settings.ungroup;
   }
+  // Reset cache/history Custom AI bila prompt diubah agar perubahan langsung terasa
+  if (body.customPrompt !== undefined || body.aiName !== undefined || body.aiStyle !== undefined || body.customKnowledge !== undefined) {
+    clearHistory('all');
+  }
   await flushSettings();
-  logger.info('Dashboard', `Settings updated: ${JSON.stringify(out)}`);
-  sendJson(res, 200, { ok: true, settings: { aiMode: settings.aiMode, jawabDuluan: settings.jawabDuluan, ungroup: settings.ungroup } });
+  logger.info('Dashboard', `Settings updated: ${JSON.stringify(Object.keys(out))}`);
+  sendJson(res, 200, {
+    ok: true,
+    settings: {
+      aiMode: settings.aiMode,
+      aiName: settings.aiName,
+      aiStyle: settings.aiStyle,
+      customPrompt: settings.customPrompt,
+      customKnowledge: settings.customKnowledge,
+      replyPrivate: settings.replyPrivate,
+      replyGroup: settings.replyGroup,
+      useStoreData: settings.useStoreData,
+      jawabDuluan: settings.jawabDuluan,
+      ungroup: settings.ungroup,
+    },
+  });
 }
 
 async function handleHistory(query, res) {
@@ -221,9 +298,86 @@ export async function handleDashboardRequest(req, res) {
   const query = new URLSearchParams(rawQuery || '');
   const method = (req.method || 'GET').toUpperCase();
 
-  if (pathname !== '/admin' && !pathname.startsWith('/api/')) return false;
+  if (
+    pathname !== '/' &&
+    pathname !== '/app' &&
+    pathname !== '/admin' &&
+    pathname !== '/apk' &&
+    pathname !== '/manifest.json' &&
+    pathname !== '/sw.js' &&
+    pathname !== '/icon.svg' &&
+    !pathname.startsWith('/api/')
+  ) {
+    return false;
+  }
 
-  // Halaman dashboard
+  if (pathname === '/apk' && method === 'GET') {
+    if (fs.existsSync(APK_FILE)) {
+      const stat = fs.statSync(APK_FILE);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.android.package-archive',
+        'Content-Disposition': 'attachment; filename="WA-AI-Bot.apk"',
+        'Content-Length': stat.size,
+      });
+      fs.createReadStream(APK_FILE).pipe(res);
+      return true;
+    }
+    res.writeHead(302, {
+      Location: 'https://github.com/NDXWorkspace/wa-bot-ndxstore/releases/latest/download/WA-AI-Bot.apk',
+    });
+    res.end();
+    return true;
+  }
+
+  // Static files untuk Aplikasi Mobile / PWA (/ dan /app)
+  if ((pathname === '/' || pathname === '/app') && method === 'GET') {
+    try {
+      const targetFile = fs.existsSync(APP_HTML) ? APP_HTML : ADMIN_HTML;
+      const html = fs.readFileSync(targetFile, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+    } catch {
+      sendJson(res, 500, { error: 'File app.html tidak ditemukan' });
+    }
+    return true;
+  }
+
+  if (pathname === '/manifest.json' && method === 'GET') {
+    try {
+      const json = fs.readFileSync(MANIFEST_JSON, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8' });
+      res.end(json);
+    } catch {
+      sendJson(res, 404, { error: 'manifest.json tidak ditemukan' });
+    }
+    return true;
+  }
+
+  if (pathname === '/sw.js' && method === 'GET') {
+    try {
+      const js = fs.readFileSync(SW_JS, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
+      res.end(js);
+    } catch {
+      res.writeHead(200, { 'Content-Type': 'application/javascript' });
+      res.end('self.addEventListener("fetch", () => {});');
+    }
+    return true;
+  }
+
+  if (pathname === '/icon.svg' && method === 'GET') {
+    try {
+      const svg = fs.readFileSync(ICON_SVG, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8' });
+      res.end(svg);
+    } catch {
+      res.writeHead(404);
+      res.end();
+    }
+    return true;
+  }
+
+  // Halaman dashboard lama (/admin)
   if (pathname === '/admin' && method === 'GET') {
     try {
       const html = fs.readFileSync(ADMIN_HTML, 'utf8');
@@ -248,6 +402,44 @@ export async function handleDashboardRequest(req, res) {
   try {
     if (pathname === '/api/status' && method === 'GET') {
       await handleStatus(res);
+      return true;
+    }
+    if (pathname === '/api/wa/login-state' && method === 'GET') {
+      sendJson(res, 200, { ok: true, ...getLoginDetails(), aiMode: settings.aiMode });
+      return true;
+    }
+    if (pathname === '/api/wa/pair' && method === 'POST') {
+      const body = await readJson(req);
+      const rawPhone = body.phoneNumber || body.phone || body.number || '';
+      const result = await requestDynamicPairingCode(rawPhone);
+      if (!settings.aiMode || settings.aiMode <= 0) {
+        settings.aiMode = 3;
+        await flushSettings();
+      }
+      sendJson(res, 200, { ok: true, ...result, aiMode: settings.aiMode });
+      return true;
+    }
+    if (pathname === '/api/wa/qr' && method === 'POST') {
+      const result = await switchToQrMode();
+      if (!settings.aiMode || settings.aiMode <= 0) {
+        settings.aiMode = 3;
+        await flushSettings();
+      }
+      sendJson(res, 200, { ok: true, ...result, aiMode: settings.aiMode });
+      return true;
+    }
+    if (pathname === '/api/wa/logout' && method === 'POST') {
+      await logoutAndResetWa();
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
+    if (pathname === '/api/ai/test' && method === 'POST') {
+      const body = await readJson(req);
+      const msg = String(body.message || body.text || '').trim();
+      if (!msg) return sendJson(res, 400, { error: 'Pesan uji coba kosong' }), true;
+      const activeMode = settings.aiMode > 0 ? settings.aiMode : 3;
+      const reply = await askAI('apk-simulator@c.us', msg, activeMode, 'User', false);
+      sendJson(res, 200, { ok: true, reply: reply || '(Tidak ada balasan)', mode: activeMode });
       return true;
     }
     if (pathname === '/api/settings' && method === 'POST') {

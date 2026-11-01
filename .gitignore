@@ -7,4 +7,6 @@ wwebjs_cache/
 .notified.json
 .buffer-pending.json
 downloads/
-
+android/.gradle/
+android/build/
+android/app/build/

@@ -110,6 +110,16 @@ const ADMIN_JID = formatWaNumber(config.adminNumber);
 // ─── Health Check ──────────────────────────────────────────────────────
 
 const healthApp = http.createServer(async (req, res) => {
+  // CORS support agar APK Android / aplikasi web bisa kontrol penuh lewat internet
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, Authorization');
+  if ((req.method || '').toUpperCase() === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const url = (req.url || '/').split('?')[0];
 
   // Liveness — 200 while the process is up. Used by the Render/Docker healthcheck so
@@ -182,9 +192,17 @@ const healthApp = http.createServer(async (req, res) => {
     if (await handleInstagramWebhook(req, res)) return;
   }
 
-  // Admin dashboard + API — konfigurasi bot lewat localhost, bukan via chat.
-  // /admin = panel UI, /api/* = JSON API (token kalau ADMIN_TOKEN diisi).
-  if (url === '/admin' || url.startsWith('/api/')) {
+  // App UI & Admin dashboard + API — bisa dikontrol penuh lewat internet & APK.
+  if (
+    url === '/' ||
+    url === '/app' ||
+    url === '/admin' ||
+    url === '/apk' ||
+    url === '/manifest.json' ||
+    url === '/sw.js' ||
+    url === '/icon.svg' ||
+    url.startsWith('/api/')
+  ) {
     if (await handleDashboardRequest(req, res)) return;
   }
 
@@ -592,11 +610,10 @@ async function main() {
         }
 
         const isGroup = msg.from?.includes('@g.us') ?? false;
+        const isStoreBot = settings.aiMode === 1 || settings.aiMode === 2 || Boolean(settings.useStoreData);
 
-        // ── CS Handover start — berlaku di SEMUA mode AI (khusus DM / chat pribadi) ──
-        // "4"/"cs" tidak boleh jatuh ke AI: filter gibberish menelannya
-        // (1 karakter → SKIP/null → bot diam) sehingga jalur CS resmi mati.
-        if (!isGroup && ADMIN_JID && (body === '4' || lower === 'cs')) {
+        // ── CS Handover start — khusus mode toko (DM / chat pribadi) ──
+        if (isStoreBot && !isGroup && ADMIN_JID && (body === '4' || lower === 'cs')) {
           cancelBuffer(senderJid);
           cancelBuffer(msg.from);
           await startHandover(c, msg, ADMIN_JID);
@@ -604,7 +621,7 @@ async function main() {
         }
 
         // Active CS session works regardless of AI mode (DM only)
-        if (!isGroup && isHandoverActive(msg.from) && ADMIN_JID) {
+        if (isStoreBot && !isGroup && isHandoverActive(msg.from) && ADMIN_JID) {
           cancelBuffer(senderJid);
           cancelBuffer(msg.from);
           if (lower === 'selesai' || lower === 'stop') {
@@ -645,6 +662,10 @@ async function main() {
           return;
         }
 
+        if (!isGroup && settings.replyPrivate === false) {
+          return;
+        }
+
         // ── Group & Quoted message inspection ──
         let isGroupDirect = false;
         let quotedContext = '';
@@ -662,10 +683,12 @@ async function main() {
         }
 
         if (isGroup) {
+          if (settings.replyGroup === 'off') return;
           const botUser = c.info?.wid?.user;
           const mentioned = botUser ? msg.mentionedIds?.some(id => id.includes(botUser)) : false;
           if (mentioned) isGroupDirect = true;
-          if (!isGroupDirect && settings.ungroup) {
+          const onlyMention = settings.replyGroup === 'mention' || (settings.replyGroup !== 'all' && settings.ungroup);
+          if (!isGroupDirect && onlyMention) {
             return;
           }
         }
@@ -674,10 +697,8 @@ async function main() {
         const bufferKey = isGroup ? `${msg.from}:${senderJid}` : historyJid;
         const senderName = isGroup ? senderJid.split('@')[0] : null;
 
-        // ── Auto-resolve: "cek [username/id]" dijawab langsung dari API ──
-        // (nol API call ke AI). Batalkan buffer sapaan sebelumnya agar tidak
-        // mengirim balasan ganda setelah hasil cek dikirim.
-        const cekArg = body.match(/^cek\s+(.+)$/i)?.[1]?.trim();
+        // ── Auto-resolve: "cek [username/id]" dijawab langsung dari API (khusus mode toko) ──
+        const cekArg = isStoreBot ? body.match(/^cek\s+(.+)$/i)?.[1]?.trim() : null;
         if (cekArg && (!isGroup || isGroupDirect || !settings.ungroup)) {
           cancelBuffer(bufferKey);
           cancelBuffer(historyJid);
@@ -936,6 +957,12 @@ async function main() {
   setOnReady(async () => {
     try {
       logger.info('Bot', 'Client ready — bot online!');
+      // Begitu WA tersambung, otomatis hidupkan AI (Mode 3 Custom AI Umum) jika sebelumnya OFF
+      if (!settings.aiMode || settings.aiMode <= 0) {
+        settings.aiMode = 3;
+        saveSettings();
+        logger.info('Bot', 'WhatsApp terhubung — AI otomatis diaktifkan!');
+      }
       flushPendingBuffers();
       const client = getCurrentClient();
       if (client) {

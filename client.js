@@ -25,8 +25,10 @@ let currentClientRef = null;
 let latestQr = null;
 let latestPairingCode = null;
 let latestPairingCodeTs = 0;
+let runtimePairingNumber = config.pairingNumber || '';
 let connectionState = 'init';
 let wasReady = false;
+let pairingLock = null;
 
 // ─── Login watchdog — anti hang sunyi ────────────────────────────────────
 // Kalau WA Web tidak menerbitkan event qr/code/authenticated SAMA SEKALI
@@ -79,7 +81,23 @@ export function getLatestQr() {
 // belum ada sesi tersimpan.
 export function getLatestPairingCode() {
   if (!latestPairingCode) return null;
-  return { code: latestPairingCode, generatedAt: latestPairingCodeTs };
+  return { code: latestPairingCode, generatedAt: latestPairingCodeTs, phoneNumber: runtimePairingNumber || null };
+}
+
+export function getLoginDetails() {
+  const c = getCurrentClient();
+  const wid = c?.info?.wid?.user || null;
+  const pushname = c?.info?.pushname || null;
+  return {
+    state: wid ? 'ready' : connectionState,
+    connected: Boolean(wid),
+    waNumber: wid,
+    waName: pushname,
+    qr: wid ? null : latestQr,
+    pairingCode: wid ? null : latestPairingCode,
+    pairingNumber: runtimePairingNumber || null,
+    pairingGeneratedAt: latestPairingCodeTs || null,
+  };
 }
 
 export async function detectBrowser() {
@@ -231,17 +249,18 @@ async function createClientCore() {
 
   const sessionPath = path.resolve('./wa-session/session');
   const hasSession = fs.existsSync(sessionPath);
+  const activePairNum = runtimePairingNumber || config.pairingNumber || '';
   logger.info('WA', hasSession ? 'Session tersimpan — auth otomatis'
-    : config.pairingNumber ? 'Login pertama via kode pairing (lihat terminal / /qr / panel /admin)'
+    : activePairNum ? `Login via kode pairing untuk ${activePairNum}`
     : 'Scan QR code untuk login pertama');
 
   const c = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
     puppeteer: puppeteerConfig,
-    // Pairing-code login: kalau PAIRING_NUMBER diisi, WA Web memakai kode
+    // Pairing-code login: kalau nomor pairing aktif, WA Web memakai kode
     // 8 karakter (event 'code') sebagai pengganti QR. Tanpa ini → QR biasa.
-    ...(config.pairingNumber
-      ? { pairWithPhoneNumber: { phoneNumber: config.pairingNumber, showNotification: true } }
+    ...(activePairNum
+      ? { pairWithPhoneNumber: { phoneNumber: activePairNum, showNotification: true } }
       : {}),
   });
 
@@ -444,10 +463,13 @@ export function startConnectionMonitor(intervalMs = 60000) {
 export async function initWithRetry(initialClient, maxAttempts = 20) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      let initTimer;
       await Promise.race([
         initialClient.initialize(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 60000)),
-      ]);
+        new Promise((_, reject) => {
+          initTimer = setTimeout(() => reject(new Error('init timeout')), 60000);
+        }),
+      ]).finally(() => clearTimeout(initTimer));
       return;
     } catch (e) {
       logger.error('WA', `Init attempt ${attempt}/${maxAttempts} failed:`, e.message || 'unknown');
@@ -457,4 +479,155 @@ export async function initWithRetry(initialClient, maxAttempts = 20) {
       await new Promise(r => setTimeout(r, delay));
     }
   }
+}
+
+export function normalizePairingNumber(raw) {
+  let digits = String(raw || '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0')) digits = '62' + digits.slice(1);
+  else if (digits.startsWith('8') && digits.length >= 9 && digits.length <= 13) digits = '62' + digits;
+  if (digits.length < 9 || digits.length > 16) return '';
+  return digits;
+}
+
+async function restartClientFresh(clearSessionDir = false) {
+  reconnectGen++;
+  const myGen = reconnectGen;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  const old = currentClientRef;
+  if (old) {
+    try { await old.destroy().catch(() => {}); } catch {}
+  }
+  if (clearSessionDir) {
+    cleanupLockfiles();
+    const sessRoot = path.resolve('./wa-session');
+    try {
+      await fsp.rm(sessRoot, { recursive: true, force: true });
+      logger.info('WA', 'Session folder ./wa-session dihapus bersih');
+    } catch (e) {
+      logger.warn('WA', 'Gagal hapus folder session:', e.message);
+    }
+  }
+  latestQr = null;
+  latestPairingCode = null;
+  latestPairingCodeTs = 0;
+  wasReady = false;
+  connectionState = 'connecting';
+
+  const newClient = await createClientCore();
+  if (myGen !== reconnectGen) {
+    try { await newClient.destroy().catch(() => {}); } catch {}
+    return null;
+  }
+  client = newClient;
+  currentClientRef = newClient;
+  if (onNewClient) onNewClient(newClient);
+
+  newClient.initialize().catch((e) => {
+    logger.error('WA', 'Fresh client init error:', e.message?.slice(0, 120));
+  });
+  return newClient;
+}
+
+export async function requestDynamicPairingCode(rawPhone) {
+  const cleanPhone = normalizePairingNumber(rawPhone);
+  if (!cleanPhone) {
+    throw new Error('Nomor WhatsApp tidak valid (contoh: 081234567890 atau 6281234567890)');
+  }
+
+  if (pairingLock) return pairingLock;
+
+  pairingLock = (async () => {
+    try {
+      const c = getCurrentClient();
+      const alreadyConnected = Boolean(c?.info?.wid?.user);
+
+      // Jika sudah pakai nomor yang sama dan kode masih baru (<2 menit), kembalikan langsung
+      if (!alreadyConnected && runtimePairingNumber === cleanPhone && latestPairingCode && (Date.now() - latestPairingCodeTs < 120000)) {
+        return { code: latestPairingCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
+      }
+
+      runtimePairingNumber = cleanPhone;
+      latestPairingCode = null;
+      latestPairingCodeTs = 0;
+
+      // Coba minta pairing code langsung di page aktif tanpa restart browser jika memungkinkan
+      if (!alreadyConnected && c?.pupPage && !c.pupPage.isClosed()) {
+        try {
+          logger.info('WA', `Meminta kode pairing langsung untuk ${cleanPhone}...`);
+          let directTimer;
+          const directCode = await Promise.race([
+            c.requestPairingCode(cleanPhone, true, 180000),
+            new Promise((_, rej) => {
+              directTimer = setTimeout(() => rej(new Error('direct pairing timeout')), 12000);
+            }),
+          ]).finally(() => clearTimeout(directTimer));
+
+          if (directCode && typeof directCode === 'string' && directCode.length >= 6) {
+            latestPairingCode = directCode;
+            latestPairingCodeTs = Date.now();
+            lastLoginEventTs = Date.now();
+            logger.info('WA', `Kode pairing berhasil dibuat untuk ${cleanPhone}: ${directCode}`);
+            return { code: directCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
+          }
+        } catch (e) {
+          logger.info('WA', `Direct requestPairingCode gagal (${e.message}), re-init dengan pairWithPhoneNumber...`);
+        }
+      }
+
+      // Jika sudah login ke akun lain atau page belum siap, restart client dengan nomor baru
+      await restartClientFresh(alreadyConnected);
+
+      // Tunggu sampai event 'code' muncul (maks 25 detik)
+      const startWait = Date.now();
+      while (Date.now() - startWait < 25000) {
+        if (latestPairingCode) {
+          return { code: latestPairingCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      return {
+        code: latestPairingCode || null,
+        phoneNumber: cleanPhone,
+        pending: !latestPairingCode,
+        message: 'Sedang menyiapkan sesi WhatsApp, kode pairing akan muncul dalam beberapa detik.',
+      };
+    } finally {
+      pairingLock = null;
+    }
+  })();
+
+  return pairingLock;
+}
+
+export async function switchToQrMode() {
+  runtimePairingNumber = '';
+  latestPairingCode = null;
+  latestPairingCodeTs = 0;
+  const c = getCurrentClient();
+  const alreadyConnected = Boolean(c?.info?.wid?.user);
+  if (!alreadyConnected && latestQr) {
+    return { qr: latestQr, pending: false };
+  }
+  await restartClientFresh(alreadyConnected);
+  const startWait = Date.now();
+  while (Date.now() - startWait < 15000) {
+    if (latestQr) return { qr: latestQr, pending: false };
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return { qr: latestQr || null, pending: !latestQr };
+}
+
+export async function logoutAndResetWa() {
+  runtimePairingNumber = '';
+  const c = getCurrentClient();
+  if (c) {
+    try { await c.logout().catch(() => {}); } catch {}
+  }
+  await restartClientFresh(true);
+  return { ok: true };
 }

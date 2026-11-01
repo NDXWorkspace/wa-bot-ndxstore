@@ -6,8 +6,15 @@ const SETTINGS_KEY = 'bot_settings';
 
 const defaults = {
   jawabDuluan: false,
-  ungroup: false,
-  aiMode: 0,
+  ungroup: true,
+  aiMode: 3, // 3 = Custom AI Umum (otomatis aktif saat WA terhubung), 1 = Bima, 2 = CS, 0 = OFF
+  aiName: 'Asisten AI',
+  aiStyle: 'santai', // 'santai' | 'ramah' | 'profesional' | 'custom'
+  customPrompt: 'Kamu adalah asisten WhatsApp yang cerdas, ramah, asik diajak ngobrol, dan sangat membantu. Jawab setiap pesan secara natural seperti manusia asli di WhatsApp.',
+  customKnowledge: '',
+  replyPrivate: true,
+  replyGroup: 'mention', // 'all' | 'mention' | 'off'
+  useStoreData: false,
 };
 
 export const settings = { ...defaults };
@@ -30,6 +37,9 @@ export async function loadSettings() {
         .single(), { label: 'Settings:load' });
       if (data?.value && typeof data.value === 'object') {
         Object.assign(settings, defaults, data.value);
+        if (data.value.customPrompt === undefined && (!settings.aiMode || settings.aiMode === 0)) {
+          settings.aiMode = 3;
+        }
         logger.info('Settings', 'Loaded from DB:', JSON.stringify(settings));
       }
     } catch (e) {

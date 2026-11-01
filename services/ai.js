@@ -4,6 +4,7 @@ import { getStoreContext, getQueryContext } from './liveData.js';
 import { getStoreCacheVersion } from '../utils/cache.js';
 import { logger, throttleLog } from '../utils/logger.js';
 import { isRelationError } from '../utils/db.js';
+import { settings } from './settings.js';
 
 function makeKnowledge() {
   return `
@@ -108,11 +109,40 @@ PENGETAHUAN TOKO:
 ${makeKnowledge()}`;
 }
 
-const PROMPT_FNS = { 1: makeBimaPrompt, 2: makeNdxstorePrompt };
+function makeCustomPrompt() {
+  const name = (settings.aiName || '').trim() || 'Asisten AI';
+  const style = settings.aiStyle || 'santai';
+  const customInstr = (settings.customPrompt || '').trim() ||
+    'Kamu adalah asisten WhatsApp yang cerdas, ramah, asik diajak ngobrol, dan sangat membantu. Jawab setiap pesan secara natural seperti manusia asli di WhatsApp.';
+  const knowledge = (settings.customKnowledge || '').trim();
+
+  let styleGuide = '';
+  if (style === 'santai') {
+    styleGuide = `- Gaya bicara: Santai, akrab, mengalir natural seperti teman chatan di WhatsApp (1-2 kalimat pendek kecuali diminta penjelasan lengkap).\n- Gunakan bahasa sehari-hari yang luwes dan ikuti gaya lawan bicara.`;
+  } else if (style === 'ramah') {
+    styleGuide = `- Gaya bicara: Ramah, hangat, sopan, dan membantu.\n- Sapa dan jawab lawan bicara dengan jelas serta bersahabat.`;
+  } else if (style === 'profesional') {
+    styleGuide = `- Gaya bicara: Sopan, rapi, profesional, dan langsung ke inti permasalahan.`;
+  } else {
+    styleGuide = `- Gaya bicara: Ikuti sepenuhnya instruksi karakter & kepribadian di bawah ini.`;
+  }
+
+  return `IDENTITAS & KARAKTER AI:
+Nama kamu: ${name}
+${customInstr}
+
+ATURAN KOMUNIKASI WHATSAPP:
+${styleGuide}
+- Jangan pernah mengaku sebagai bot/program kaku dan jangan pernah menampilkan pesan error teknis, limit harian, kuota habis, atau gangguan sistem.
+- Jawab langsung ke inti pembicaraan secara manusiawi tanpa tanda bintang (**) berantakan.
+${knowledge ? `\nPENGETAHUAN / INFORMASI TAMBAHAN (Gunakan sebagai referensi utama bila relevan):\n${knowledge}` : ''}${settings.useStoreData ? `\n\nPENGETAHUAN TOKO:\n${makeKnowledge()}` : ''}`.trim();
+}
+
+const PROMPT_FNS = { 1: makeBimaPrompt, 2: makeNdxstorePrompt, 3: makeCustomPrompt };
 
 function getPrompt(mode) {
-  const m = Number(mode) === 2 ? 2 : 1;
-  const fn = PROMPT_FNS[m];
+  const m = Number(mode);
+  const fn = PROMPT_FNS[m] || makeCustomPrompt;
   return fn();
 }
 
@@ -179,7 +209,9 @@ const UNNATURAL_PATTERNS_CS = [
 
 function naturalize(text, mode = 1) {
   let t = String(text || '');
-  const patterns = Number(mode) === 2 ? UNNATURAL_PATTERNS_CS : UNNATURAL_PATTERNS_BIMA;
+  const m = Number(mode);
+  const useBimaFilter = m === 1 || (m === 3 && settings.aiStyle === 'santai');
+  const patterns = useBimaFilter ? UNNATURAL_PATTERNS_BIMA : UNNATURAL_PATTERNS_CS;
   for (const [re, replacement] of patterns) {
     t = t.replace(re, replacement);
   }
@@ -263,7 +295,9 @@ const CONTEXT_SIZE_FULL = 20;
 const HISTORY_TTL = 24 * 60 * 60 * 1000;
 
 function historyKey(jid, mode = 1) {
-  return `${jid}:${Number(mode) === 2 ? 'cs' : 'bima'}`;
+  const m = Number(mode);
+  const tag = m === 3 ? 'custom' : m === 2 ? 'cs' : 'bima';
+  return `${jid}:${tag}`;
 }
 
 // Periodic cleanup of stale conversation histories (24h inactivity)
@@ -303,6 +337,7 @@ export function clearHistory(jid) {
     conversationHistory.delete(jid);
     conversationHistory.delete(historyKey(jid, 1));
     conversationHistory.delete(historyKey(jid, 2));
+    conversationHistory.delete(historyKey(jid, 3));
   }
 }
 
@@ -628,6 +663,7 @@ const FALLBACK_PRICE_KW = /\b(harga|price|berapa|brp|list|katalog|produk|joki|be
 const FALLBACK_HUMAN_KW = /\b(cs|admin|manusia|orang|komplain|bantu|tolong)\b/i;
 
 export function getFallbackReply(text, mode = 1) {
+  if (Number(mode) === 3 && !settings.useStoreData) return null;
   const cs = mode === 2;
   if (FALLBACK_HUMAN_KW.test(text)) {
     return cs
@@ -724,6 +760,7 @@ const STATUS_ASK_KW = /\b(status|mana|kapan|sampe|sampai|nyampe|diproses|belum m
 const HAS_USERNAME_KW = /cek\s+\S+|(?:TX|TXN|NDX)-[A-Z0-9]+|NDXSTORE\/[A-Z0-9_\/-]+/i;
 
 function statusInstrFor(message, mode) {
+  if (Number(mode) === 3 && !settings.useStoreData) return '';
   if (!STATUS_ASK_KW.test(message)) return '';
   if (HAS_USERNAME_KW.test(message)) return '';
   return mode === 2
@@ -1158,13 +1195,18 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
   const isStatement = !isQuestion && !isCommand && (cleanMsg.endsWith('.') || cleanMsg.endsWith('!') || message.length > 60);
   const intentLabel = isCommand ? 'MEMERINTAH' : isQuestion ? 'BERTANYA' : isStatement ? 'MEMBERITAHU' : 'NGOMONG';
 
+  const isCustom = Number(mode) === 3;
   const chatInstr = isCs
     ? (isGroup
       ? `\n📌 GRUP — pelanggan (${senderName || 'seseorang'}) mengirim pesan (intensi: ${intentLabel}). Jawab singkat, sopan, dan jelas sebagai CS NDXStore tanpa bertanya balik.`
       : `\n📌 CHAT PELANGGAN 1-ON-1 (intensi: ${intentLabel}). Layani dengan ramah, sopan, dan solutif sebagai CS NDXStore.`)
-    : (isGroup
-      ? `\n📌 GRUP — ${senderName || 'seseorang'} ngirim (intensi: ${intentLabel}). Bales singkat & santai sebagai Bima sesuai konteks. Jangan nanya balik.`
-      : `\n📌 CHAT PRIBADI (intensi: ${intentLabel}). Ngobrol santai sebagai Bima (temen WA biasa, bukan CS).`);
+    : isCustom
+      ? (isGroup
+        ? `\n📌 GRUP — ${senderName || 'seseorang'} mengirim pesan (intensi: ${intentLabel}). Balas singkat dan relevan sesuai karakter kamu tanpa bertele-tele.`
+        : `\n📌 CHAT PRIBADI 1-ON-1 (intensi: ${intentLabel}). Balas sesuai karakter dan instruksi utama kamu.`)
+      : (isGroup
+        ? `\n📌 GRUP — ${senderName || 'seseorang'} ngirim (intensi: ${intentLabel}). Bales singkat & santai sebagai Bima sesuai konteks. Jangan nanya balik.`
+        : `\n📌 CHAT PRIBADI (intensi: ${intentLabel}). Ngobrol santai sebagai Bima (temen WA biasa, bukan CS).`);
 
   // Time gap (C2) — check if last exchange was > 30 min ago
   const timeGap = (() => {
@@ -1230,6 +1272,10 @@ export function detectGreeting(text, mode = 1) {
   if (!raw || raw.includes('\n') || raw.split(/\s+/).length > 1) return null;
   const cleaned = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (!cleaned) return null;
+  if (Number(mode) === 3) {
+    if (cleaned === 'ping') return 'pong';
+    return null; // Biarkan Custom AI menjawab sesuai instruksi/karakter user
+  }
   const normalized = cleaned === 'pp' ? 'pp' : cleaned.replace(/(.)\1{2,}/g, '$1');
   const map = mode === 2 ? FAST_REPLIES_CS : FAST_REPLIES_BIMA;
   return map.get(cleaned) || map.get(normalized) || null;
@@ -1303,16 +1349,18 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   const userHist = await getOrLoadHistory(jid, mode);
   if (signal?.aborted) return null;
 
-  const isCs = Number(mode) === 2;
+  const m = Number(mode);
+  const isCs = m === 2;
+  const allowStoreData = m === 1 || m === 2 || Boolean(settings.useStoreData);
   const [storeCtx, queryCtx] = await Promise.all([
-    isCs ? getStoreContext().catch(() => '') : Promise.resolve(''),
-    getQueryContext(clean, isCs ? (profile?.game || null) : null).catch(() => ''),
+    (isCs || (m === 3 && settings.useStoreData)) ? getStoreContext().catch(() => '') : Promise.resolve(''),
+    allowStoreData ? getQueryContext(clean, isCs ? (profile?.game || null) : null).catch(() => '') : Promise.resolve(''),
   ]);
   if (signal?.aborted) return null;
 
   const msgs = buildProMessages(userHist, clean, mode, storeCtx, queryCtx, jid, isGroup, senderName);
   const temp = pickTemperature(clean, mode);
-  const maxTokens = mode === 1 ? 260 : 420;
+  const maxTokens = m === 1 ? 260 : 420;
 
   const groqUrl = config.groqUrl;
   const groqHeaders = { Authorization: `Bearer ${config.groqKey}` };
@@ -1523,10 +1571,12 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
   if (signal?.aborted) return null;
   const cleanText = sanitizeInput(text || '');
   const profile = cleanText ? updateUserProfile(jid, cleanText) : userProfiles.get(jid);
-  const isCs = Number(mode) === 2;
+  const m = Number(mode);
+  const isCs = m === 2;
+  const allowStoreData = m === 1 || m === 2 || Boolean(settings.useStoreData);
   const [storeCtx, queryCtx] = await Promise.all([
-    isCs ? getStoreContext().catch(() => '') : Promise.resolve(''),
-    cleanText ? getQueryContext(cleanText, isCs ? (profile?.game || null) : null).catch(() => '') : Promise.resolve(''),
+    (isCs || (m === 3 && settings.useStoreData)) ? getStoreContext().catch(() => '') : Promise.resolve(''),
+    (cleanText && allowStoreData) ? getQueryContext(cleanText, isCs ? (profile?.game || null) : null).catch(() => '') : Promise.resolve(''),
   ]);
   if (signal?.aborted) return null;
 
