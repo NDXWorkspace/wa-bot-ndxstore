@@ -551,24 +551,22 @@
   <!-- TAB 4: SERVER INTERNET & KEAMANAN -->
   <div class="tab-page" id="tab-server">
     <div class="card">
-      <div class="card-title"><span>🌐 Server Cloud Render (Internet)</span></div>
+      <div class="card-title">
+        <span>🌐 Server Cloud Gratis (Auto-Connect)</span>
+        <span class="badge">100% Gratis</span>
+      </div>
       <p class="card-desc">
-        Aplikasi ini terhubung langsung ke server Render di internet tanpa local/Termux. Jika server Render Anda menggunakan URL kustom, tempel URL-nya di bawah.
+        Aplikasi ini otomatis tersambung ke <b>Server Cloud Gratis 24/7</b> tanpa perlu kartu kredit, tanpa Render, dan tanpa local/Termux.
       </p>
-      <label>URL Server Render (HTTPS)</label>
-      <input type="url" id="srvUrlInput" placeholder="https://wa-bot-ndxstore.onrender.com">
+      <div style="margin-bottom:12px">
+        <button type="button" class="btn btn-primary" id="btnAutoSyncCloud">🔄 Hubungkan Otomatis ke Server Cloud Gratis</button>
+      </div>
+      <label>URL Server Cloud Aktif (Otomatis Terisi)</label>
+      <input type="url" id="srvUrlInput" placeholder="Otomatis mencari server cloud...">
       <label>Token Keamanan Admin (Opsional, kosongkan jika tidak dipakai)</label>
       <input type="password" id="srvTokenInput" placeholder="Opsional">
       <div class="row" style="margin-top:12px">
-        <button class="btn btn-primary" id="btnSaveServer" style="flex:1">Simpan &amp; Hubungkan ke Render</button>
-      </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
-          Belum deploy server ke akun Render Anda? Klik tombol di bawah untuk membuat server gratis di Render dalam 1 klik:
-        </div>
-        <a href="https://dashboard.render.com/blueprint/new?repo=https://github.com/NDXWorkspace/wa-bot-ndxstore" target="_blank" style="text-decoration:none">
-          <button type="button" class="btn" style="border-color:var(--accent2);color:#93c5fd">🚀 Deploy 1-Klik ke Render Cloud</button>
-        </a>
+        <button class="btn" id="btnSaveServer" style="flex:1">Simpan URL Manual</button>
       </div>
     </div>
 
@@ -636,22 +634,62 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const DEFAULT_RENDER_URL = 'https://wa-bot-ndxstore.onrender.com';
 
-// Deteksi otomatis base URL server (mendukung web Render langsung maupun APK file://)
+// Deteksi otomatis base URL server (mendukung Cloud Tunnel langsung, GitHub Pages, maupun APK file://)
 function getDefaultServerUrl() {
   const saved = localStorage.getItem('wa_ai_server_url');
-  if (saved) return saved.replace(/\/+$/, '');
-  if (location.protocol === 'http:' || location.protocol === 'https:') {
+  if (saved && !saved.includes('wa-bot-ndxstore.onrender.com')) {
+    return saved.replace(/\/+$/, '');
+  }
+  if ((location.protocol === 'http:' || location.protocol === 'https:') && !location.hostname.endsWith('github.io')) {
     return location.origin;
   }
-  return DEFAULT_RENDER_URL;
+  return '';
 }
 
 let SERVER_URL = getDefaultServerUrl();
 let ADMIN_TOKEN = localStorage.getItem('wa_ai_admin_token') || localStorage.getItem('ndx_token') || '';
 let loginMethod = 'pair';
 let formLoadedOnce = false;
+let discoveringCloud = false;
+
+async function autoDiscoverCloudServer(forceToast = false) {
+  if (discoveringCloud) return null;
+  discoveringCloud = true;
+  try {
+    const ts = Date.now();
+    const sources = [
+      {
+        url: `https://api.github.com/repos/NDXWorkspace/wa-bot-ndxstore/contents/server.json?ref=cloud-state&t=${ts}`,
+        headers: { Accept: 'application/vnd.github.v3.raw' },
+      },
+      {
+        url: `https://raw.githubusercontent.com/NDXWorkspace/wa-bot-ndxstore/cloud-state/server.json?t=${ts}`,
+        headers: {},
+      },
+    ];
+    for (const src of sources) {
+      try {
+        const res = await fetch(src.url, { headers: src.headers, cache: 'no-store' });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data?.url && data.url.startsWith('https://')) {
+          const clean = data.url.replace(/\/+$/, '');
+          SERVER_URL = clean;
+          localStorage.setItem('wa_ai_server_url', clean);
+          if ($('srvUrlInput')) $('srvUrlInput').value = clean;
+          if ($('topServerLabel')) $('topServerLabel').textContent = 'Cloud Gratis Aktif';
+          if (forceToast) showToast('✅ Terhubung ke Server Cloud Gratis!');
+          return clean;
+        }
+      } catch {}
+    }
+  } finally {
+    discoveringCloud = false;
+  }
+  if (forceToast) showToast('Sedang menyiapkan Server Cloud Gratis, tunggu beberapa detik...', false);
+  return null;
+}
 
 function showToast(msg, ok = true) {
   const t = $('toast');
@@ -768,14 +806,17 @@ function renderLoginBox(login) {
 
 async function pollStatus() {
   if (!SERVER_URL) {
-    $('topServerLabel').textContent = 'Server belum diatur';
-    $('waDot').className = 'dot off';
-    $('waStatusText').textContent = 'Atur Server';
-    return;
+    $('topServerLabel').textContent = 'Mencari Server Cloud Gratis...';
+    const found = await autoDiscoverCloudServer(false);
+    if (!found) {
+      $('waDot').className = 'dot warn';
+      $('waStatusText').textContent = 'Menghubungkan...';
+      return;
+    }
   }
   try {
     const s = await api('/api/status');
-    $('topServerLabel').textContent = SERVER_URL.replace(/^https?:\/\//, '');
+    $('topServerLabel').textContent = 'Cloud Gratis Online (' + SERVER_URL.replace(/^https?:\/\//, '').slice(0, 22) + ')';
     renderLoginBox(s.login || { connected: s.wa === 'connected', waNumber: s.waNumber });
 
     const aiOn = Number(s.aiMode) > 0;
@@ -805,8 +846,13 @@ async function pollStatus() {
       $('cfgReplyGroup').value = s.replyGroup || 'mention';
     }
   } catch (e) {
-    $('waDot').className = 'dot off';
-    $('waStatusText').textContent = 'Offline';
+    $('waDot').className = 'dot warn';
+    $('waStatusText').textContent = 'Menyambung Cloud...';
+    const prev = SERVER_URL;
+    const nextUrl = await autoDiscoverCloudServer(false);
+    if (nextUrl && nextUrl !== prev) {
+      try { await pollStatus(); } catch {}
+    }
   }
 }
 
@@ -954,6 +1000,16 @@ $('btnSendWaMsg').onclick = async () => {
 
 $('srvUrlInput').value = SERVER_URL;
 $('srvTokenInput').value = ADMIN_TOKEN;
+if ($('btnAutoSyncCloud')) {
+  $('btnAutoSyncCloud').onclick = async () => {
+    const u = await autoDiscoverCloudServer(true);
+    if (u) {
+      formLoadedOnce = false;
+      await pollStatus();
+      switchTab('connect');
+    }
+  };
+}
 $('btnSaveServer').onclick = async () => {
   let u = $('srvUrlInput').value.trim().replace(/\/+$/, '');
   if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u;

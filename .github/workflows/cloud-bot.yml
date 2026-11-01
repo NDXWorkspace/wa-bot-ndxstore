@@ -1,0 +1,154 @@
+name: Free Cloud WA Bot 24-7
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 */5 * * *'
+  push:
+    branches: [master]
+    paths:
+      - 'index.js'
+      - 'client.js'
+      - 'config.js'
+      - 'services/**'
+      - 'scripts/cloud-runner.mjs'
+      - 'public/app.html'
+      - '.github/workflows/cloud-bot.yml'
+
+concurrency:
+  group: wa-bot-free-cloud-24-7
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: write
+  pages: write
+
+jobs:
+  run-cloud-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      HOST: 0.0.0.0
+      PORT: 3000
+      LOG_CONSOLE: "true"
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      ADMIN_NUMBER: ${{ secrets.ADMIN_NUMBER }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Publish Static Web App to GitHub Pages (gh-pages)
+        run: |
+          tmpdir=$(mktemp -d)
+          cp public/app.html "$tmpdir/index.html"
+          cp public/manifest.json "$tmpdir/manifest.json" 2>/dev/null || true
+          cp public/icon.svg "$tmpdir/icon.svg" 2>/dev/null || true
+          cp public/sw.js "$tmpdir/sw.js" 2>/dev/null || true
+          cp WA-AI-Bot.apk "$tmpdir/WA-AI-Bot.apk" 2>/dev/null || true
+          pushd "$tmpdir"
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: update GitHub Pages web controller"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/gh-pages
+          popd
+
+      - name: Restore WhatsApp session & settings
+        run: node scripts/cloud-runner.mjs restore
+
+      - name: Install Cloudflare Tunnel (cloudflared)
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+          chmod +x /usr/local/bin/cloudflared
+
+      - name: Run WA Bot & Cloudflare Tunnel 24/7
+        run: |
+          publish_cloud_state() {
+            local url="$1"
+            node scripts/cloud-runner.mjs publish-url "$url"
+            local stdir
+            stdir=$(mktemp -d)
+            cp cloud-server.json "$stdir/server.json"
+            pushd "$stdir" >/dev/null
+            git init -q
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add server.json
+            git commit -q -m "chore: update active cloud server URL"
+            git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/cloud-state
+            popd >/dev/null
+            echo "===================================================="
+            echo "FREE CLOUD SERVER LIVE AT: $url"
+            echo "===================================================="
+          }
+
+          start_tunnel() {
+            rm -f cloudflared.log
+            cloudflared tunnel --no-autoupdate --url http://127.0.0.1:3000 > cloudflared.log 2>&1 &
+            TUNNEL_PID=$!
+            for i in $(seq 1 30); do
+              sleep 2
+              TUNNEL_URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' cloudflared.log | head -n 1 || true)
+              if [ -n "$TUNNEL_URL" ]; then
+                publish_cloud_state "$TUNNEL_URL"
+                break
+              fi
+            done
+          }
+
+          node index.js &
+          BOT_PID=$!
+          sleep 3
+          start_tunnel
+
+          # Run for 5 hours 10 minutes (310 mins), backing up session every 2 mins
+          END_TIME=$(( $(date +%s) + 18600 ))
+          LAST_BACKUP=0
+
+          while [ $(date +%s) -lt $END_TIME ]; do
+            if ! kill -0 $BOT_PID 2>/dev/null; then
+              echo "[Supervisor] Bot exited, restarting node index.js..."
+              node index.js &
+              BOT_PID=$!
+            fi
+            if ! kill -0 $TUNNEL_PID 2>/dev/null; then
+              echo "[Supervisor] Tunnel exited, restarting cloudflared..."
+              start_tunnel
+            fi
+            NOW=$(date +%s)
+            if [ $(( NOW - LAST_BACKUP )) -ge 120 ]; then
+              node scripts/cloud-runner.mjs backup || true
+              LAST_BACKUP=$NOW
+            fi
+            sleep 20
+          done
+
+          echo "[Supervisor] Cycle complete, shutting down cleanly for rotation..."
+          kill -TERM $BOT_PID 2>/dev/null || true
+          sleep 3
+          node scripts/cloud-runner.mjs backup || true
+
+      - name: Save session & trigger next 24/7 cycle
+        if: always()
+        run: |
+          node scripts/cloud-runner.mjs backup || true
+          gh workflow run cloud-bot.yml --repo "${GITHUB_REPOSITORY}" || true

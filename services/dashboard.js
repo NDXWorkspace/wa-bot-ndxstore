@@ -441,6 +441,10 @@ export async function handleDashboardRequest(req, res) {
       return true;
     }
     if (pathname === '/api/wa/logout' && method === 'POST') {
+      try {
+        const db = getDb();
+        if (db) await db.from('wa_bot_config').delete().eq('key', 'wa_cloud_session_enc');
+      } catch {}
       await logoutAndResetWa();
       sendJson(res, 200, { ok: true });
       return true;
