@@ -142,13 +142,13 @@ jobs:
             sleep 20
           done
 
-          echo "[Supervisor] Cycle complete, shutting down cleanly for rotation..."
+          echo "[Supervisor] Cycle complete, backing up session & shutting down cleanly for rotation..."
+          node scripts/cloud-runner.mjs backup || true
           kill -TERM $BOT_PID 2>/dev/null || true
           sleep 3
-          node scripts/cloud-runner.mjs backup || true
 
       - name: Save session & trigger next 24/7 cycle
-        if: always()
+        if: success() && !cancelled()
         run: |
           node scripts/cloud-runner.mjs backup || true
           gh workflow run cloud-bot.yml --repo "${GITHUB_REPOSITORY}" || true

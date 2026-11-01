@@ -77,6 +77,22 @@ async function backupSession() {
     console.log('[CloudRunner] No ./wa-session directory to backup.');
     return;
   }
+  // Hanya backup sesi WA jika WhatsApp benar-benar sudah terhubung (jangan backup sesi kosong/unpaired)
+  try {
+    const res = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/status`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.ok) {
+      const st = await res.json();
+      if (st.wa !== 'connected') {
+        return;
+      }
+    } else {
+      return;
+    }
+  } catch {
+    return;
+  }
   const tmpTar = path.resolve('./wa-session-backup.tar.gz');
   try {
     const excludes = [
