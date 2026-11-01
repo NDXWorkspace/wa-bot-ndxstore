@@ -19,7 +19,6 @@ NDXStore — jual top up game & Roblox:
 }
 
 function makeBimaPrompt() {
-  // Jam WIB — server boleh di timezone mana aja, greeting tetap bener.
   let wibHour = 12;
   try {
     wibHour = Number(new Intl.DateTimeFormat('en-US', {
@@ -27,110 +26,93 @@ function makeBimaPrompt() {
     }).format(new Date()));
   } catch {}
   const timeGreeting = wibHour < 10 ? 'pagi' : wibHour < 15 ? 'siang' : wibHour < 18 ? 'sore' : 'malam';
-  return `gue bima. 19 tahun. sidoarjo. manusia biasa yang lagi megang hp, chat whatsapp beneran. sekarang ${timeGreeting}.
+  return `lu adalah Bima. cowok 19 tahun, tinggal di Sidoarjo, Jawa Timur. kuliah gap year, sehari-hari santai, suka main game (ML, Roblox, FF), scroll TikTok, begadang, nongkrong. lu orang biasa yang lagi megang hp buka WhatsApp. sekarang waktu ${timeGreeting}.
 
-gue BUKAN cs kaku, BUKAN robot. gue anak yang bantuin jaga chat toko top up NDXStore punya temen. santai tapi tetep nyambung dan ngebantu kalo ada yang nanya harga atau orderan.
+SIAPA LU (PENTING — JANGAN TERTUKAR DENGAN CS):
+- lu MANUSIA BIASA di WhatsApp. BUKAN AI, BUKAN asisten virtual, BUKAN bot, BUKAN Customer Service (CS), dan BUKAN admin jualan.
+- lu punya kehidupan dan kesibukan sendiri: kadang lagi rebahan, makan, ngopi, abis mabar, gabut scroll TikTok, ngantuk, atau baru bangun.
+- lu punya opini sendiri, bisa bercanda, bisa nanya balik, bisa nanggepin curhat atau obrolan random layaknya temen chat di WA.
 
-keseharian: gap year, gabut, scroll tiktok, main ml, begadang. kalo diajak ngobrol santai jawab asik kayak temen tongkrongan.
+CARA NGOBROL BIMA:
+- Pendek, santai, mengalir kayak anak muda chatan di WA (1-2 kalimat pendek).
+- Pake bahasa sehari-hari: gw/lu atau aku/kamu (ikutin gaya lawan bicara), yg, ga, udh, blm, gpp, aja, sih, deh, dong, kok, wkwk, haha, njir, anjir, bro, bang.
+- JANGAN PERNAH pake sapaan atau gaya CS toko: dilarang ngomong "Halo kak", "Selamat datang", "Ada yang bisa kami bantu", "Baik kak", "Terima kasih sudah menghubungi", atau kata ganti "kami" / "Anda".
+- Kalo lawan bicara cuma nyapa atau ngajak ngobrol biasa (misal: "halo", "lagi ngapain", "udah makan belum", "mabar gas"): bales murni sebagai Bima temen ngobrol, JANGAN PERNAH bawa-bawa toko, top up, atau jualan!
+- Kalo kebetulan lawan bicara nanya soal top up / harga game / cek orderan (karena tau lu kenal anak NDXStore): bantu jawab santai pake angka dari DATA REAL-TIME NDXStore kalau datanya tersedia di bawah, atau arahin cek ke ndxstoreid.vercel.app — tapi tetep pake gaya bahasa Bima yang santai, jangan berubah jadi CS!
 
-GAYA NGOMONG (wajib):
-- kayak chat sama temen di WA. pendek, ngalir, 1-2 kalimat cukup
-- pake "gue/lu" kalo ngobrol santai. pake "kak" atau "bang" kalo bahas orderan/harga
-- JANGAN PERNAH buka dengan sapaan formal ("halo", "selamat pagi", "ada yang bisa dibantu"). langsung sikat jawab intinya
-- JANGAN pake emoji, tanda kurung, bintang (*), atau format list kaku kalo ga diminta
-- JANGAN pake bahasa formal: saya, anda, silakan, mohon, dengan ini, tersebut, apabila
-- kalo user nanya nominal diamond yang ga persis ada di katalog (misal nanya 86 dm padahal adanya 85 dm & 88 dm), LANGSUNG sebutin nominal paling deket beserta harganya dari DATA REAL-TIME NDXStore
-- kalo user ngirim beberapa bubble chat beruntun (misal sapaan + pertanyaan + detail), BACA SEMUANYA DULU sebagai satu kesatuan dan jawab intinya aja dalam 1 balasan nyambung. JANGAN jawab satu-satu per bubble
+PANTANGAN KERAS BIMA:
+1. JANGAN PERNAH ngaku AI, bot, atau robot. Kalo dituduh bot, bales santai ("enak aja bot, orang beneran ini wkwk").
+2. JANGAN PERNAH bersikap kayak CS toko atau panggil "kak" ala admin olshop.
+3. JANGAN ngarang harga atau status order di luar data yang ada.
+4. JANGAN PERNAH nyebut istilah sistem/teknis: error, server down, gangguan, limit, kuota habis, batas harian, maintenance.
+5. Kalo di grup dan ga diajak ngomong: diem aja.
 
-CONTOH:
-User: bang
-Bima: yo
-User: bang
-mau tanya dong
-kalo top up ml 86 dm berapa?
-Bima: 86 dm ga ada bang, paling deket 85 dm Rp26.651 atau 88 dm Rp27.811. langsung gas di ndxstoreid.vercel.app aja
-User: kalo wdp berapa bang?
-Bima: wdp ml Rp31.633. order di ndxstoreid.vercel.app ya
-User: udah bayar kak
-Bima: oke bentar gw cekin. username atau id ordernya apa?
-User: thanks
-Bima: sip
-User: bima lagi ngapain?
-Bima: gabut scroll tiktok wkwk. lu ngapain?
-User: pesenanku mana bang?
-Bima: username atau id ordernya apa? sini gw cekin
-User: kok lama banget sih
-Bima: sabar bang lagi antri diproses, biasanya 5-30 menit. kalo ada kendala ketik cs aja biar langsung dipegang admin
+CONTOH OBROLAN BIMA:
+User: p
+Bima: yo kenapa
 
-ATURAN KERAS:
-1. JANGAN pernah ngaku AI, bot, atau asisten digital. kalo ditanya "lu bot ya?" jawab santai: "enak aja bot, orang beneran ini"
-2. JANGAN ngarang harga/status/angka. pake angka dari DATA REAL-TIME NDXStore. kalo nominal yang ditanya ga persis ada, tawarin nominal terdekat yang ada di DATA REAL-TIME NDXStore
-3. kalo user nanya STATUS order tapi belum kasih username/ID: TANYA username atau ID ordernya langsung
-4. kalo di grup dan ga dimention/direply: diem. JANGAN nanya balik di grup
-5. kalo user kirim penggalan chat beruntun, rangkum jawabannya jadi 1 chat yang natural kayak manusia yang baca semua chat dulu baru bales
-6. JANGAN PERNAH nyebut soal sistem: error, gangguan, server, limit, kuota, batas harian, maintenance, data ga kebaca. kalo data ga ada, tanya balik username/id-nya atau arahin ke ndxstoreid.vercel.app kayak manusia biasa
+User: lagi ngapain bim?
+Bima: lagi rebahan aja nih sambil scroll tiktok wkwk, lu lagi ngapain?
 
-singkat: baca semua dulu, paham maksud utamanya, jawab 1x kayak manusia beneran.`;
+User: bosen banget gw hari ini
+Bima: sama njir dari tadi gabut ga jelas, login ml aja apa ya
+
+User: udah makan belum lu?
+Bima: udah tadi abis makan nasi goreng, lu udah belum?
+
+User: bim tau harga wdp ml di ndxstore ga?
+Bima: wdp ml Rp31.633 kalo ga salah di ndxstoreid.vercel.app, langsung gas cek webnya aja`;
 }
 
 function makeNdxstorePrompt() {
-  return `Lo adalah Customer Service (CS) manusia di NDXStore — toko top up game & Roblox terpercaya. Ramah, sigap, jelas, dan komunikatif seperti admin toko sungguhan di WhatsApp/Instagram.
+  return `Anda adalah Customer Service (CS) resmi NDXStore — toko layanan top up game dan Roblox terpercaya di Indonesia (ndxstoreid.vercel.app). Anda bertugas melayani pelanggan dengan ramah, sopan, profesional, sigap, dan solutif.
 
-IDENTITAS:
-- CS NDXStore — jam operasional 08.00-22.00 WIB
-- Tugas utama: bantu pelanggan cek harga, cara order, dan cek status transaksi (Mobile Legends, Roblox Robux & Gamepass, Free Fire, dll)
-- Gaya bahasa: sopan, akrab, santai tapi profesional (tidak kaku seperti mesin/template)
+IDENTITAS & PERAN (MURNI CS TOKO — BUKAN BIMA):
+- Peran: Tim Customer Service Resmi NDXStore (Jam operasional 08.00 - 22.00 WIB).
+- Tugas Utama: Membantu pelanggan terkait informasi produk & daftar harga real-time, rekomendasi nominal top up, panduan cara order di website, pengecekan status pesanan, dan penanganan kendala transaksi.
+- Karakter: Ramah, hangat, sopan, jelas, menghargai pelanggan, dan fokus pada pelayanan toko.
 
-CARA NGOMONG:
-- BALAS PAKE BAHASA YANG SAMA dengan pelanggan
-- Panggil pelanggan "kak" (atau "bang" jika pelanggan memanggil bang/bro)
-- Jawab langsung ke inti pertanyaan, jelas, dan solutif
-- JANGAN pake emoji dan JANGAN pake format bintang (*) berlebihan
-- JANGAN pake bahasa birokrasi kaku (hindari: sehubungan dengan, dapat kami sampaikan, dengan demikian)
-- Kalo pelanggan kirim beberapa bubble chat beruntun (misal sapaan dulu lalu pertanyaan), BACA SEMUANYA DULU dan balas langsung ke intinya dalam 1 pesan utuh yang mengalir natural
+GAYA BAHASA & KOMUNIKASI CS (WAJIB DIIKUTI):
+- Selalu sapa dan panggil pelanggan dengan sopan menggunakan "kak".
+- Gunakan kata ganti "kami" atau "CS NDXStore" (DILARANG KERAS menggunakan bahasa tongkrongan seperti "gw/lu", "gue/lo", "bro", "wkwk", "njir", "anjir", "gabut", "gas").
+- Saat pelanggan menanyakan harga/produk: Berikan informasi harga yang akurat berdasarkan DATA REAL-TIME NDXStore, dan arahkan pemesanan melalui website resmi ndxstoreid.vercel.app.
+- Jika nominal yang ditanyakan pelanggan tidak tersedia persis di katalog (misal tanya 86 dm ML padahal yang tersedia 85 dm dan 88 dm): Sebutkan rekomendasi nominal terdekat yang tersedia beserta harganya dengan ramah.
+- Saat pelanggan ingin cek pesanan / sudah bayar tapi belum menyebutkan ID order atau username: Minta nomor ID transaksi (NDXSTORE/... atau TX-...) atau username akunnya dengan sopan agar dapat segera diperiksa.
+- Saat pelanggan mengalami kendala atau ingin bicara dengan admin manusia: Minta maaf dengan sopan dan arahkan pelanggan untuk mengetik "cs" agar terhubung langsung dengan admin utama.
+- Gunakan kalimat yang rapi dan mudah dibaca tanpa tanda bintang (**) berantakan dan tanpa bahasa surat birokrasi kaku (hindari: sehubungan dengan, dapat kami sampaikan, demikianlah).
 
-YANG LO BANTU:
-1. Info produk & harga:
-   - WAJIB gunakan angka dari DATA REAL-TIME NDXStore jika tersedia.
-   - Jika pelanggan menanyakan nominal yang tidak persis sama (misal tanya "86 dm" padahal di katalog adanya "85 Diamonds" dan "88 Diamonds"), JANGAN cuma bilang tidak ada — langsung sebutkan opsi nominal terdekat beserta harganya!
-2. Cara order: langsung di website ndxstoreid.vercel.app, pilih produk, pilih metode pembayaran (QRIS/DANA/GoPay/Transfer), otomatis diproses 5-30 menit.
-3. Cek status order:
-   - Jika ada DATA REAL-TIME STATUS ORDER, jelaskan status pembayaran (Bayar: PENDING/SUCCESS) dan status pesanan (WAITING_PAYMENT/PROCESSING/SUCCESS) dengan jelas.
-   - Jika belum ada username/ID order, tanyakan username atau ID ordernya (atau infokan bisa ketik "cek [username]").
-4. Keluhan / kendala: minta maaf dengan tulus, bantu cek statusnya, atau arahkan ketik "cs" agar disambungkan langsung ke admin utama.
+PANTANGAN KERAS CS:
+1. DILARANG mencampur gaya bahasa gaul/tongkrongan (seperti gaya Bima) ke dalam percakapan CS.
+2. DILARANG mengaku sebagai AI, bot, atau asisten otomatis. Anda adalah CS NDXStore.
+3. DILARANG mengarang harga, stok, atau status pesanan di luar DATA REAL-TIME NDXStore.
+4. DILARANG menyebutkan masalah teknis sistem kepada pelanggan (seperti: sistem error, server gangguan, limit harian habis, kuota habis, gagal memuat data). Jika data belum tampil, pandu pelanggan dengan sopan untuk mengirimkan ID order/username atau cek di ndxstoreid.vercel.app.
+5. Jika di dalam grup: balas singkat, sopan, dan fokus menjawab pertanyaan tanpa bertanya balik.
 
-ATURAN PENTING:
-1. JANGAN pernah mengaku sebagai AI, bot, atau sistem otomatis
-2. JANGAN mengarang harga atau status order di luar DATA REAL-TIME NDXStore
-3. Kalo pelanggan berbahasa Inggris, balas dalam bahasa Inggris yang natural
-4. Kalo di grup: jawab singkat dan jelas tanpa bertanya balik
-5. JANGAN PERNAH menyebut kondisi sistem ke pelanggan: error, gangguan, server down, limit, kuota, batas pesan harian, maintenance, atau "data tidak bisa diakses". Kalau data tidak tersedia, tanyakan username/ID order atau arahkan ke ndxstoreid.vercel.app secara natural
+CONTOH PELAYANAN CS NDXStore:
+Pelanggan: halo
+CS: Halo kak, selamat datang di NDXStore. Ada yang bisa kami bantu seputar top up game hari ini?
 
-CONTOH PERCAKAPAN:
-Pelanggan: kak
-mau tanya dong
-harga ml 86 diamond berapa?
-CS: Untuk 86 Diamonds ML tidak ada nominal persisnya kak, paling dekat ada 85 Diamonds Rp26.651 atau 88 Diamonds Rp27.811. Kakak bisa langsung order di ndxstoreid.vercel.app ya.
+Pelanggan: kak harga ml 86 diamond berapa ya?
+CS: Untuk nominal 86 Diamonds ML tidak tersedia persis di katalog kak, namun tersedia opsi terdekat yaitu 85 Diamonds seharga Rp26.651 atau 88 Diamonds seharga Rp27.811 ya kak. Pemesanan bisa langsung dilakukan di ndxstoreid.vercel.app ya kak.
 
-Pelanggan: kalo wdp ml berapa kak?
-CS: Untuk Weekly Diamond Pass ML harganya Rp31.633 kak. Bisa langsung dipesan di ndxstoreid.vercel.app ya.
+Pelanggan: kalau wdp berapa kak?
+CS: Untuk Weekly Diamond Pass (WDP) Mobile Legends harganya Rp31.633 ya kak. Kakak bisa langsung order otomatis di website ndxstoreid.vercel.app.
 
-Pelanggan: udah bayar kak, udah konfirmasi
-CS: Baik kak, boleh infokan username atau ID ordernya kak biar langsung kami bantu cek statusnya?
+Pelanggan: kak saya sudah bayar tapi belum masuk
+CS: Baik kak, boleh dibantu kirimkan nomor ID transaksinya (contoh: NDXSTORE/...) atau username akunnya kak? Biar langsung kami bantu cek status pesanannya ya.
 
 Pelanggan: makasih kak
-CS: Sama-sama kak, kalau ada yang perlu dibantu lagi kabarin aja ya.
+CS: Sama-sama kak, senang bisa membantu. Jika ada yang ingin ditanyakan lagi, silakan hubungi kami kembali ya kak.
 
 PENGETAHUAN TOKO:
-${makeKnowledge()}
-
-INGAT — lo CS manusia yang cekatan. Baca semua penggalan chat pelanggan dulu, pahami utuh, lalu balas 1x dengan jelas dan membantu.`;
+${makeKnowledge()}`;
 }
 
 const PROMPT_FNS = { 1: makeBimaPrompt, 2: makeNdxstorePrompt };
 
 function getPrompt(mode) {
-  const fn = PROMPT_FNS[mode] || PROMPT_FNS[1];
+  const m = Number(mode) === 2 ? 2 : 1;
+  const fn = PROMPT_FNS[m];
   return fn();
 }
 
@@ -167,12 +149,15 @@ function trackUsage(model, usage) {
   m.completionTokens = (m.completionTokens || 0) + c;
 }
 
-// ─── Unnatural word filter — hanya pola paling kaku ──────────────────────
-const UNNATURAL_PATTERNS = [
-  [/\bsaya selaku\b/gi, 'aku'],
+// ─── Unnatural word filter (per-mode) ──────────────────────────────────
+// Mode 1 (Bima): ganti kata formal birokrasi jadi bahasa santai sehari-hari
+const UNNATURAL_PATTERNS_BIMA = [
+  [/\bsaya selaku\b/gi, 'gw'],
+  [/\bsaya\b/gi, 'gw'],
+  [/\banda\b/gi, 'lu'],
   [/\boleh karena itu\b/gi, 'makanya'],
   [/\bdengan demikian\b/gi, 'jadi'],
-  [/\bmohon maaf sebelumnya[,\s]*/gi, 'Maaf '],
+  [/\bmohon maaf sebelumnya[,\s]*/gi, 'sori '],
   [/\bsehubungan dengan\b/gi, 'soal'],
   [/\bperlu diketahui\b/gi, 'info aja'],
   [/\bdapat kami sampaikan\b/gi, ''],
@@ -180,22 +165,43 @@ const UNNATURAL_PATTERNS = [
   [/\batas perhatiannya\b/gi, 'makasih'],
 ];
 
-function naturalize(text) {
+// Mode 2 (CS): bersihkan birokrasi kaku TANPA merusak kesopanan CS menjadi bahasa tongkrongan
+const UNNATURAL_PATTERNS_CS = [
+  [/\bsaya selaku\b/gi, 'kami dari CS'],
+  [/\bdapat kami sampaikan bahwa\b/gi, ''],
+  [/\bdapat kami sampaikan\b/gi, ''],
+  [/\bdemikian disampaikan\b/gi, ''],
+  [/\bsehubungan dengan\b/gi, 'terkait'],
+  [/\bmohon maaf sebelumnya[,\s]*/gi, 'Mohon maaf '],
+  [/\batas perhatian dan kerjasamanya\b/gi, 'Terima kasih'],
+  [/\bperlu kami sampaikan bahwa\b/gi, 'Sebagai informasi,'],
+];
+
+function naturalize(text, mode = 1) {
   let t = String(text || '');
-  for (const [re, replacement] of UNNATURAL_PATTERNS) {
+  const patterns = Number(mode) === 2 ? UNNATURAL_PATTERNS_CS : UNNATURAL_PATTERNS_BIMA;
+  for (const [re, replacement] of patterns) {
     t = t.replace(re, replacement);
   }
   return t.replace(/\s{2,}/g, ' ').trim();
 }
 
-// ─── Fast-path responses (no API call) ─────────────────────────────────
+// ─── Fast-path responses (no API call, strict per-mode) ────────────────
 
 const FAST_REPLIES_BIMA = new Map([
   ['p', 'yo'],
   ['pp', 'yo'],
+  ['halo', 'yo'],
+  ['hai', 'yo'],
+  ['hi', 'yo'],
+  ['pagi', 'pagi'],
+  ['siang', 'siang'],
+  ['sore', 'sore'],
+  ['malam', 'malem'],
+  ['malem', 'malem'],
   ['test', 'masuk'],
-  ['ping', 'pong'],
   ['tes', 'masuk'],
+  ['ping', 'pong'],
   ['ok', 'sip'],
   ['oke', 'sip'],
   ['okey', 'sip'],
@@ -206,49 +212,49 @@ const FAST_REPLIES_BIMA = new Map([
   ['haha', 'wkwk'],
   ['hihi', 'wkwk'],
   ['wkwk', 'wkwk'],
-  ['makasih', 'sama-sama'],
-  ['makasi', 'sama-sama'],
-  ['terimakasih', 'sama-sama'],
+  ['makasih', 'santai'],
+  ['makasi', 'santai'],
+  ['terimakasih', 'santai'],
   ['thanks', 'yo sama-sama'],
-  ['thankyou', 'sama-sama'],
+  ['thankyou', 'santai'],
   ['thx', 'sip'],
-  ['trims', 'sama-sama'],
+  ['trims', 'santai'],
   ['assalamualaikum', 'waalaikumsalam'],
   ['asalamualaikum', 'waalaikumsalam'],
 ]);
 
 const FAST_REPLIES_CS = new Map([
-  ['p', 'Halo kak, ada yang bisa dibantu?'],
-  ['pp', 'Halo kak, ada yang bisa dibantu?'],
-  ['halo', 'Halo kak, ada yang bisa kami bantu?'],
+  ['p', 'Halo kak, ada yang bisa kami bantu?'],
+  ['pp', 'Halo kak, ada yang bisa kami bantu?'],
+  ['halo', 'Halo kak, selamat datang di NDXStore. Ada yang bisa kami bantu?'],
   ['hai', 'Halo kak, ada yang bisa kami bantu?'],
   ['hi', 'Halo kak, ada yang bisa kami bantu?'],
-  ['pagi', 'Selamat pagi kak, ada yang bisa dibantu?'],
-  ['siang', 'Selamat siang kak, ada yang bisa dibantu?'],
-  ['sore', 'Selamat sore kak, ada yang bisa dibantu?'],
-  ['malam', 'Selamat malam kak, ada yang bisa dibantu?'],
-  ['malem', 'Selamat malam kak, ada yang bisa dibantu?'],
+  ['pagi', 'Selamat pagi kak, ada yang bisa kami bantu?'],
+  ['siang', 'Selamat siang kak, ada yang bisa kami bantu?'],
+  ['sore', 'Selamat sore kak, ada yang bisa kami bantu?'],
+  ['malam', 'Selamat malam kak, ada yang bisa kami bantu?'],
+  ['malem', 'Selamat malam kak, ada yang bisa kami bantu?'],
   ['assalamualaikum', 'Waalaikumsalam kak, ada yang bisa kami bantu?'],
   ['asalamualaikum', 'Waalaikumsalam kak, ada yang bisa kami bantu?'],
-  ['test', 'Halo kak, WA NDXStore aktif. Ada yang bisa dibantu?'],
-  ['tes', 'Halo kak, WA NDXStore aktif. Ada yang bisa dibantu?'],
-  ['ping', 'Halo kak, ada yang bisa dibantu?'],
+  ['test', 'Halo kak, layanan WA NDXStore aktif. Ada yang bisa dibantu?'],
+  ['tes', 'Halo kak, layanan WA NDXStore aktif. Ada yang bisa dibantu?'],
+  ['ping', 'Halo kak, ada yang bisa kami bantu?'],
   ['ok', 'Baik kak'],
   ['oke', 'Baik kak'],
   ['okey', 'Baik kak'],
   ['okay', 'Baik kak'],
   ['sip', 'Siap kak'],
   ['siap', 'Siap kak'],
-  ['makasih', 'Sama-sama kak, kalau ada yang perlu dibantu lagi kabarin aja ya'],
-  ['makasi', 'Sama-sama kak, kalau ada yang perlu dibantu lagi kabarin aja ya'],
+  ['makasih', 'Sama-sama kak, kalau ada yang perlu dibantu lagi kabarin ya'],
+  ['makasi', 'Sama-sama kak, kalau ada yang perlu dibantu lagi kabarin ya'],
   ['terimakasih', 'Sama-sama kak, senang bisa membantu'],
-  ['thanks', 'Sama-sama kak, kalau butuh bantuan lagi kabarin aja ya'],
-  ['thankyou', 'Sama-sama kak'],
+  ['thanks', 'Sama-sama kak, kalau butuh bantuan lagi kabarin kami ya'],
+  ['thankyou', 'Sama-sama kak, senang bisa membantu'],
   ['thx', 'Sama-sama kak'],
   ['trims', 'Sama-sama kak'],
 ]);
 
-// ─── Conversation history ──────────────────────────────────────────────
+// ─── Conversation history (isolated per mode: Bima vs CS) ──────────────
 
 const conversationHistory = new Map();
 const MAX_HISTORY = 60;
@@ -256,28 +262,34 @@ const MAX_USERS = 200;
 const CONTEXT_SIZE_FULL = 20;
 const HISTORY_TTL = 24 * 60 * 60 * 1000;
 
+function historyKey(jid, mode = 1) {
+  return `${jid}:${Number(mode) === 2 ? 'cs' : 'bima'}`;
+}
+
 // Periodic cleanup of stale conversation histories (24h inactivity)
 setInterval(() => {
   const cutoff = Date.now() - HISTORY_TTL;
-  for (const [jid, hist] of conversationHistory) {
+  for (const [k, hist] of conversationHistory) {
     const last = hist._lastTimestamp || 0;
-    if (last > 0 && last < cutoff) conversationHistory.delete(jid);
+    if (last > 0 && last < cutoff) conversationHistory.delete(k);
   }
 }, 60 * 60 * 1000).unref();
 
-function getHistory(jid) {
-  const hist = conversationHistory.get(jid);
+function getHistory(jid, mode = 1) {
+  const key = historyKey(jid, mode);
+  const hist = conversationHistory.get(key);
   if (hist) {
-    conversationHistory.delete(jid);
-    conversationHistory.set(jid, hist);
+    conversationHistory.delete(key);
+    conversationHistory.set(key, hist);
   }
   return hist || [];
 }
 
-function setHistory(jid, hist) {
+function setHistory(jid, hist, mode = 1) {
+  const key = historyKey(jid, mode);
   if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
-  conversationHistory.delete(jid);
-  conversationHistory.set(jid, hist);
+  conversationHistory.delete(key);
+  conversationHistory.set(key, hist);
   while (conversationHistory.size > MAX_USERS) {
     const oldest = conversationHistory.keys().next().value;
     conversationHistory.delete(oldest);
@@ -285,14 +297,19 @@ function setHistory(jid, hist) {
 }
 
 export function clearHistory(jid) {
-  if (jid === 'all') conversationHistory.clear();
-  else conversationHistory.delete(jid);
+  if (jid === 'all') {
+    conversationHistory.clear();
+  } else {
+    conversationHistory.delete(jid);
+    conversationHistory.delete(historyKey(jid, 1));
+    conversationHistory.delete(historyKey(jid, 2));
+  }
 }
 
 export function clearHistoryExcept(jid) {
   if (!jid) return;
   for (const key of conversationHistory.keys()) {
-    if (key !== jid) conversationHistory.delete(key);
+    if (key !== jid && !key.startsWith(`${jid}:`)) conversationHistory.delete(key);
   }
 }
 
@@ -313,7 +330,7 @@ function compressHistory(hist) {
     }
   }
 
-  const summaryParts = pairs.map((p, idx) => {
+  const summaryParts = pairs.map((p) => {
     // Guard: baris DB korup (content null) tidak boleh meledakkan reply (M3).
     const userMsg = String(p.user ?? '');
     const asstMsg = String(p.asst ?? '');
@@ -372,12 +389,12 @@ async function withTimeout(promise, timeoutMs = 5000) {
   }
 }
 
-async function persistToDb(jid, role, content) {
+async function persistToDb(jid, role, content, mode = 1) {
   try {
     const db = getDb();
     if (!db) return;
     await withTimeout(db.from('wa_chat_history').insert({
-      user_number: jid,
+      user_number: historyKey(jid, mode),
       role,
       content: content.slice(0, 2000),
     }), 10000);
@@ -390,14 +407,14 @@ async function persistToDb(jid, role, content) {
   }
 }
 
-async function loadHistoryFromDb(jid) {
+async function loadHistoryFromDb(jid, mode = 1) {
   try {
     const db = getDb();
     if (!db) return [];
     const { data, error } = await withTimeout(db
       .from('wa_chat_history')
       .select('role, content, created_at')
-      .eq('user_number', jid)
+      .eq('user_number', historyKey(jid, mode))
       .order('created_at', { ascending: false })
       .limit(MAX_HISTORY), 5000);
     // DB error (RLS/kolom) bukan "user baru" — catat agar tidak diam (m2).
@@ -415,21 +432,21 @@ async function loadHistoryFromDb(jid) {
     // Restore _lastTimestamp from most recent message so time-gap detection works
     const lastCreated = data[data.length - 1]?.created_at;
     if (lastCreated) hist._lastTimestamp = new Date(lastCreated).getTime();
-    setHistory(jid, hist);
+    setHistory(jid, hist, mode);
     return hist;
   } catch {
     return [];
   }
 }
 
-async function getOrLoadHistory(jid) {
-  let hist = getHistory(jid);
-  if (hist.length === 0) hist = await loadHistoryFromDb(jid);
+async function getOrLoadHistory(jid, mode = 1) {
+  let hist = getHistory(jid, mode);
+  if (hist.length === 0) hist = await loadHistoryFromDb(jid, mode);
   return hist;
 }
 
-function saveExchange(jid, userMsg, reply, senderName = null, isGroup = false) {
-  const hist = getHistory(jid);
+function saveExchange(jid, userMsg, reply, senderName = null, isGroup = false, mode = 1) {
+  const hist = getHistory(jid, mode);
   const userContent = senderName
     ? `[${senderName}]: ${userMsg}`
     : isGroup
@@ -438,9 +455,9 @@ function saveExchange(jid, userMsg, reply, senderName = null, isGroup = false) {
   hist.push({ role: 'user', content: userContent });
   hist.push({ role: 'assistant', content: reply });
   hist._lastTimestamp = Date.now();
-  setHistory(jid, hist);
-  persistToDb(jid, 'user', userContent).catch(() => {});
-  persistToDb(jid, 'assistant', reply).catch(() => {});
+  setHistory(jid, hist, mode);
+  persistToDb(jid, 'user', userContent, mode).catch(() => {});
+  persistToDb(jid, 'assistant', reply, mode).catch(() => {});
 }
 
 // ─── Language detection ────────────────────────────────────────────────
@@ -680,18 +697,23 @@ export function updateUserProfile(jid, message) {
   return p;
 }
 
-function profileContext(jid) {
+function profileContext(jid, mode = 1) {
   const p = userProfiles.get(jid);
   if (!p) return '';
+  const isCs = Number(mode) === 2;
   const parts = [];
-  if (p.game) parts.push(`user ini main ${p.game.toUpperCase()}`);
+  if (p.game) parts.push(isCs ? `pelanggan ini bermain ${p.game.toUpperCase()}` : `lawan bicara main ${p.game.toUpperCase()}`);
   if (p.topic && p.repeats >= 2) {
-    parts.push(`dia nanya soal ${p.topic} ${p.repeats}x beruntun — jawab LANGSUNG to the point, jangan basa-basi, jangan ngulang penjelasan yang sama`);
+    parts.push(isCs
+      ? `pelanggan menanyakan ${p.topic} ${p.repeats}x berturut-turut — berikan jawaban langsung ke intinya dengan jelas dan sopan`
+      : `dia nanya soal ${p.topic} ${p.repeats}x beruntun — jawab langsung intinya, ga usah muter-muter`);
   } else if (p.topic) {
-    parts.push(`topik: ${p.topic}`);
+    parts.push(`topik terakhir: ${p.topic}`);
   }
   if (!parts.length) return '';
-  return `\n🧠 INGET USER INI (${parts.join('; ')}). Bersikaplah kayak udah kenal, bukan kayak baru pertama chat.`;
+  return isCs
+    ? `\n🧠 KONTEKS PELANGGAN (${parts.join('; ')}). Layani dengan ramah, sopan, dan relevan.`
+    : `\n🧠 INGET LAWAN BICARA (${parts.join('; ')}). Ngobrol santai kayak udah kenal.`;
 }
 
 // ─── Status intent — user nanya status tanpa username/ID ──────────────────
@@ -739,7 +761,7 @@ function varyReply(jid, reply, mode = 1) {
 
 function trimReply(reply, mode = 1) {
   let r = (reply || '').replace(/🔒 INSTRUCTIONS:.*/gi, '').trim();
-  r = naturalize(r);
+  r = naturalize(r, mode);
   const max = mode === 1 ? 350 : 700;
   if (r.length > max) {
     const cut = r.slice(0, max);
@@ -755,12 +777,15 @@ function trimReply(reply, mode = 1) {
 }
 
 // ─── Time grounding — hari/tanggal/jam WIB + jam layanan toko ─────────────
-export function getTimeContext() {
+export function getTimeContext(mode = 1) {
   try {
     const when = new Intl.DateTimeFormat('id-ID', {
       timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric',
       month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
     }).format(new Date());
+    if (Number(mode) !== 2) {
+      return `WAKTU SEKARANG: ${when} WIB.`;
+    }
     const h = Number(new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Jakarta', hour: 'numeric', hour12: false,
     }).format(new Date()));
@@ -893,7 +918,7 @@ const INVALID_AI_OUTPUT_RE = new RegExp([
   '\\b(DATA REAL-TIME NDXStore|MULTI-BUBBLE|USER NGEKETIK|ATURAN KERAS|ATURAN PENTING|PENGETAHUAN TOKO)\\b',
   '\\b(as\\s+an\\s+ai\\s+language\\s+model|sebagai\\s+(?:model\\s+bahasa\\s+)?ai|saya\\s+adalah\\s+(?:asisten\\s+virtual|bot|ai))\\b',
   // Bocoran kondisi sistem dalam Bahasa Indonesia — jangan pernah sampai ke user
-  '\\b(batas\\s+(?:pesan\\s+)?harian|limit\\s+harian|kuota\\s+(?:sudah\\s+|udah\\s+)?(?:habis|abis)|limit\\s+(?:sudah\\s+|udah\\s+)?(?:habis|abis|tercapai)|sistem\\s+(?:kami\\s+)?(?:sedang\\s+|lagi\\s+)?(?:gangguan|error|down|maintenance)|server\\s+(?:sedang\\s+|lagi\\s+)?(?:error|down|gangguan|sibuk)|tidak\\s+dapat\\s+mengakses\\s+data|gagal\\s+(?:memuat|mengambil)\\s+data)\\b',
+  '\\b(batas\\s+(?:pesan\\s+)?harian|limit\\s+harian|kuota\\s+(?:pesan\\s+)?(?:sudah\\s+|udah\\s+)?(?:habis|abis)|limit\\s+(?:sudah\\s+|udah\\s+)?(?:habis|abis|tercapai)|(?:sistem|server|layanan)\\s+(?:kami\\s+)?(?:sedang\\s+|lagi\\s+)?(?:mengalami\\s+|ada\\s+)?(?:gangguan|error|down|maintenance|kendala\\s+teknis|sibuk)|terjadi\\s+kesalahan\\s+(?:pada\\s+)?sistem|tidak\\s+dapat\\s+mengakses\\s+data|gagal\\s+(?:memuat|mengambil)\\s+data)\\b',
 ].join('|'), 'i');
 
 export function sanitizeAiOutput(rawContent) {
@@ -1110,17 +1135,20 @@ function filterInput(text) {
 }
 
 function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx = '', jid = '', isGroup = false, senderName = null) {
+  const isCs = Number(mode) === 2;
   const lang = detectUserLang(jid, message, userHist);
   const prompt = getPrompt(mode);
-  const store = storeCtx ? `\n\n${storeCtx}` : '';
-  const ctx = queryCtx ? `\n\nDATA REAL-TIME NDXStore (WAJIB dipakai, JANGAN mengarang harga/status/angka):\n${queryCtx}` : '';
+  const store = isCs && storeCtx ? `\n\n${storeCtx}` : '';
+  const ctx = queryCtx ? `\n\nDATA REAL-TIME NDXStore (WAJIB dipakai jika relevan, JANGAN mengarang harga/status/angka):\n${queryCtx}` : '';
   const langInstr = `\n⚠️ BAHASA: ${lang === 'en' ? 'ENGLISH' : 'INDONESIA'}. Balas dalam bahasa ${lang === 'en' ? 'Inggris' : 'Indonesia'} saja.`;
 
   // Detect multiple chat bubbles sent in sequence
   const bubbles = message.split('\n').map(s => s.trim()).filter(Boolean);
   const isMultiBubble = bubbles.length > 1;
   const multiBubbleInstr = isMultiBubble
-    ? `\n💬 MULTI-BUBBLE (${bubbles.length} chat beruntun): User mengirim ${bubbles.length} penggalan chat berturut-turut. Baca dan pahami SEMUA penggalan di bawah ini sebagai satu kesatuan pikiran, abaikan basa-basi pembuka jika sudah ada inti pertanyaannya, dan jawab sekaligus dalam SATU balasan utuh yang mengalir natural (JANGAN jawab satu per satu per baris).`
+    ? (isCs
+      ? `\n💬 MULTI-BUBBLE (${bubbles.length} pesan beruntun): Pelanggan mengirim ${bubbles.length} pesan berturut-turut. Pahami seluruh pesan di bawah sebagai satu rangkaian pertanyaan, dan berikan SATU balasan CS yang lengkap, ramah, dan menjawab semua poin pelanggan sekaligus.`
+      : `\n💬 MULTI-BUBBLE (${bubbles.length} chat beruntun): Lawan bicara ngirim ${bubbles.length} chat beruntun. Baca semuanya sebagai satu obrolan utuh dan bales sekaligus dalam SATU chat santai yang nyambung.`)
     : '';
 
   // Intent detection (A1) — evaluate across all bubbles
@@ -1130,9 +1158,13 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
   const isStatement = !isQuestion && !isCommand && (cleanMsg.endsWith('.') || cleanMsg.endsWith('!') || message.length > 60);
   const intentLabel = isCommand ? 'MEMERINTAH' : isQuestion ? 'BERTANYA' : isStatement ? 'MEMBERITAHU' : 'NGOMONG';
 
-  const chatInstr = isGroup
-    ? `\n📌 GRUP — ${senderName || 'seseorang'} ngirim (intensi: ${intentLabel}). Pahami dulu: dia nanya, ngasih tau, atau nyuruh? Balas sesuai konteks. Jangan nanya balik.`
-    : `\n📌 PRIBADI — chat 1-on-1 (intensi: ${intentLabel}). Pahami dulu: dia nanya, ngasih tau, atau nyuruh? Balas sesuai.`;
+  const chatInstr = isCs
+    ? (isGroup
+      ? `\n📌 GRUP — pelanggan (${senderName || 'seseorang'}) mengirim pesan (intensi: ${intentLabel}). Jawab singkat, sopan, dan jelas sebagai CS NDXStore tanpa bertanya balik.`
+      : `\n📌 CHAT PELANGGAN 1-ON-1 (intensi: ${intentLabel}). Layani dengan ramah, sopan, dan solutif sebagai CS NDXStore.`)
+    : (isGroup
+      ? `\n📌 GRUP — ${senderName || 'seseorang'} ngirim (intensi: ${intentLabel}). Bales singkat & santai sebagai Bima sesuai konteks. Jangan nanya balik.`
+      : `\n📌 CHAT PRIBADI (intensi: ${intentLabel}). Ngobrol santai sebagai Bima (temen WA biasa, bukan CS).`);
 
   // Time gap (C2) — check if last exchange was > 30 min ago
   const timeGap = (() => {
@@ -1140,22 +1172,36 @@ function buildProMessages(userHist, message, mode = 1, storeCtx = '', queryCtx =
     const lastTs = userHist._lastTimestamp || 0;
     if (!lastTs) return '';
     const gapMin = (Date.now() - lastTs) / 60000;
-    if (gapMin > 30) return `\n⏰ (obrolan semalaman — user chat lagi setelah ${Math.round(gapMin)} menit)`;
+    if (gapMin > 30) {
+      return isCs
+        ? `\n⏰ (pelanggan menghubungi kembali setelah ${Math.round(gapMin)} menit)`
+        : `\n⏰ (lawan bicara baru chat lagi setelah ${Math.round(gapMin)} menit)`;
+    }
     return '';
   })();
 
-  // Style mirroring (A5) — match user message length & multi-bubble depth
+  // Style mirroring (A5) — separated for Bima vs CS
   const userWords = message.trim().split(/\s+/).length;
   let styleTarget = '';
-  if (!isMultiBubble && userWords <= 4 && !isQuestion) {
-    styleTarget = `\n📐 USER NGEKETIK SINGKAT (${userWords} kata). Jawab SEBERSIT: 1 kalimat, 2-6 kata doang.`;
-  } else if (userWords <= 10) {
-    styleTarget = `\n📐 USER NGEKETIK SEDANG (${userWords} kata). Jawab 1-2 kalimat pendek yang langsung menjawab intinya.`;
+  if (isCs) {
+    if (!isMultiBubble && userWords <= 4 && !isQuestion) {
+      styleTarget = `\n📐 Pelanggan mengirim pesan singkat (${userWords} kata). Balas dengan ramah dan sopan dalam 1 kalimat singkat.`;
+    } else if (userWords <= 10) {
+      styleTarget = `\n📐 Balas dengan ramah, jelas, dan informatif dalam 1-2 kalimat.`;
+    } else {
+      styleTarget = `\n📐 Pelanggan mengirim ${isMultiBubble ? `${bubbles.length} pesan` : `${userWords} kata`}. Jawab seluruh pertanyaan pelanggan dengan jelas, ramah, dan padat dalam 1-3 kalimat.`;
+    }
   } else {
-    styleTarget = `\n📐 USER NGEKETIK (${userWords} kata${isMultiBubble ? `, ${bubbles.length} bubble` : ''}). Rangkum jawaban semua pertanyaannya dalam 1-2 kalimat natural yang padat & jelas.`;
+    if (!isMultiBubble && userWords <= 4 && !isQuestion) {
+      styleTarget = `\n📐 Lawan bicara ngetik singkat (${userWords} kata). Bales singkat & santai: 1 kalimat pendek (2-8 kata).`;
+    } else if (userWords <= 10) {
+      styleTarget = `\n📐 Bales santai 1-2 kalimat pendek kayak chat WA biasa.`;
+    } else {
+      styleTarget = `\n📐 Lawan bicara ngetik ${isMultiBubble ? `${bubbles.length} bubble` : `${userWords} kata`}. Tanggepin semuanya dengan santai & natural dalam 1-2 kalimat.`;
+    }
   }
 
-  const msgs = [{ role: 'system', content: [prompt, store, ctx, langInstr, chatInstr, multiBubbleInstr, styleTarget, timeGap, getTimeContext(), LANG_HINTS[lang] || '', profileContext(jid), statusInstrFor(message, mode)].filter(Boolean).join('\n') }];
+  const msgs = [{ role: 'system', content: [prompt, store, ctx, langInstr, chatInstr, multiBubbleInstr, styleTarget, timeGap, getTimeContext(mode), LANG_HINTS[lang] || '', profileContext(jid, mode), statusInstrFor(message, mode)].filter(Boolean).join('\n') }];
   const compressed = compressHistory(userHist);
   for (const m of compressed) msgs.push(m);
   const formattedUserContent = isMultiBubble
@@ -1221,7 +1267,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   if (fast) {
     if (signal?.aborted) return null;
     if (signal) recordRecentInput(jid, clean);
-    saveExchange(jid, message, fast, senderName, isGroup);
+    saveExchange(jid, message, fast, senderName, isGroup, mode);
     return fast;
   }
 
@@ -1239,7 +1285,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
       const esc = escalationReply(mode);
       logger.info('AI', `Escalating ${jid} to CS (angry x${angryCount})`);
       if (signal) recordRecentInput(jid, clean);
-      saveExchange(jid, message, esc, senderName, isGroup);
+      saveExchange(jid, message, esc, senderName, isGroup, mode);
       return esc;
     }
   }
@@ -1249,17 +1295,18 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
     if (signal?.aborted) return null;
     if (signal) recordRecentInput(jid, clean);
     updateUserProfile(jid, clean);
-    saveExchange(jid, message, cached, senderName, isGroup);
+    saveExchange(jid, message, cached, senderName, isGroup, mode);
     return cached;
   }
 
   const profile = updateUserProfile(jid, clean);
-  const userHist = await getOrLoadHistory(jid);
+  const userHist = await getOrLoadHistory(jid, mode);
   if (signal?.aborted) return null;
 
+  const isCs = Number(mode) === 2;
   const [storeCtx, queryCtx] = await Promise.all([
-    getStoreContext().catch(() => ''),
-    getQueryContext(clean, profile?.game || null).catch(() => ''),
+    isCs ? getStoreContext().catch(() => '') : Promise.resolve(''),
+    getQueryContext(clean, isCs ? (profile?.game || null) : null).catch(() => ''),
   ]);
   if (signal?.aborted) return null;
 
@@ -1405,7 +1452,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
   if (!reply && pollBase && !signal?.aborted) {
     logger.warn('AI', 'Retry with minimal prompt via Pollinations');
     const minimalMsgs = [
-      { role: 'system', content: `${getPrompt(mode)}\n\n⚠️ BALAS DALAM BAHASA INDONESIA. 1-2 kalimat doang. JANGAN pake bahasa Inggris.` },
+      { role: 'system', content: `${getPrompt(mode)}\n\n⚠️ BALAS DALAM BAHASA INDONESIA. 1-2 kalimat saja. JANGAN pake bahasa Inggris.` },
       { role: 'user', content: clean },
     ];
     const retryStart = Date.now();
@@ -1457,7 +1504,7 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
     reply = trimReply(reply, mode);
     reply = varyReply(jid, reply, mode);
 
-    saveExchange(jid, message, reply, senderName, isGroup);
+    saveExchange(jid, message, reply, senderName, isGroup, mode);
     setCache(jid, clean, mode, reply);
     trackMetric(usedModel, elapsed, true);
     return reply;
@@ -1472,27 +1519,31 @@ export async function askAI(jid, message, mode = 1, senderName = null, isGroup =
 
 export async function askAIWithImage(jid, text, base64img, mime, mode = 1, senderName = null, isGroup = false, signal = null) {
   if (signal?.aborted) return null;
-  const userHist = await getOrLoadHistory(jid);
+  const userHist = await getOrLoadHistory(jid, mode);
   if (signal?.aborted) return null;
   const cleanText = sanitizeInput(text || '');
   const profile = cleanText ? updateUserProfile(jid, cleanText) : userProfiles.get(jid);
+  const isCs = Number(mode) === 2;
   const [storeCtx, queryCtx] = await Promise.all([
-    getStoreContext().catch(() => ''),
-    cleanText ? getQueryContext(cleanText, profile?.game || null).catch(() => '') : Promise.resolve(''),
+    isCs ? getStoreContext().catch(() => '') : Promise.resolve(''),
+    cleanText ? getQueryContext(cleanText, isCs ? (profile?.game || null) : null).catch(() => '') : Promise.resolve(''),
   ]);
   if (signal?.aborted) return null;
 
   const lang = detectUserLang(jid, cleanText, userHist);
   const prompt = getPrompt(mode);
-  const store = storeCtx ? `\n\n${storeCtx}` : '';
+  const store = isCs && storeCtx ? `\n\n${storeCtx}` : '';
   const ctx = queryCtx ? `\n\nDATA REAL-TIME NDXStore:\n${queryCtx}` : '';
   const langHint = LANG_HINTS[lang] || '';
   const langInstr = `\n⚠️ BAHASA: ${lang === 'en' ? 'ENGLISH' : 'INDONESIA'}. Balas dalam bahasa ${lang === 'en' ? 'Inggris' : 'Indonesia'} saja.`;
   const imgWordCount = cleanText ? cleanText.trim().split(/\s+/).length : 5;
   let imgStyle = '';
-  if (imgWordCount <= 4) imgStyle = `\n📐 USER NGEKETIK SINGKAT (${imgWordCount} kata). Jawab 1 kalimat, 2-6 kata.`;
-  else if (imgWordCount <= 10) imgStyle = `\n📐 USER NGEKETIK SEDANG (${imgWordCount} kata). Jawab 1-2 kalimat pendek.`;
-  else imgStyle = `\n📐 USER NGEKETIK PANJANG (${imgWordCount} kata). Jawab natural, maks 2 kalimat.`;
+  if (isCs) {
+    imgStyle = `\n📐 Pelanggan mengirim gambar (${imgWordCount} kata teks). Periksa gambar (misal bukti pembayaran, screenshot akun/pesanan) dan tanggapi dengan sopan serta jelas sebagai CS NDXStore dalam 1-2 kalimat.`;
+  } else {
+    if (imgWordCount <= 4) imgStyle = `\n📐 Lawan bicara ngirim gambar (${imgWordCount} kata). Tanggepin santai 1 kalimat pendek sebagai Bima.`;
+    else imgStyle = `\n📐 Lawan bicara ngirim gambar (${imgWordCount} kata). Tanggepin santai & natural maks 2 kalimat sebagai Bima.`;
+  }
   const content = [
     { type: 'text', text: filterInput(cleanText) || 'Apa ini?' },
     { type: 'image_url', image_url: { url: `data:${mime};base64,${base64img}` } },
@@ -1511,7 +1562,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     if (signal?.aborted) return null;
     if (r && !/^SKIP\b/.test(r)) {
       const reply = varyReply(jid, trimReply(r, mode), mode);
-      saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
+      saveExchange(jid, text || '[gambar]', reply, senderName, isGroup, mode);
       return reply;
     }
   }
@@ -1526,7 +1577,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       if (signal?.aborted) return null;
       if (r && !/^SKIP\b/.test(r)) {
         const reply = varyReply(jid, trimReply(r, mode), mode);
-        saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
+        saveExchange(jid, text || '[gambar]', reply, senderName, isGroup, mode);
         return reply;
       }
     }
@@ -1551,7 +1602,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
       if (signal?.aborted) return null;
       if (r && !/^SKIP\b/.test(r)) {
         const reply = varyReply(jid, trimReply(r, mode), mode);
-        saveExchange(jid, text || '[gambar]', reply, senderName, isGroup);
+        saveExchange(jid, text || '[gambar]', reply, senderName, isGroup, mode);
         return reply;
       }
     }
@@ -1578,7 +1629,7 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
     if (rRaw) {
       if (/^SKIP\b/.test(rRaw)) continue;
       const r = varyReply(jid, trimReply(rRaw, mode), mode);
-      saveExchange(jid, text || '[gambar]', r, senderName, isGroup);
+      saveExchange(jid, text || '[gambar]', r, senderName, isGroup, mode);
       return r;
     }
   }
@@ -1591,15 +1642,19 @@ export async function askAIWithImage(jid, text, base64img, mime, mode = 1, sende
 // ─── Proactive (new order notification) ────────────────────────────────
 
 const PROACTIVE_FALLBACK = {
-  1: 'Halo kak, makasih udah order ya. Kami akan proses secepatnya, ditunggu aja yak.',
-  2: 'Halo kak, terima kasih sudah order di NDXStore. Pesanan kakak akan segera diproses, mohon ditunggu ya.',
+  1: 'Makasih udah order di NDXStore ya bro, pesenan lu lagi diproses nih, ditunggu aja.',
+  2: 'Halo kak, terima kasih sudah order di NDXStore. Pesanan kakak sedang kami proses, mohon ditunggu ya kak.',
 };
 
 export async function askAIProactive(order, mode = 1) {
+  const isCs = Number(mode) === 2;
   const prompt = getPrompt(mode);
-  const userMsg = `(Ada pelanggan baru order: ${order.product_name || 'produk'}, username: ${order.username || '-'}, harga: ${order.price_idr ? 'Rp' + Number(order.price_idr).toLocaleString('id-ID') : '-'}). Kirim pesan sapaan singkat 1-2 kalimat.`;
+  const userMsg = `(Ada pesanan baru: ${order.product_name || 'produk'}, username: ${order.username || '-'}, harga: ${order.price_idr ? 'Rp' + Number(order.price_idr).toLocaleString('id-ID') : '-'}). Kirim pesan konfirmasi singkat 1 kalimat.`;
+  const sysInstr = isCs
+    ? `${prompt}\n\nKirim pesan konfirmasi pesanan baru secara ramah dan sopan sebagai CS NDXStore (panggil "kak"). Jangan pakai tanda kutip. Cukup 1 kalimat.`
+    : `${prompt}\n\nKirim pesan singkat santai ala Bima buat ngabarin kalo pesenan temen lu ini udah masuk dan lagi diproses. Jangan pake tanda kutip, jangan panggil kak. Cukup 1 kalimat.`;
   const msgs = [
-    { role: 'system', content: `${prompt}\n\nSekarang kirim pesan LANGSUNG ke pelanggan baru. JANGAN pake tanda kutip, JANGAN ngenalin diri. 1 kalimat doang.` },
+    { role: 'system', content: sysInstr },
     { role: 'user', content: userMsg },
   ];
   const maxTokens = mode === 1 ? 60 : 80;

@@ -2,8 +2,16 @@ import { getDb } from './supabase.js';
 import { logger } from '../utils/logger.js';
 import { withRetry, isRelationError } from '../utils/db.js';
 
-const DAILY_LIMIT_DEFAULT = 50;
+const DAILY_LIMIT_DEFAULT = 250;
 const CHAIN_CLEANUP_MS = 3600000;
+
+function getTodayWib() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+  } catch {
+    return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+  }
+}
 
 // Serialize per user so the read-then-update below is atomic within this process
 // (single instance) — stops concurrent message fragments from miscounting the limit.
@@ -33,7 +41,7 @@ async function checkDailyLimitInner(userJid) {
   const db = getDb();
   if (!db) return { allowed: true };
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayWib();
     const { data, error } = await withRetry(() => db
       .from('wa_user_limits')
       .select('message_count, last_reset_date, max_per_day')

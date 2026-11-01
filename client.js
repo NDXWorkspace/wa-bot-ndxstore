@@ -344,7 +344,10 @@ async function reconnect(oldClient) {
         if (onNewClient) onNewClient(newClient);
 
         const initPromise = newClient.initialize();
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('init timeout')), 60000));
+        let initTimer;
+        const timeout = new Promise((_, reject) => {
+          initTimer = setTimeout(() => reject(new Error('init timeout')), 60000);
+        });
         try {
           await Promise.race([initPromise, timeout]);
         } catch (e) {
@@ -353,6 +356,8 @@ async function reconnect(oldClient) {
           }
           try { await newClient.destroy().catch(() => {}); } catch {}
           throw e;
+        } finally {
+          clearTimeout(initTimer);
         }
 
         if (myGen !== reconnectGen) {

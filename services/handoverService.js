@@ -11,7 +11,7 @@ const handoverSessions = new Map();
 const forwardedMessages = new Map();
 
 function msgKey(msg) {
-  return msg && msg.id ? `${msg.id.id}|${msg.id.fromMe}|${msg.id.remote}` : '';
+  return msg?.id?.id || '';
 }
 
 async function loadSessionsFromDb() {
@@ -135,7 +135,7 @@ export async function handleAdminReply(client, msg) {
   // Fallback that survives a restart (in-memory map is empty then): the bot's
   // forwarded messages embed the user's JID in their text — recover it from there.
   if (!userNumber && quoted.fromMe) {
-    const m = quoted.body?.match(/(\d{6,}@(?:c\.us|lid))/);
+    const m = quoted.body?.match(/([0-9a-zA-Z._-]+@(?:c\.us|s\.whatsapp\.net|lid))/);
     if (m) userNumber = m[1];
   }
 

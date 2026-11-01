@@ -141,7 +141,8 @@ async function resolveIgOrderCheck(rawArg) {
       const resp = await fetch(`${config.apiBase}/api/transaction/${encodeURIComponent(orderId)}`, {
         signal: AbortSignal.timeout(8000),
       });
-      if (!resp.ok) return `Order ${orderId} nggak ketemu kak. Pastikan ID order-nya benar ya.`;
+      if (resp.status === 404) return `Order ${orderId} nggak ketemu kak. Pastikan ID order-nya benar ya.`;
+      if (!resp.ok) return null;
       const data = await resp.json();
       const tx = data?.data?.transaction ?? data?.transaction;
       if (!tx) return `Order ${orderId} nggak ketemu kak.`;
@@ -152,12 +153,14 @@ async function resolveIgOrderCheck(rawArg) {
     let resp = await fetch(`${config.apiBase}/api/transactions/user/${encodeURIComponent(arg)}`, {
       signal: AbortSignal.timeout(8000),
     });
+    if (!resp.ok && resp.status !== 404) return null;
     let result = resp.ok ? await resp.json() : null;
     let txs = result?.data?.transactions ?? result?.transactions;
     if ((!Array.isArray(txs) || !txs.length) && arg.length >= 3) {
       resp = await fetch(`${config.apiBase}/api/transactions/search/${encodeURIComponent(arg)}`, {
         signal: AbortSignal.timeout(8000),
       });
+      if (!resp.ok && resp.status !== 404) return null;
       if (resp.ok) {
         result = await resp.json();
         txs = result?.data?.transactions ?? result?.transactions;

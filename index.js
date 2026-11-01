@@ -490,6 +490,18 @@ async function main() {
 
     c.on('message_create', async (msg) => {
       try {
+        // Ignore WA status updates, broadcasts, channels/newsletters, and system notifications
+        if (
+          msg.isStatus ||
+          msg.from === 'status@broadcast' ||
+          msg.to === 'status@broadcast' ||
+          msg.from?.endsWith('@broadcast') ||
+          msg.from?.endsWith('@newsletter') ||
+          ['e2e_notification', 'call_log', 'gp2', 'notification_template', 'protocol', 'revoked'].includes(msg.type)
+        ) {
+          return;
+        }
+
         let body = msg.body?.trim() || '';
         const senderJid = msg.author || msg.from || '';
         const isAdmin = senderJid.split('@')[0].replace(/^\+/, '').trim() === ADMIN_RAW;
@@ -538,8 +550,11 @@ async function main() {
           }
         }
 
+        // Stop processing bot's own outgoing messages beyond this point
+        if (msg.fromMe) return;
+
         // ── Welcome new users (DM only, only when AI is off) ──
-        if (!msg.fromMe && !msg.from?.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
+        if (!msg.from?.includes('@g.us') && !WELCOMED_USERS.has(senderJid) && !settings.aiMode) {
           await sendWelcomeIfNew(c, msg);
           return;
         }
@@ -581,7 +596,7 @@ async function main() {
         // ── CS Handover start — berlaku di SEMUA mode AI (khusus DM / chat pribadi) ──
         // "4"/"cs" tidak boleh jatuh ke AI: filter gibberish menelannya
         // (1 karakter → SKIP/null → bot diam) sehingga jalur CS resmi mati.
-        if (!isGroup && !msg.fromMe && ADMIN_JID && (body === '4' || lower === 'cs')) {
+        if (!isGroup && ADMIN_JID && (body === '4' || lower === 'cs')) {
           cancelBuffer(senderJid);
           cancelBuffer(msg.from);
           await startHandover(c, msg, ADMIN_JID);
@@ -589,7 +604,7 @@ async function main() {
         }
 
         // Active CS session works regardless of AI mode (DM only)
-        if (!isGroup && !msg.fromMe && isHandoverActive(msg.from) && ADMIN_JID) {
+        if (!isGroup && isHandoverActive(msg.from) && ADMIN_JID) {
           cancelBuffer(senderJid);
           cancelBuffer(msg.from);
           if (lower === 'selesai' || lower === 'stop') {
@@ -600,7 +615,6 @@ async function main() {
           }
           try {
             await forwardToAdmin(c, msg.from, body, ADMIN_JID, msg);
-            await msg.reply('Pesan diteruskan ke admin.');
           } catch (e) {
             // Jangan kirim pesan error ke user — coba ulang sekali diam-diam.
             logger.error('Forward', 'Gagal forward ke admin:', e.message);
@@ -613,8 +627,6 @@ async function main() {
 
         // ── Group / self filters ──
         const aiOn = settings.aiMode > 0;
-
-        if (msg.fromMe) return;
 
         // Track burst per-group (E5)
         if (isGroup) {
