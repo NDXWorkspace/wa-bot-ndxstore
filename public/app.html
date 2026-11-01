@@ -891,6 +891,9 @@ $('btnGetPairingCode').onclick = async () => {
     pollStatus();
   } catch (e) {
     showToast(e.message, false);
+    if (String(e.message || '').includes('429') || String(e.message || '').includes('Scan QR Code')) {
+      setLoginMethod('qr');
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = '⚡ Dapatkan Kode Pairing WA';
@@ -958,6 +961,9 @@ $('btnSaveAiConfig').onclick = async () => {
     pollStatus();
   } catch (e) {
     showToast(e.message, false);
+    if (String(e.message || '').includes('429') || String(e.message || '').includes('Scan QR Code')) {
+      setLoginMethod('qr');
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = '💾 Simpan Konfigurasi AI';

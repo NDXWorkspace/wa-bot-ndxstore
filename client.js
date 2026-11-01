@@ -237,6 +237,10 @@ function cleanupLockfiles() {
         execSync('pkill -f "chrome.*wa-session" 2>/dev/null; pkill -f "chromium.*wa-session" 2>/dev/null');
       } catch {}
     }
+  } else if (process.platform === 'win32') {
+    try {
+      execSync('powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq \'chrome.exe\' -and $_.CommandLine -like \'*wa-session*\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" 2>$null', { stdio: 'ignore' });
+    } catch {}
   }
 
   const files = ['lockfile', 'SingletonLock', 'SingletonSocket', 'DevToolsActivePort'];
@@ -329,11 +333,11 @@ async function createClientCore() {
 
   const sessionPath = path.resolve('./wa-session/session');
   const hasSession = fs.existsSync(sessionPath);
-  const activePairNum = runtimePairingNumber || config.pairingNumber || '';
-  logger.info('WA', hasSession ? 'Session tersimpan — auth otomatis'
-    : activePairNum ? `Login via kode pairing untuk ${activePairNum}`
-    : 'Scan QR code untuk login pertama');
+  logger.info('WA', hasSession ? 'Session tersimpan — auth otomatis' : 'Menyiapkan WhatsApp Web (QR & Pairing siap dalam ±3 detik)');
 
+  // Selalu inisialisasi Client tanpa pairWithPhoneNumber di constructor agar
+  // whatsapp-web.js tidak memanggil requestPairingCode tanpa try/catch saat startup
+  // (yang menyebabkan unhandled CompanionHelloError/429 dan membatalkan QR).
   const c = new Client({
     authStrategy: new LocalAuth({ dataPath: './wa-session' }),
     puppeteer: puppeteerConfig,
@@ -341,11 +345,6 @@ async function createClientCore() {
     qrMaxRetries: 0,
     takeoverOnConflict: true,
     takeoverTimeoutMs: 5000,
-    // Pairing-code login: kalau nomor pairing aktif, WA Web memakai kode
-    // 8 karakter (event 'code') sebagai pengganti QR. Tanpa ini → QR biasa.
-    ...(activePairNum
-      ? { pairWithPhoneNumber: { phoneNumber: activePairNum, showNotification: true } }
-      : {}),
   });
 
   connectionState = 'connecting';
@@ -661,60 +660,73 @@ export async function requestDynamicPairingCode(rawPhone) {
       latestPairingCode = null;
       latestPairingCodeTs = 0;
 
-      // Jika belum terkoneksi ke akun lain, tunggu page aktif (jangan bunuh Chrome yang sedang loading!)
-      if (!alreadyConnected && c) {
+      // Jika belum terkoneksi ke akun lain, gunakan page aktif (jangan bunuh Chrome!)
+      if (alreadyConnected) {
+        await restartClientFresh(true);
+        c = getCurrentClient();
+      }
+
+      if (c) {
         const waitPageStart = Date.now();
-        while ((!c.pupPage || c.pupPage.isClosed()) && Date.now() - waitPageStart < 15000) {
-          await new Promise(r => setTimeout(r, 400));
+        while ((!c.pupPage || c.pupPage.isClosed()) && Date.now() - waitPageStart < 20000) {
+          await new Promise(r => setTimeout(r, 300));
           c = getCurrentClient();
           if (!c) break;
         }
         if (c?.pupPage && !c.pupPage.isClosed()) {
-          try {
-            logger.info('WA', `Menyiapkan kode pairing cepat untuk ${cleanPhone}...`);
-            // Tunggu AuthStore siap di page yang sudah terbuka (maks 18 detik)
-            await c.pupPage.waitForFunction(
-              () => Boolean(window.AuthStore && window.AuthStore.PairingCodeLinkUtils),
-              { timeout: 18000, polling: 300 },
-            );
-            let directTimer;
-            const directCode = await Promise.race([
-              c.requestPairingCode(cleanPhone, true, 180000),
-              new Promise((_, rej) => {
-                directTimer = setTimeout(() => rej(new Error('direct pairing timeout')), 12000);
-              }),
-            ]).finally(() => clearTimeout(directTimer));
-
-            if (directCode && typeof directCode === 'string' && directCode.length >= 6) {
-              latestPairingCode = directCode;
-              latestPairingCodeTs = Date.now();
-              lastLoginEventTs = Date.now();
-              logger.info('WA', `Kode pairing berhasil dibuat untuk ${cleanPhone}: ${directCode}`);
-              return { code: directCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
+          logger.info('WA', `Meminta kode pairing untuk ${cleanPhone}...`);
+          await c.pupPage.waitForFunction(
+            () => Boolean(window.AuthStore && window.AuthStore.PairingCodeLinkUtils),
+            { timeout: 25000, polling: 250 },
+          );
+          const evalRes = await c.pupPage.evaluate(async (phone) => {
+            try {
+              if (window.codeInterval) {
+                clearInterval(window.codeInterval);
+                window.codeInterval = null;
+              }
+              const api = window.AuthStore.PairingCodeLinkUtils;
+              api.setPairingType('ALT_DEVICE_LINKING');
+              await api.initializeAltDeviceLinking();
+              const code = await api.startAltLinkingFlow(phone, true);
+              return { ok: true, code };
+            } catch (err) {
+              const raw = JSON.stringify(err || {});
+              const isRateLimit = raw.includes('429') || raw.includes('rate-overlimit') || raw.includes('IQErrorRateOverlimit');
+              return {
+                ok: false,
+                rateLimited: isRateLimit,
+                error: isRateLimit
+                  ? 'Nomor ini baru saja terlalu sering meminta Kode Pairing (batas keamanan WhatsApp 429). Silakan gunakan tab Scan QR Code (sudah siap) atau tunggu ±15 menit.'
+                  : (err?.message || err?.name || 'Gagal meminta kode pairing dari WhatsApp'),
+              };
             }
-          } catch (e) {
-            logger.info('WA', `Direct requestPairingCode fallback (${e.message}), re-init dengan pairWithPhoneNumber...`);
+          }, cleanPhone);
+
+          if (evalRes?.ok && evalRes.code && String(evalRes.code).length >= 6) {
+            latestPairingCode = String(evalRes.code);
+            latestPairingCodeTs = Date.now();
+            lastLoginEventTs = Date.now();
+            logger.info('WA', `Kode pairing berhasil dibuat untuk ${cleanPhone}: ${latestPairingCode}`);
+            return { code: latestPairingCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
+          }
+
+          if (evalRes && !evalRes.ok) {
+            logger.warn('WA', `Pairing code ditolak WA untuk ${cleanPhone}: ${evalRes.error}`);
+            const err = new Error(evalRes.error);
+            err.rateLimited = Boolean(evalRes.rateLimited);
+            err.qr = latestQr || null;
+            throw err;
           }
         }
-      }
-
-      // Hanya restart client jika sebelumnya sudah login ke akun lain atau page belum siap
-      await restartClientFresh(alreadyConnected);
-
-      // Tunggu sampai event 'code' muncul (maks 25 detik)
-      const startWait = Date.now();
-      while (Date.now() - startWait < 25000) {
-        if (latestPairingCode) {
-          return { code: latestPairingCode, phoneNumber: cleanPhone, generatedAt: latestPairingCodeTs };
-        }
-        await new Promise(r => setTimeout(r, 400));
       }
 
       return {
         code: latestPairingCode || null,
         phoneNumber: cleanPhone,
         pending: !latestPairingCode,
-        message: 'Sedang menyiapkan sesi WhatsApp, kode pairing akan muncul dalam beberapa detik.',
+        qr: latestQr || null,
+        message: 'Sedang menyiapkan sesi WhatsApp, coba klik lagi dalam 3 detik.',
       };
     } finally {
       pairingLock = null;
