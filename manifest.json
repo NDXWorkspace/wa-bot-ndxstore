@@ -1,0 +1,18 @@
+{
+  "name": "WA AI Controller — Custom WhatsApp AI",
+  "short_name": "WA AI Bot",
+  "description": "Aplikasi kontrol & pairing WhatsApp AI otomatis lewat internet tanpa Termux",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#0b111e",
+  "theme_color": "#10b981",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

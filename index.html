@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b111e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>WA AI Bot — Kontrol &amp; Pairing WhatsApp AI</title>
+<style>
+  :root {
+    --bg: #0b111e;
+    --surface: #131c2e;
+    --surface2: #1b2740;
+    --border: #263554;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --primary: #10b981;
+    --primary-dark: #059669;
+    --accent: #3b82f6;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    padding-bottom: 88px;
+    min-height: 100vh;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(11, 17, 30, 0.88);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #059669, #10b981);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  }
+  .brand-title { font-size: 16px; font-weight: 700; line-height: 1.2; }
+  .brand-sub { font-size: 11px; color: var(--muted); }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .dot.on { background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+  .dot.warn { background: var(--warn); }
+  .dot.off { background: var(--danger); }
+
+  .container {
+    max-width: 540px;
+    margin: 0 auto;
+    padding: 14px;
+  }
+  .tab-page { display: none; animation: fadeIn 0.18s ease; }
+  .tab-page.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-desc {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin: 0 0 14px;
+    line-height: 1.45;
+  }
+
+  label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #cbd5e1;
+    margin: 12px 0 6px;
+  }
+  input, select, textarea {
+    width: 100%;
+    background: #090e19;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 12px 13px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--primary);
+  }
+  textarea { min-height: 96px; resize: vertical; line-height: 1.45; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    border: none;
+    border-radius: 12px;
+    padding: 13px 16px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.15s, background 0.15s;
+    color: #fff;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn-primary {
+    background: linear-gradient(135deg, #059669, #10b981);
+    border: none;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.28);
+  }
+  .btn-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+  }
+  .btn-sm {
+    width: auto;
+    padding: 7px 12px;
+    font-size: 12px;
+    border-radius: 9px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  .code-box {
+    background: #070b14;
+    border: 2px dashed var(--primary);
+    border-radius: 14px;
+    padding: 18px 12px;
+    text-align: center;
+    margin: 14px 0;
+  }
+  .code-digits {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: 5px;
+    color: #34d399;
+    margin: 4px 0 10px;
+    user-select: all;
+  }
+  .steps {
+    background: rgba(16, 185, 129, 0.07);
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #d1fae5;
+    margin-top: 10px;
+  }
+  .steps ol { margin: 4px 0 0; padding-left: 18px; }
+
+  .switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 0;
+    border-bottom: 1px solid rgba(38, 53, 84, 0.55);
+  }
+  .switch-row:last-child { border-bottom: none; }
+  .switch-info { flex: 1; padding-right: 12px; }
+  .switch-title { font-size: 14px; font-weight: 600; }
+  .switch-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .toggle {
+    position: relative;
+    width: 50px;
+    height: 28px;
+    background: #1e293b;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle.on { background: var(--primary); border-color: var(--primary); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+  .toggle.on::after { transform: translateX(22px); }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: #cbd5e1;
+    font-size: 11.5px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .chip.active {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: var(--primary);
+    color: #34d399;
+    font-weight: 600;
+  }
+
+  .chat-box {
+    background: #080d18;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    height: 290px;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .bubble {
+    max-width: 82%;
+    padding: 10px 13px;
+    border-radius: 14px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    word-wrap: break-word;
+  }
+  .bubble.user {
+    align-self: flex-end;
+    background: #059669;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble.bot {
+    align-self: flex-start;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    background: rgba(13, 20, 36, 0.95);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .nav-item {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 4px;
+    cursor: pointer;
+    border-radius: 10px;
+  }
+  .nav-item.active { color: var(--primary); }
+  .nav-icon { font-size: 19px; line-height: 1; }
+
+  .toast {
+    position: fixed;
+    bottom: 82px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #1e293b;
+    color: #fff;
+    border: 1px solid var(--border);
+    padding: 10px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s;
+    z-index: 60;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.ok { border-color: var(--primary); color: #6ee7b7; }
+  .toast.err { border-color: var(--danger); color: #fca5a5; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-icon">AI</div>
+    <div>
+      <div class="brand-title">WA AI Controller</div>
+      <div class="brand-sub" id="topServerLabel">Terhubung via Internet</div>
+    </div>
+  </div>
+  <div class="pill" id="waStatusPill">
+    <span class="dot warn" id="waDot"></span>
+    <span id="waStatusText">Memuat...</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- TAB 1: SAMBUNGKAN WA (PAIRING / QR) -->
+  <div class="tab-page active" id="tab-connect">
+
+    <!-- Status Card -->
+    <div class="card" id="connectedCard" style="display:none; border-color: rgba(16,185,129,0.45);">
+      <div class="card-title">
+        <span>✅ WhatsApp Aktif &amp; Terhubung</span>
+        <span class="pill" style="background:rgba(16,185,129,0.15);color:#34d399;border-color:rgba(16,185,129,0.3)">AI ON</span>
+      </div>
+      <p class="card-desc" id="connectedInfo" style="margin-bottom:12px">Nomor WA Anda sudah terhubung dan AI otomatis membalas pesan masuk.</p>
+      <div class="row">
+        <button class="btn btn-primary" style="flex:1" onclick="switchTab('ai')">⚙️ Atur Karakter AI</button>
+        <button class="btn btn-danger" style="flex:1" id="btnLogoutWa">Putuskan / Ganti WA</button>
+      </div>
+    </div>
+
+    <!-- Pairing Card -->
+    <div class="card" id="pairCard">
+      <div class="card-title">
+        <span>📱 Sambungkan WhatsApp</span>
+      </div>
+      <p class="card-desc">
+        Tanpa Termux &amp; tanpa ribet. Cukup masukkan nomor WhatsApp Anda, dapatkan <b>8 digit Kode Pairing</b>, lalu tautkan di aplikasi WhatsApp Anda. Begitu tersambung, AI otomatis langsung hidup!
+      </p>
+
+      <div class="chips" style="margin-bottom:10px">
+        <button class="chip active" id="modePairBtn" onclick="setLoginMethod('pair')">🔢 Pakai Kode Pairing (1 HP)</button>
+        <button class="chip" id="modeQrBtn" onclick="setLoginMethod('qr')">📷 Scan QR Code (2 HP)</button>
+      </div>
+
+      <!-- Mode Kode Pairing -->
+      <div id="pairMethodBox">
+        <label>Nomor WhatsApp Anda</label>
+        <input type="tel" id="pairPhoneInput" placeholder="Contoh: 081234567890 atau 6281234567890" autocomplete="tel">
+        <div style="margin-top:12px">
+          <button class="btn btn-primary" id="btnGetPairingCode">⚡ Dapatkan Kode Pairing WA</button>
+        </div>
+
+        <div id="pairingResultBox" style="display:none">
+          <div class="code-box">
+            <div style="font-size:12px;color:var(--muted)">KODE PAIRING WHATSAPP ANDA</div>
+            <div class="code-digits" id="pairingCodeText">---- ----</div>
+            <button class="btn btn-sm" id="btnCopyCode" style="margin:0 auto">📋 Salin Kode</button>
+          </div>
+          <div class="steps">
+            <b>Cara Memasukkan Kode di WhatsApp:</b>
+            <ol>
+              <li>Buka aplikasi <b>WhatsApp</b> di HP Anda.</li>
+              <li>Ketuk titik tiga di pojok kanan atas → pilih <b>Perangkat Tertaut</b>.</li>
+              <li>Ketuk <b>Tautkan Perangkat</b> → pilih <b>Tautkan dengan nomor telepon saja</b> di bagian bawah.</li>
+              <li>Masukkan 8 digit kode di atas. AI otomatis langsung aktif!</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode Scan QR -->
+      <div id="qrMethodBox" style="display:none; text-align:center; padding-top:8px">
+        <p class="card-desc">Buka WhatsApp → <b>Perangkat Tertaut</b> → <b>Tautkan Perangkat</b> lalu arahkan kamera ke QR di bawah ini:</p>
+        <div id="qrImageWrap" style="background:#fff; padding:14px; border-radius:14px; display:inline-block; min-width:240px; min-height:240px;">
+          <div style="color:#0f172a; padding:80px 16px; font-size:13px">⏳ Memuat QR Code...</div>
+        </div>
+        <div style="margin-top:12px">
+          <button class="btn" id="btnRefreshQr">🔄 Muat Ulang QR Code</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Status Summary -->
+    <div class="card">
+      <div class="card-title"><span>🤖 Status Sistem AI</span></div>
+      <div class="switch-row">
+        <div class="switch-info">
+          <div class="switch-title">Auto-Reply AI di WhatsApp</div>
+          <div class="switch-sub" id="quickAiDesc">Otomatis aktif menjawab pesan yang masuk ke WA</div>
+        </div>
+        <div class="toggle on" id="quickAiToggle"></div>
+      </div>
+      <div style="font-size:12.5px; color:var(--muted); margin-top:10px; display:flex; justify-content:space-between;">
+        <span>Nama AI: <b style="color:var(--text)" id="quickAiName">Asisten AI</b></span>
+        <span>Gaya: <b style="color:var(--primary)" id="quickAiStyle">Santai</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: KONFIGURASI CUSTOM AI -->
+  <div class="tab-page" id="tab-ai">
+    <div class="card">
+      <div class="card-title">
+        <span>✨ Kustomisasi AI Anda</span>
+      </div>
+      <p class="card-desc">
+        Atur sendiri nama, gaya bahasa, dan instruksi AI sesuai keinginan Anda (untuk asisten pribadi, teman ngobrol, maupun admin toko/bisnis Anda sendiri).
+      </p>
+
+      <div class="switch-row">
+        <div class="switch-info">
+          <div class="switch-title">Aktifkan AI di WhatsApp</div>
+          <div class="switch-sub">Jika nyala, AI otomatis membalas pesan WA yang masuk</div>
+        </div>
+        <div class="toggle on" id="cfgAiEnabled"></div>
+      </div>
+
+      <label>Nama AI / Panggilan Karakter</label>
+      <input type="text" id="cfgAiName" placeholder="Contoh: Raka, Sinta, Asisten Toko, dll.">
+
+      <label>Gaya Bicara AI</label>
+      <select id="cfgAiStyle">
+        <option value="santai">😎 Santai &amp; Akrab (Gaya chat WA sehari-hari)</option>
+        <option value="ramah">😊 Ramah &amp; Sopan (Hangat, cocok untuk pelanggan/umum)</option>
+        <option value="profesional">💼 Profesional &amp; Formal (Rapi, jelas, to the point)</option>
+        <option value="custom">🎨 Bebas (Ikuti 100% instruksi di bawah)</option>
+      </select>
+
+      <label>Instruksi Karakter / Prompt Utama AI</label>
+      <div class="chips" style="margin-bottom:8px">
+        <span style="font-size:11px;color:var(--muted);align-self:center">Contoh Cepat:</span>
+        <button type="button" class="chip" onclick="applyTemplate('friend')">👋 Teman Chat Santai</button>
+        <button type="button" class="chip" onclick="applyTemplate('store')">🛍️ CS Toko / Olshop</button>
+        <button type="button" class="chip" onclick="applyTemplate('assistant')">📌 Asisten Pribadi</button>
+      </div>
+      <textarea id="cfgCustomPrompt" placeholder="Tulis siapa AI ini dan bagaimana ia harus menjawab pesan..."></textarea>
+
+      <label>Info Produk / Pengetahuan Tambahan (Opsional)</label>
+      <textarea id="cfgCustomKnowledge" placeholder="Opsional: Tulis daftar harga produk, jam buka, cara order, FAQ, alamat, atau catatan penting yang perlu diketahui AI..." style="min-height:84px"></textarea>
+
+      <label>Pengaturan Balasan Grup &amp; Chat Pribadi</label>
+      <div class="switch-row">
+        <div class="switch-info">
+          <div class="switch-title">Balas Chat Pribadi (DM)</div>
+          <div class="switch-sub">AI otomatis menjawab pesan pribadi yang masuk</div>
+        </div>
+        <div class="toggle on" id="cfgReplyPrivate"></div>
+      </div>
+
+      <label>Respon AI di Dalam Grup WA</label>
+      <select id="cfgReplyGroup">
+        <option value="mention">Hanya Saat Di-mention (@) atau Di-reply</option>
+        <option value="all">Balas Semua Pesan di Grup</option>
+        <option value="off">Nonaktifkan AI di Grup (Hanya Chat Pribadi)</option>
+      </select>
+
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" id="btnSaveAiConfig">💾 Simpan Konfigurasi AI</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: UJI COBA CHAT AI & KIRIM PESAN -->
+  <div class="tab-page" id="tab-test">
+    <div class="card">
+      <div class="card-title">
+        <span>💬 Uji Coba Chat AI</span>
+        <button class="btn btn-sm" id="btnResetSim">Bersihkan</button>
+      </div>
+      <p class="card-desc">Coba ajak ngobrol AI Anda di sini untuk mengetes hasil konfigurasi sebelum/sambil dipakai di WhatsApp.</p>
+
+      <div class="chat-box" id="simChatBox">
+        <div class="bubble bot">Halo! Silakan ketik pesan di bawah buat ngetes gaya balasan AI kamu 👋</div>
+      </div>
+
+      <div class="row">
+        <input type="text" id="simInput" placeholder="Ketik pesan tes di sini..." style="flex:1">
+        <button class="btn btn-primary" id="btnSendSim" style="width:auto;padding:12px 18px">Kirim</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>📤 Kirim Pesan WA Langsung</span></div>
+      <p class="card-desc">Kirim pesan ke nomor WhatsApp mana pun melalui akun WA yang sedang tersambung.</p>
+      <label>Nomor Tujuan (08xxx / 628xxx)</label>
+      <input type="tel" id="waSendTo" placeholder="081234567890">
+      <label>Isi Pesan</label>
+      <textarea id="waSendText" placeholder="Tulis pesan..." style="min-height:70px"></textarea>
+      <div style="margin-top:10px">
+        <button class="btn btn-primary" id="btnSendWaMsg">Kirim ke WhatsApp</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: SERVER INTERNET & KEAMANAN -->
+  <div class="tab-page" id="tab-server">
+    <div class="card">
+      <div class="card-title">
+        <span>🌐 Server Cloud Gratis (Auto-Connect)</span>
+        <span class="badge">100% Gratis</span>
+      </div>
+      <p class="card-desc">
+        Aplikasi ini otomatis tersambung ke <b>Server Cloud Gratis 24/7</b> tanpa perlu kartu kredit, tanpa Render, dan tanpa local/Termux.
+      </p>
+      <div style="margin-bottom:12px">
+        <button type="button" class="btn btn-primary" id="btnAutoSyncCloud">🔄 Hubungkan Otomatis ke Server Cloud Gratis</button>
+      </div>
+      <label>URL Server Cloud Aktif (Otomatis Terisi)</label>
+      <input type="url" id="srvUrlInput" placeholder="Otomatis mencari server cloud...">
+      <label>Token Keamanan Admin (Opsional, kosongkan jika tidak dipakai)</label>
+      <input type="password" id="srvTokenInput" placeholder="Opsional">
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="btnSaveServer" style="flex:1">Simpan URL Manual</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>🔑 API Key AI Cepat (Opsional)</span>
+        <span class="badge" id="aiProviderBadge">AI Bawaan Aktif</span>
+      </div>
+      <p class="card-desc">
+        AI gratis bawaan sudah langsung aktif otomatis! Isi salah satu API key di bawah jika ingin performa AI lebih cepat (Groq / Gemini / OpenRouter).
+      </p>
+      <label>Groq API Key (Opsional - gsk_...)</label>
+      <input type="password" id="cfgGroqKey" placeholder="Biarkan kosong jika tidak diubah">
+      <label>Google Gemini API Key (Opsional - AIza...)</label>
+      <input type="password" id="cfgGeminiKey" placeholder="Biarkan kosong jika tidak diubah">
+      <label>OpenRouter API Key (Opsional - sk-or-...)</label>
+      <input type="password" id="cfgOpenrouterKey" placeholder="Biarkan kosong jika tidak diubah">
+      <div style="margin-top:12px">
+        <button class="btn btn-primary" id="btnSaveAiKeys">Simpan API Key ke Server</button>
+      </div>
+    </div>
+
+    <div class="card" id="downloadApkCard">
+      <div class="card-title"><span>📲 Download Aplikasi APK Android</span></div>
+      <p class="card-desc">Unduh dan install file APK resmi untuk mengontrol WhatsApp AI &amp; melakukan pairing langsung dari HP Android Anda.</p>
+      <a href="/apk" target="_blank" style="text-decoration:none">
+        <button type="button" class="btn btn-primary">⬇️ Download WA-AI-Bot.apk</button>
+      </a>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>🚫 Blokir Nomor WA (Abaikan AI)</span></div>
+      <p class="card-desc">Nomor yang diblokir di sini tidak akan dijawab oleh AI.</p>
+      <div class="row">
+        <input type="tel" id="blockPhoneInput" placeholder="0812xxxx / 628xxxx" style="flex:1">
+        <button class="btn" id="btnAddBlock" style="width:auto">Blokir</button>
+      </div>
+      <div id="blockedListContainer" style="margin-top:12px;font-size:13px;color:var(--muted)">Memuat...</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom Navigation -->
+<div class="bottom-nav">
+  <button class="nav-item active" data-tab="connect" onclick="switchTab('connect')">
+    <span class="nav-icon">📱</span>
+    <span>Sambung WA</span>
+  </button>
+  <button class="nav-item" data-tab="ai" onclick="switchTab('ai')">
+    <span class="nav-icon">✨</span>
+    <span>Custom AI</span>
+  </button>
+  <button class="nav-item" data-tab="test" onclick="switchTab('test')">
+    <span class="nav-icon">💬</span>
+    <span>Uji Coba</span>
+  </button>
+  <button class="nav-item" data-tab="server" onclick="switchTab('server')">
+    <span class="nav-icon">🌐</span>
+    <span>Server</span>
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Deteksi otomatis base URL server (mendukung Cloud Tunnel langsung, GitHub Pages, maupun APK file://)
+function getDefaultServerUrl() {
+  const saved = localStorage.getItem('wa_ai_server_url');
+  if (saved && !saved.includes('wa-bot-ndxstore.onrender.com')) {
+    return saved.replace(/\/+$/, '');
+  }
+  if ((location.protocol === 'http:' || location.protocol === 'https:') && !location.hostname.endsWith('github.io')) {
+    return location.origin;
+  }
+  return '';
+}
+
+let SERVER_URL = getDefaultServerUrl();
+let ADMIN_TOKEN = localStorage.getItem('wa_ai_admin_token') || localStorage.getItem('ndx_token') || '';
+let loginMethod = 'pair';
+let formLoadedOnce = false;
+let discoveringCloud = false;
+
+async function autoDiscoverCloudServer(forceToast = false) {
+  if (discoveringCloud) return null;
+  discoveringCloud = true;
+  try {
+    const ts = Date.now();
+    const sources = [
+      {
+        url: `https://api.github.com/repos/NDXWorkspace/wa-bot-ndxstore/contents/server.json?ref=cloud-state&t=${ts}`,
+        headers: { Accept: 'application/vnd.github.v3.raw' },
+      },
+      {
+        url: `https://raw.githubusercontent.com/NDXWorkspace/wa-bot-ndxstore/cloud-state/server.json?t=${ts}`,
+        headers: {},
+      },
+    ];
+    for (const src of sources) {
+      try {
+        const res = await fetch(src.url, { headers: src.headers, cache: 'no-store' });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data?.url && data.url.startsWith('https://')) {
+          const clean = data.url.replace(/\/+$/, '');
+          SERVER_URL = clean;
+          localStorage.setItem('wa_ai_server_url', clean);
+          if ($('srvUrlInput')) $('srvUrlInput').value = clean;
+          if ($('topServerLabel')) $('topServerLabel').textContent = 'Cloud Gratis Aktif';
+          if (forceToast) showToast('✅ Terhubung ke Server Cloud Gratis!');
+          return clean;
+        }
+      } catch {}
+    }
+  } finally {
+    discoveringCloud = false;
+  }
+  if (forceToast) showToast('Sedang menyiapkan Server Cloud Gratis, tunggu beberapa detik...', false);
+  return null;
+}
+
+function showToast(msg, ok = true) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (ok ? 'ok' : 'err');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => { t.className = 'toast'; }, 3200);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  const target = $('tab-' + name);
+  if (target) target.classList.add('active');
+}
+
+function setLoginMethod(m) {
+  loginMethod = m;
+  $('modePairBtn').classList.toggle('active', m === 'pair');
+  $('modeQrBtn').classList.toggle('active', m === 'qr');
+  $('pairMethodBox').style.display = m === 'pair' ? 'block' : 'none';
+  $('qrMethodBox').style.display = m === 'qr' ? 'block' : 'none';
+  if (m === 'qr') triggerQrMode();
+}
+
+async function api(path, opts = {}) {
+  if (!SERVER_URL) {
+    switchTab('server');
+    throw new Error('Isi URL Server Bot terlebih dahulu di tab Server');
+  }
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (ADMIN_TOKEN) headers['x-admin-token'] = ADMIN_TOKEN;
+  const res = await fetch(SERVER_URL + path, Object.assign({}, opts, { headers }));
+  if (res.status === 401) {
+    switchTab('server');
+    throw new Error('Server membutuhkan Token Admin (isi di tab Server)');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+function setToggle(el, on) {
+  if (!el) return;
+  el.classList.toggle('on', Boolean(on));
+}
+function getToggle(el) {
+  return Boolean(el && el.classList.contains('on'));
+}
+
+['quickAiToggle', 'cfgAiEnabled', 'cfgReplyPrivate'].forEach(id => {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener('click', async () => {
+    const next = !getToggle(el);
+    setToggle(el, next);
+    if (id === 'quickAiToggle') {
+      setToggle($('cfgAiEnabled'), next);
+      try {
+        await api('/api/settings', { method: 'POST', body: JSON.stringify({ aiMode: next ? 3 : 0 }) });
+        showToast(next ? 'AI WhatsApp Diaktifkan!' : 'AI WhatsApp Dinonaktifkan');
+        pollStatus();
+      } catch (e) { showToast(e.message, false); }
+    } else if (id === 'cfgAiEnabled') {
+      setToggle($('quickAiToggle'), next);
+    }
+  });
+});
+
+function applyTemplate(type) {
+  if (type === 'friend') {
+    $('cfgAiName').value = 'Raka';
+    $('cfgAiStyle').value = 'santai';
+    $('cfgCustomPrompt').value = 'Kamu adalah Raka, teman ngobrol di WhatsApp yang asik, santai, gaul, dan humoris. Balas chat dengan singkat dan natural seperti manusia asli (1-2 kalimat), jangan kaku.';
+  } else if (type === 'store') {
+    $('cfgAiName').value = 'CS Admin';
+    $('cfgAiStyle').value = 'ramah';
+    $('cfgCustomPrompt').value = 'Kamu adalah Customer Service toko online yang ramah, sopan, dan sigap membantu pelanggan. Sapa pelanggan dengan sebutan "kak", jawab pertanyaan produk dengan jelas, dan arahkan cara pemesanan dengan sopan.';
+  } else if (type === 'assistant') {
+    $('cfgAiName').value = 'Asisten Pribadi';
+    $('cfgAiStyle').value = 'profesional';
+    $('cfgCustomPrompt').value = 'Kamu adalah asisten pribadi yang cerdas, sopan, dan membantu menjawab pesan WhatsApp yang masuk dengan jelas, ringkas, dan solutif.';
+  }
+  showToast('Template diterapkan! Silakan sesuaikan lalu klik Simpan.');
+}
+
+function renderLoginBox(login) {
+  if (!login) return;
+  if (login.connected) {
+    $('connectedCard').style.display = 'block';
+    $('pairCard').style.display = 'none';
+    const numLabel = login.waNumber ? `+${login.waNumber}` : 'Akun Anda';
+    if (login.syncing) {
+      $('connectedInfo').innerHTML = `✅ Perangkat WhatsApp berhasil tertaut (<b>${numLabel}</b>)!<br>🔄 Sedang menyinkronkan obrolan WhatsApp (±3 detik)...`;
+    } else {
+      $('connectedInfo').innerHTML = `✅ Terhubung penuh ke nomor WhatsApp: <b>${numLabel}</b>${login.waName ? ' (' + login.waName + ')' : ''}.<br>Semua pesan masuk otomatis dijawab oleh AI sesuai konfigurasi Anda.`;
+    }
+    $('waDot').className = 'dot on';
+    $('waStatusText').textContent = login.waNumber ? ('WA Aktif: +' + login.waNumber) : 'WA Terhubung';
+    return;
+  }
+
+  $('connectedCard').style.display = 'none';
+  $('pairCard').style.display = 'block';
+  $('waDot').className = 'dot warn';
+  if (typeof login.loadingPercent === 'number' && login.loadingPercent > 0 && login.loadingPercent < 100) {
+    $('waStatusText').textContent = `Sinkron WA (${login.loadingPercent}%)`;
+  } else if (login.pairingCode || login.qr) {
+    $('waStatusText').textContent = 'Siap Ditautkan';
+  } else {
+    $('waStatusText').textContent = 'WA Belum Ditautkan';
+  }
+
+  if (login.pairingCode) {
+    const pretty = String(login.pairingCode).replace(/(.{4})(.{4})/, '$1-$2');
+    $('pairingResultBox').style.display = 'block';
+    $('pairingCodeText').textContent = pretty;
+  }
+
+  if (login.qr && loginMethod === 'qr') {
+    const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=' + encodeURIComponent(login.qr);
+    $('qrImageWrap').innerHTML = `<img src="${qrUrl}" alt="QR WhatsApp" style="width:240px;height:240px;display:block">`;
+  }
+}
+
+async function pollStatus() {
+  if (!SERVER_URL) {
+    $('topServerLabel').textContent = 'Mencari Server Cloud Gratis...';
+    const found = await autoDiscoverCloudServer(false);
+    if (!found) {
+      $('waDot').className = 'dot warn';
+      $('waStatusText').textContent = 'Menghubungkan...';
+      return;
+    }
+  }
+  try {
+    const s = await api('/api/status');
+    $('topServerLabel').textContent = 'Cloud Gratis Online (' + SERVER_URL.replace(/^https?:\/\//, '').slice(0, 22) + ')';
+    renderLoginBox(s.login || { connected: s.wa === 'connected', waNumber: s.waNumber });
+
+    const aiOn = Number(s.aiMode) > 0;
+    setToggle($('quickAiToggle'), aiOn);
+    $('quickAiName').textContent = s.aiName || 'Asisten AI';
+    $('quickAiStyle').textContent = s.aiStyle || 'santai';
+
+    if (s.aiProviders) {
+      const pList = [];
+      if (s.aiProviders.groq) pList.push('Groq');
+      if (s.aiProviders.gemini) pList.push('Gemini');
+      if (s.aiProviders.openrouter) pList.push('OpenRouter');
+      const badge = $('aiProviderBadge');
+      if (badge) {
+        badge.textContent = pList.length ? pList.join(' + ') + ' Aktif' : 'AI Gratis Bawaan Aktif';
+      }
+    }
+
+    if (!formLoadedOnce) {
+      formLoadedOnce = true;
+      setToggle($('cfgAiEnabled'), aiOn);
+      $('cfgAiName').value = s.aiName || 'Asisten AI';
+      $('cfgAiStyle').value = s.aiStyle || 'santai';
+      $('cfgCustomPrompt').value = s.customPrompt || '';
+      $('cfgCustomKnowledge').value = s.customKnowledge || '';
+      setToggle($('cfgReplyPrivate'), s.replyPrivate !== false);
+      $('cfgReplyGroup').value = s.replyGroup || 'mention';
+    }
+  } catch (e) {
+    $('waDot').className = 'dot warn';
+    $('waStatusText').textContent = 'Menyambung Cloud...';
+    const prev = SERVER_URL;
+    const nextUrl = await autoDiscoverCloudServer(false);
+    if (nextUrl && nextUrl !== prev) {
+      try { await pollStatus(); } catch {}
+    }
+  }
+}
+
+$('btnGetPairingCode').onclick = async () => {
+  const phone = $('pairPhoneInput').value.trim();
+  if (!phone) return showToast('Masukkan nomor WhatsApp Anda terlebih dahulu!', false);
+  const btn = $('btnGetPairingCode');
+  btn.disabled = true;
+  btn.textContent = '⏳ Meminta Kode Pairing ke WhatsApp...';
+  try {
+    const r = await api('/api/wa/pair', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber: phone }),
+    });
+    if (r.code) {
+      const pretty = String(r.code).replace(/(.{4})(.{4})/, '$1-$2');
+      $('pairingResultBox').style.display = 'block';
+      $('pairingCodeText').textContent = pretty;
+      showToast('Kode Pairing berhasil dibuat!');
+    } else {
+      $('pairingResultBox').style.display = 'block';
+      $('pairingCodeText').textContent = 'MENYIAPKAN...';
+      showToast(r.message || 'Menyiapkan kode pairing, tunggu beberapa detik...');
+    }
+    pollStatus();
+  } catch (e) {
+    showToast(e.message, false);
+    if (String(e.message || '').includes('429') || String(e.message || '').includes('Scan QR Code')) {
+      setLoginMethod('qr');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ Dapatkan Kode Pairing WA';
+  }
+};
+
+$('btnCopyCode').onclick = async () => {
+  const raw = ($('pairingCodeText').textContent || '').replace(/[^A-Z0-9]/gi, '');
+  if (!raw || raw === 'MENYIAPKAN') return;
+  if (window.AndroidApp && typeof window.AndroidApp.copyText === 'function') {
+    window.AndroidApp.copyText(raw);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(raw);
+    showToast('Kode Pairing disalin: ' + raw);
+  } catch {
+    showToast('Kode: ' + raw);
+  }
+};
+
+async function triggerQrMode() {
+  $('qrImageWrap').innerHTML = `<div style="color:#0f172a; padding:80px 16px; font-size:13px">⏳ Menyiapkan QR Code...</div>`;
+  try {
+    const r = await api('/api/wa/qr', { method: 'POST', body: '{}' });
+    if (r.qr) {
+      const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=' + encodeURIComponent(r.qr);
+      $('qrImageWrap').innerHTML = `<img src="${qrUrl}" alt="QR WhatsApp" style="width:240px;height:240px;display:block">`;
+    }
+  } catch (e) {
+    showToast(e.message, false);
+  }
+}
+$('btnRefreshQr').onclick = triggerQrMode;
+
+$('btnLogoutWa').onclick = async () => {
+  if (!confirm('Putuskan koneksi WhatsApp saat ini untuk mengganti nomor baru?')) return;
+  try {
+    await api('/api/wa/logout', { method: 'POST', body: '{}' });
+    $('pairingResultBox').style.display = 'none';
+    showToast('WhatsApp berhasil diputuskan. Silakan hubungkan nomor baru.');
+    pollStatus();
+  } catch (e) {
+    showToast(e.message, false);
+  }
+};
+
+$('btnSaveAiConfig').onclick = async () => {
+  const btn = $('btnSaveAiConfig');
+  btn.disabled = true;
+  btn.textContent = '⏳ Menyimpan...';
+  try {
+    const payload = {
+      aiMode: getToggle($('cfgAiEnabled')) ? 3 : 0,
+      aiName: $('cfgAiName').value.trim() || 'Asisten AI',
+      aiStyle: $('cfgAiStyle').value,
+      customPrompt: $('cfgCustomPrompt').value.trim(),
+      customKnowledge: $('cfgCustomKnowledge').value.trim(),
+      replyPrivate: getToggle($('cfgReplyPrivate')),
+      replyGroup: $('cfgReplyGroup').value,
+      useStoreData: false,
+    };
+    await api('/api/settings', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('✅ Konfigurasi AI tersimpan & langsung aktif!');
+    pollStatus();
+  } catch (e) {
+    showToast(e.message, false);
+    if (String(e.message || '').includes('429') || String(e.message || '').includes('Scan QR Code')) {
+      setLoginMethod('qr');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 Simpan Konfigurasi AI';
+  }
+};
+
+async function sendSimMessage() {
+  const input = $('simInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  const box = $('simChatBox');
+  const uDiv = document.createElement('div');
+  uDiv.className = 'bubble user';
+  uDiv.textContent = text;
+  box.appendChild(uDiv);
+
+  const bDiv = document.createElement('div');
+  bDiv.className = 'bubble bot';
+  bDiv.textContent = 'Mengetik...';
+  box.appendChild(bDiv);
+  box.scrollTop = box.scrollHeight;
+
+  try {
+    const r = await api('/api/ai/test', { method: 'POST', body: JSON.stringify({ message: text }) });
+    bDiv.textContent = r.reply || '(Tidak ada balasan)';
+  } catch (e) {
+    bDiv.textContent = 'Gagal tes AI: ' + e.message;
+  }
+  box.scrollTop = box.scrollHeight;
+}
+$('btnSendSim').onclick = sendSimMessage;
+$('simInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendSimMessage(); });
+$('btnResetSim').onclick = async () => {
+  $('simChatBox').innerHTML = `<div class="bubble bot">Riwayat simulasi dibersihkan. Silakan kirim pesan tes baru 👋</div>`;
+  try { await api('/api/history/clear', { method: 'POST', body: JSON.stringify({ jid: 'apk-simulator@c.us' }) }); } catch {}
+};
+
+$('btnSendWaMsg').onclick = async () => {
+  const to = $('waSendTo').value.trim();
+  const text = $('waSendText').value.trim();
+  if (!to || !text) return showToast('Isi nomor tujuan dan pesan!', false);
+  try {
+    await api('/api/send', { method: 'POST', body: JSON.stringify({ to, text }) });
+    $('waSendText').value = '';
+    showToast('Pesan terkirim ke ' + to);
+  } catch (e) {
+    showToast(e.message, false);
+  }
+};
+
+$('srvUrlInput').value = SERVER_URL;
+$('srvTokenInput').value = ADMIN_TOKEN;
+if ($('btnAutoSyncCloud')) {
+  $('btnAutoSyncCloud').onclick = async () => {
+    const u = await autoDiscoverCloudServer(true);
+    if (u) {
+      formLoadedOnce = false;
+      await pollStatus();
+      switchTab('connect');
+    }
+  };
+}
+$('btnSaveServer').onclick = async () => {
+  let u = $('srvUrlInput').value.trim().replace(/\/+$/, '');
+  if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u;
+  SERVER_URL = u;
+  ADMIN_TOKEN = $('srvTokenInput').value.trim();
+  localStorage.setItem('wa_ai_server_url', SERVER_URL);
+  localStorage.setItem('wa_ai_admin_token', ADMIN_TOKEN);
+  formLoadedOnce = false;
+  await pollStatus();
+  showToast('Terhubung ke server!');
+  switchTab('connect');
+};
+
+$('btnSaveAiKeys').onclick = async () => {
+  const payload = {};
+  const g = $('cfgGroqKey').value.trim();
+  const m = $('cfgGeminiKey').value.trim();
+  const o = $('cfgOpenrouterKey').value.trim();
+  if (g) payload.groqKey = g;
+  if (m) payload.geminiKey = m;
+  if (o) payload.openrouterKey = o;
+  if (!Object.keys(payload).length) {
+    return showToast('Isi minimal satu API key baru untuk disimpan', false);
+  }
+  try {
+    await api('/api/settings', { method: 'POST', body: JSON.stringify(payload) });
+    $('cfgGroqKey').value = '';
+    $('cfgGeminiKey').value = '';
+    $('cfgOpenrouterKey').value = '';
+    showToast('✅ API Key AI berhasil disimpan ke server Render!');
+    pollStatus();
+  } catch (e) {
+    showToast(e.message, false);
+  }
+};
+
+async function loadBlockedUsers() {
+  if (!SERVER_URL) return;
+  try {
+    const r = await api('/api/blocked');
+    const list = r.blocked || [];
+    if (!list.length) {
+      $('blockedListContainer').innerHTML = 'Tidak ada nomor yang diblokir.';
+      return;
+    }
+    $('blockedListContainer').innerHTML = list.map(j =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span>+${j.replace(/@.*/, '')}</span>
+        <button class="btn btn-sm" onclick="unblockNumber('${j}')">Buka Blokir</button>
+      </div>`
+    ).join('');
+  } catch {}
+}
+window.unblockNumber = async (jid) => {
+  try {
+    await api('/api/unblock', { method: 'POST', body: JSON.stringify({ jid }) });
+    loadBlockedUsers();
+    showToast('Blokir dibuka');
+  } catch (e) { showToast(e.message, false); }
+};
+$('btnAddBlock').onclick = async () => {
+  const num = $('blockPhoneInput').value.trim();
+  if (!num) return;
+  try {
+    await api('/api/block', { method: 'POST', body: JSON.stringify({ jid: num }) });
+    $('blockPhoneInput').value = '';
+    loadBlockedUsers();
+    showToast('Nomor diblokir');
+  } catch (e) { showToast(e.message, false); }
+};
+
+if (window.AndroidApp) {
+  const dlCard = $('downloadApkCard');
+  if (dlCard) dlCard.style.display = 'none';
+}
+
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+pollStatus();
+loadBlockedUsers();
+setInterval(pollStatus, 2000);
+</script>
+</body>
+</html>
