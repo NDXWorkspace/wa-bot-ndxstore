@@ -525,6 +525,15 @@ async function main() {
         const isAdmin = Boolean(ADMIN_RAW) && senderJid.split('@')[0].replace(/^\+/, '').trim() === ADMIN_RAW;
         logger.debug('Msg', `${senderJid.replace(/@.*/, '')} | "${body.slice(0, 40)}"`);
 
+        // ── Bot Creator & About Info ──
+        if (body === '!about' || body === '!creator' || body === '!info') {
+          await msg.reply('🤖 *WA Bot NDXStore & AI Controller*\n\n' +
+            'Dibuat oleh: *Faraz Satria Abimanyu (Xyrendz)*\n' +
+            'GitHub: https://github.com/Xyrendz\n' +
+            'Repository: https://github.com/NDXWorkspace/wa-bot-ndxstore');
+          return;
+        }
+
         // ── Block / Unblock ──
         if ((body === '!block' || body === '!unblock') && isAdmin) {
           const isBlock = body === '!block';

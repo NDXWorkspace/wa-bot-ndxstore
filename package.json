@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "description": "WhatsApp bot for NDXStore — top up game & Roblox with AI customer service",
+  "author": "Faraz Satria Abimanyu (Xyrendz) <https://github.com/Xyrendz>",
+  "homepage": "https://github.com/NDXWorkspace/wa-bot-ndxstore",
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",

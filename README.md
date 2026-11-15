@@ -3,6 +3,9 @@
 WhatsApp customer-service & order-notification bot untuk **NDXStore** (top up game & Roblox).
 Dibangun dengan **whatsapp-web.js** (Puppeteer) + AI via **Groq** dengan fallback **Pollinations**, dan **Supabase** untuk riwayat chat, limit, serta monitor order realtime.
 
+> **Dibuat oleh:** [Faraz Satria Abimanyu (Xyrendz)](https://github.com/Xyrendz)  
+> **GitHub:** [https://github.com/Xyrendz](https://github.com/Xyrendz)
+
 ## Fitur
 
 | Fitur | Cara / Detail |
@@ -151,3 +154,10 @@ Admin tetap bisa **reply** pesan handover yang diteruskan bot (quote pesan forwa
 - Balasan chat di-throttle (cooldown per user + antrian kirim ~1.2s) dan dibatasi **50 pesan/user/hari** untuk mengurangi risiko ban.
 - Bot **tidak memulai chat bebas** ke user — **kecuali** notifikasi order (order baru / pembayaran dikonfirmasi) yang memang dikirim otomatis ke customer & grup admin oleh order monitor.
 - Untuk 24/7, jalankan di VPS/Raspberry Pi dengan PM2 (auto-restart saat crash, cap memori 500M).
+
+## Author & Credits
+
+Proyek ini dibuat dan dikembangkan oleh:
+- **Faraz Satria Abimanyu (Xyrendz)**
+- **GitHub:** [https://github.com/Xyrendz](https://github.com/Xyrendz)
+- **Repository:** [https://github.com/NDXWorkspace/wa-bot-ndxstore](https://github.com/NDXWorkspace/wa-bot-ndxstore)

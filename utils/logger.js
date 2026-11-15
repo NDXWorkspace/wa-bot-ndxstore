@@ -259,6 +259,8 @@ function printBanner() {
  ╔═══════════════════════════════════════╗
  ║  ${(pkg.name || 'App').padEnd(35)} ║
  ║  v${(pkg.version || '').padEnd(34)} ║
+ ║  by: Faraz Satria Abimanyu (Xyrendz)  ║
+ ║  gh: https://github.com/Xyrendz      ║
  ║  PID: ${String(process.pid).padEnd(32)} ║
  ║  Node: ${process.version.padEnd(32)} ║
  ║  Time: ${tsISO().padEnd(32)} ║
